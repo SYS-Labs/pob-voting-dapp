@@ -1,0 +1,351 @@
+{
+  "JurySC_01": [
+    {
+      "name": "AddressEmptyCode",
+      "signature": "AddressEmptyCode(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "AlreadyActivated",
+      "signature": "AlreadyActivated()",
+      "inputs": []
+    },
+    {
+      "name": "AlreadyClosed",
+      "signature": "AlreadyClosed()",
+      "inputs": []
+    },
+    {
+      "name": "AlreadyVoted",
+      "signature": "AlreadyVoted()",
+      "inputs": []
+    },
+    {
+      "name": "ContractLocked",
+      "signature": "ContractLocked()",
+      "inputs": []
+    },
+    {
+      "name": "ERC1967InvalidImplementation",
+      "signature": "ERC1967InvalidImplementation(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC1967NonPayable",
+      "signature": "ERC1967NonPayable()",
+      "inputs": []
+    },
+    {
+      "name": "FailedCall",
+      "signature": "FailedCall()",
+      "inputs": []
+    },
+    {
+      "name": "InsufficientQuorum",
+      "signature": "InsufficientQuorum()",
+      "inputs": []
+    },
+    {
+      "name": "InvalidInitialization",
+      "signature": "InvalidInitialization()",
+      "inputs": []
+    },
+    {
+      "name": "InvalidNFT",
+      "signature": "InvalidNFT()",
+      "inputs": []
+    },
+    {
+      "name": "InvalidProject",
+      "signature": "InvalidProject()",
+      "inputs": []
+    },
+    {
+      "name": "NoConsensus",
+      "signature": "NoConsensus()",
+      "inputs": []
+    },
+    {
+      "name": "NotActive",
+      "signature": "NotActive()",
+      "inputs": []
+    },
+    {
+      "name": "NotDaoHicVoter",
+      "signature": "NotDaoHicVoter()",
+      "inputs": []
+    },
+    {
+      "name": "NotDevRelAccount",
+      "signature": "NotDevRelAccount()",
+      "inputs": []
+    },
+    {
+      "name": "NotEnoughVoters",
+      "signature": "NotEnoughVoters()",
+      "inputs": []
+    },
+    {
+      "name": "NotInitializing",
+      "signature": "NotInitializing()",
+      "inputs": []
+    },
+    {
+      "name": "NotOwner",
+      "signature": "NotOwner()",
+      "inputs": []
+    },
+    {
+      "name": "OwnableInvalidOwner",
+      "signature": "OwnableInvalidOwner(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "OwnableUnauthorizedAccount",
+      "signature": "OwnableUnauthorizedAccount(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ProjectCannotVote",
+      "signature": "ProjectCannotVote()",
+      "inputs": []
+    },
+    {
+      "name": "ProjectsLocked",
+      "signature": "ProjectsLocked()",
+      "inputs": []
+    },
+    {
+      "name": "ReentrancyGuardReentrantCall",
+      "signature": "ReentrancyGuardReentrantCall()",
+      "inputs": []
+    },
+    {
+      "name": "UUPSUnauthorizedCallContext",
+      "signature": "UUPSUnauthorizedCallContext()",
+      "inputs": []
+    },
+    {
+      "name": "UUPSUnsupportedProxiableUUID",
+      "signature": "UUPSUnsupportedProxiableUUID(bytes32)",
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "slot",
+          "type": "bytes32"
+        }
+      ]
+    }
+  ],
+  "PoB_01": [
+    {
+      "name": "AlreadyClaimed",
+      "signature": "AlreadyClaimed()",
+      "inputs": []
+    },
+    {
+      "name": "ERC721IncorrectOwner",
+      "signature": "ERC721IncorrectOwner(address,uint256,address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InsufficientApproval",
+      "signature": "ERC721InsufficientApproval(address,uint256)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidApprover",
+      "signature": "ERC721InvalidApprover(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "approver",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidOperator",
+      "signature": "ERC721InvalidOperator(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidOwner",
+      "signature": "ERC721InvalidOwner(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidReceiver",
+      "signature": "ERC721InvalidReceiver(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "receiver",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidSender",
+      "signature": "ERC721InvalidSender(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721NonexistentToken",
+      "signature": "ERC721NonexistentToken(uint256)",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        }
+      ]
+    },
+    {
+      "name": "InvalidAmount",
+      "signature": "InvalidAmount()",
+      "inputs": []
+    },
+    {
+      "name": "InvalidJurySC",
+      "signature": "InvalidJurySC()",
+      "inputs": []
+    },
+    {
+      "name": "MintingIsClosed",
+      "signature": "MintingIsClosed()",
+      "inputs": []
+    },
+    {
+      "name": "NotActive",
+      "signature": "NotActive()",
+      "inputs": []
+    },
+    {
+      "name": "NotAuthorized",
+      "signature": "NotAuthorized()",
+      "inputs": []
+    },
+    {
+      "name": "NotNFTOwner",
+      "signature": "NotNFTOwner()",
+      "inputs": []
+    },
+    {
+      "name": "OnlyCommunityCanClaim",
+      "signature": "OnlyCommunityCanClaim()",
+      "inputs": []
+    },
+    {
+      "name": "OwnableInvalidOwner",
+      "signature": "OwnableInvalidOwner(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "OwnableUnauthorizedAccount",
+      "signature": "OwnableUnauthorizedAccount(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ProjectsNotLocked",
+      "signature": "ProjectsNotLocked()",
+      "inputs": []
+    },
+    {
+      "name": "ReentrancyGuardReentrantCall",
+      "signature": "ReentrancyGuardReentrantCall()",
+      "inputs": []
+    },
+    {
+      "name": "TransferFailed",
+      "signature": "TransferFailed()",
+      "inputs": []
+    },
+    {
+      "name": "VotingNotEnded",
+      "signature": "VotingNotEnded()",
+      "inputs": []
+    }
+  ]
+}

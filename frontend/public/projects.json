@@ -1,0 +1,37 @@
+[
+  {
+    "chainId": 5700,
+    "account": "0x77b4d66a7f7af6b94d72fe0e93184645c1cae33a",
+    "name": "Transformación del Procedimiento Aduanero Peruano mediante Blockchain Syscoin y Pruebas de Conocimiento Cero",
+    "yt_vid": "https://youtu.be/NcmyotsZBro",
+    "proposal": "https://docs.google.com/document/d/1b95M92NJ0z7ziVwKRfp4GzlMf8Aj59550NLqsWLkAaQ/edit?usp=sharing"
+  },
+  {
+    "chainId": 5700,
+    "account": "0xd2e95D92EeE33CB5041C83845b733cD47d97B026",
+    "name": "NIKOSUN: PLATAFORMA DESCENTRALIZADA DE MICRO-FINANZAS Y TOKENIZACIÓN DE ENERGÍA SOLAR SOBRE SYSCOIN NEVM",
+    "yt_vid": "https://youtu.be/CSjnljTH78Y",
+    "proposal": "https://drive.google.com/file/d/1WmO4gtzp7xlAS7AnBjJsVgtaKIDMAG-g/view?usp=sharing"
+  },
+  {
+    "chainId": 5700,
+    "account": "0xe2375797478dE272b77F02C638f8a29b47CaD865",
+    "name": "Sistema de Membresías Universitarias con NFC Virtual y Pruebas de Conocimiento Cero en Syscoin (zkSYS)",
+    "yt_vid": "https://youtu.be/3Pf9iNOKqAY",
+    "proposal": "https://drive.google.com/file/d/15SLYXmwpBKsygG4V9nOHiDwVrFHKkLHu/view?usp=drivesdk"
+  },
+  {
+    "chainId": 5700,
+    "account": "0xf71cf0ae80ec48e029161d2fac5a7fe64dbc28c0",
+    "name": "Sistema de Historias Clínicas Verificables (SHCV) sobre Syscoin",
+    "yt_vid": "https://youtu.be/so8fnJlMORo",
+    "proposal": "https://docs.google.com/document/d/1m16wi1OxoRVZzc3_5aVNV7QMARJmN7ON/edit?usp=drive_link&ouid=106031460613030286636&rtpof=true&sd=true"
+  },
+  {
+    "chainId": 5700,
+    "account": "0x8fabf833fa0d8b693daa033342f3ff0fa94639fd",
+    "name": "Evaluación Docente Verificada (Syscoin + Zero Trust)",
+    "yt_vid": "https://youtu.be/RMCr1k8wX1Q",
+    "proposal": "https://docs.google.com/document/d/1zjaHqSasFmOOAhvK9_ciO9nGkzt1wzm_ZZLO4M57ESY/edit?usp=sharing"
+  }
+]

@@ -1,0 +1,602 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Contract, Interface, JsonRpcProvider, JsonRpcSigner, ethers } from 'ethers';
+import { JurySC_01ABI, PoB_01ABI } from '~/abis';
+import type {
+  Badge,
+  Iteration,
+  ParticipantRole,
+  Project,
+  ProjectMetadata,
+} from '~/interfaces';
+
+interface EntityVotes {
+  devRel: string | null;
+  daoHic: string | null;
+  community: string | null;
+}
+
+interface RoleStatuses {
+  community: boolean;
+  devrel: boolean;
+  dao_hic: boolean;
+  project: boolean;
+}
+
+interface CommunityBadgeState extends Badge {
+  hasVoted: boolean;
+  vote: string | null;
+}
+
+function normalizeAddress(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  if (!value) return null;
+  if (value === ethers.ZeroAddress) return null;
+  return value;
+}
+
+export function useContractState(
+  signer: JsonRpcSigner | null,
+  walletAddress: string | null,
+  currentIteration: Iteration | null,
+  correctNetwork: boolean,
+  publicProvider: JsonRpcProvider | null,
+  chainId: number | null,
+  projectMetadata: Record<string, ProjectMetadata>,
+  projectMetadataLoading: boolean,
+  allIterations: Iteration[],
+) {
+  const [roles, setRoles] = useState<RoleStatuses>({
+    community: false,
+    devrel: false,
+    dao_hic: false,
+    project: false,
+  });
+  const [isOwner, setIsOwner] = useState<boolean>(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [devRelAccount, setDevRelAccount] = useState<string | null>(null);
+  const [daoHicVoters, setDaoHicVoters] = useState<string[]>([]);
+  const [projectsLocked, setProjectsLocked] = useState<boolean>(false);
+  const [contractLocked, setContractLocked] = useState<boolean>(false);
+  const [voteCounts, setVoteCounts] = useState<{ devRel: number; daoHic: number; community: number }>({
+    devRel: 0,
+    daoHic: 0,
+    community: 0
+  });
+  const [totalCommunityVoters, setTotalCommunityVoters] = useState<number>(0);
+  const [, setEntityVotes] = useState<EntityVotes>({
+    devRel: null,
+    daoHic: null,
+    community: null,
+  });
+  const [badges, setBadges] = useState<Badge[]>([]);
+  const [communityBadges, setCommunityBadges] = useState<CommunityBadgeState[]>([]);
+  const [devRelVote, setDevRelVote] = useState<string | null>(null);
+  const [daoHicVote, setDaoHicVote] = useState<string | null>(null);
+  const [winner, setWinner] = useState<{ projectAddress: string | null; hasWinner: boolean }>({
+    projectAddress: null,
+    hasWinner: false,
+  });
+  const [statusFlags, setStatusFlags] = useState<{ isActive: boolean; votingEnded: boolean }>({
+    isActive: false,
+    votingEnded: false,
+  });
+  const [iterationTimes, setIterationTimes] = useState<{ startTime: number | null; endTime: number | null }>({
+    startTime: null,
+    endTime: null,
+  });
+  const [loading, setLoading] = useState<boolean>(false);
+  const [hasLoadError, setHasLoadError] = useState<boolean>(false);
+
+  const selectedChainId = currentIteration?.chainId ?? null;
+
+  const resetState = useCallback(() => {
+    setRoles({
+      community: false,
+      devrel: false,
+      dao_hic: false,
+      project: false,
+    });
+    setIsOwner(false);
+    setBadges([]);
+    setCommunityBadges([]);
+    setProjects([]);
+    setEntityVotes({ devRel: null, daoHic: null, community: null });
+    setDevRelVote(null);
+    setDaoHicVote(null);
+    setWinner({ projectAddress: null, hasWinner: false });
+    setStatusFlags({ isActive: false, votingEnded: false });
+    setIterationTimes({ startTime: null, endTime: null });
+    setHasLoadError(false);
+    setDevRelAccount(null);
+    setDaoHicVoters([]);
+    setProjectsLocked(false);
+    setContractLocked(false);
+    setVoteCounts({ devRel: 0, daoHic: 0, community: 0 });
+  }, []);
+
+  const loadProjects = useCallback(
+    async (contract: Contract) => {
+      console.log('[loadProjects] Starting...');
+      const [countRaw, projectsLockedFlag, contractLockedFlag] = await Promise.all([
+        contract.projectCount(),
+        contract.projectsLocked().catch(() => false),
+        contract.locked().catch(() => false),
+      ]);
+      const count = Number(countRaw);
+      console.log('[loadProjects] Project count:', count);
+      setProjectsLocked(Boolean(projectsLockedFlag));
+      setContractLocked(Boolean(contractLockedFlag));
+      const entries: Project[] = [];
+      for (let index = 1; index <= count; index += 1) {
+        const address = await contract.projectAddress(index);
+        const metadataKey = selectedChainId !== null ? `${selectedChainId}:${address.toLowerCase()}` : null;
+        entries.push({
+          id: index,
+          address,
+          metadata: metadataKey ? projectMetadata[metadataKey] : undefined,
+        });
+      }
+      setProjects(entries);
+      console.log('[loadProjects] Complete. Loaded', entries.length, 'projects', '| projectsLocked:', projectsLockedFlag, '| contractLocked:', contractLockedFlag);
+    },
+    [projectMetadata, selectedChainId],
+  );
+
+  useEffect(() => {
+    if (selectedChainId === null) return;
+    setProjects((current) =>
+      current.map((project) => {
+        const key = `${selectedChainId}:${project.address.toLowerCase()}`;
+        const metadata = projectMetadata[key];
+        if (project.metadata === metadata) {
+          return project;
+        }
+        return {
+          ...project,
+          metadata,
+        };
+      }),
+    );
+  }, [projectMetadata, selectedChainId]);
+
+  const loadOwnerData = useCallback(
+    async (contract: Contract) => {
+      console.log('[loadOwnerData] Starting...');
+      try {
+        const devRelAddress = await contract.devRelAccount().catch(() => ethers.ZeroAddress);
+        const daoHicAddressesResponse = await contract.getDaoHicVoters().catch(() => [] as string[]);
+
+        const normalizedDevRel =
+          typeof devRelAddress === 'string' && devRelAddress !== ethers.ZeroAddress ? devRelAddress : null;
+        const normalizedDaoHic = (Array.isArray(daoHicAddressesResponse) ? daoHicAddressesResponse : []).filter(
+          (addr): addr is string =>
+            typeof addr === 'string' && addr.length > 0 && addr !== ethers.ZeroAddress,
+        );
+
+        setDevRelAccount(normalizedDevRel);
+        setDaoHicVoters(normalizedDaoHic);
+        console.log(
+          '[loadOwnerData] Complete. DevRel:',
+          normalizedDevRel ?? 'Not set',
+          'DaoHic voters:',
+          normalizedDaoHic.length,
+        );
+      } catch (error) {
+        console.error('[loadOwnerData] Error:', error);
+        setDevRelAccount(null);
+        setDaoHicVoters([]);
+      }
+    },
+    [],
+  );
+
+  const loadEntityVotes = useCallback(async (contract: Contract, isActive: boolean, votingEnded: boolean) => {
+    console.log('[loadEntityVotes] Starting... isActive:', isActive, 'votingEnded:', votingEnded);
+    // Only load entity votes if contract is active or voting has ended
+    if (!isActive && !votingEnded) {
+      console.log('[loadEntityVotes] Skipping - contract not active and voting not ended');
+      setEntityVotes({ devRel: null, daoHic: null, community: null });
+      setWinner({ projectAddress: null, hasWinner: false });
+      return;
+    }
+
+    try {
+      console.log('[loadEntityVotes] Loading entity votes from contract...');
+      const [devRelRaw, daoHicRaw, communityRaw, winnerRaw] = await Promise.all([
+        contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress),
+        contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress),
+        contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress),
+        contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
+      ]);
+
+      const devRelAddress = normalizeAddress(devRelRaw);
+      const daoHicAddress = normalizeAddress(daoHicRaw);
+      const communityAddress = normalizeAddress(communityRaw);
+      const [winnerAddressRaw, hasWinnerRaw] = Array.isArray(winnerRaw)
+        ? winnerRaw
+        : [ethers.ZeroAddress, false];
+
+      setEntityVotes({
+        devRel: devRelAddress,
+        daoHic: daoHicAddress,
+        community: communityAddress,
+      });
+
+      setWinner({
+        projectAddress: normalizeAddress(winnerAddressRaw),
+        hasWinner: Boolean(hasWinnerRaw),
+      });
+      console.log(
+        '[loadEntityVotes] Complete. DevRel:',
+        devRelAddress ?? 'None',
+        'DaoHic:',
+        daoHicAddress ?? 'None',
+        'Community:',
+        communityAddress ?? 'None',
+      );
+    } catch (error) {
+      console.error('[loadEntityVotes] Error:', error);
+      // If entity votes fail, just set defaults
+      setEntityVotes({ devRel: null, daoHic: null, community: null });
+      setWinner({ projectAddress: null, hasWinner: false });
+    }
+  }, []);
+
+  const loadRoles = useCallback(
+    async (contract: Contract, address: string) => {
+      console.log('[loadRoles] Starting for address:', address);
+      const [isDevRel, isDaoHic, isProject, owner] = await Promise.all([
+        contract.isDevRelAccount(address),
+        contract.isDaoHicVoter(address),
+        contract.isRegisteredProject(address),
+        contract.owner(),
+      ]);
+      console.log('[loadRoles] Contract owner:', owner);
+      console.log('[loadRoles] Connected address:', address);
+      setRoles({
+        community: false,
+        devrel: Boolean(isDevRel),
+        dao_hic: Boolean(isDaoHic),
+        project: Boolean(isProject),
+      });
+      const ownerStatus = owner.toLowerCase() === address.toLowerCase();
+      setIsOwner(ownerStatus);
+      console.log('[loadRoles] Complete. DevRel:', Boolean(isDevRel), 'DaoHic:', Boolean(isDaoHic), 'Project:', Boolean(isProject), 'IS OWNER:', ownerStatus);
+    },
+    [],
+  );
+
+  const loadVotingStatus = useCallback(
+    async (contract: Contract, address: string | null) => {
+      console.log('[loadVotingStatus] Starting for address:', address);
+      const [isActive, votingEnded, devRelVoted, devRelVoteValue, daoVote, daoVoted, startTime, endTime] =
+        await Promise.all([
+          contract.isActive(),
+          contract.votingEnded(),
+          contract.devRelHasVoted(),
+          contract.devRelVote(),
+          address ? contract.daoHicVoteOf(address) : Promise.resolve(null),
+          address ? contract.daoHicHasVoted(address) : Promise.resolve(false),
+          contract.startTime(),
+          contract.endTime(),
+        ]);
+
+      const statusFlags = {
+        isActive: Boolean(isActive),
+        votingEnded: Boolean(votingEnded),
+      };
+
+      setStatusFlags(statusFlags);
+
+      const normalizedDevRelVote = Boolean(devRelVoted) ? normalizeAddress(devRelVoteValue) : null;
+      const normalizedDaoVote = Boolean(daoVoted) ? normalizeAddress(daoVote) : null;
+
+      setDevRelVote(normalizedDevRelVote);
+      setDaoHicVote(normalizedDaoVote);
+
+      const times = {
+        startTime: Number(startTime),
+        endTime: Number(endTime),
+      };
+      setIterationTimes(times);
+
+      console.log('[loadVotingStatus] Complete. isActive:', statusFlags.isActive, 'votingEnded:', statusFlags.votingEnded);
+      console.log('[loadVotingStatus] DevRel vote:', normalizedDevRelVote ?? 'Not cast');
+      console.log('[loadVotingStatus] DAO_HIC vote:', normalizedDaoVote ?? 'Not cast');
+      console.log('[loadVotingStatus] Times - start:', times.startTime, 'end:', times.endTime);
+      return statusFlags;
+    },
+    [],
+  );
+
+  const loadVoteCounts = useCallback(
+    async (juryContract: Contract) => {
+      console.log('[loadVoteCounts] Starting...');
+      try {
+        const [devRelCount, daoHicCount, communityCount] = await juryContract.getVoteParticipationCounts();
+
+        setVoteCounts({
+          devRel: Number(devRelCount),
+          daoHic: Number(daoHicCount),
+          community: Number(communityCount),
+        });
+        // Community voting is unlimited (anyone can mint with deposit during voting, amount varies by network)
+        // So we set totalCommunityVoters to 0 which will display as ∞ in the UI
+        setTotalCommunityVoters(0);
+
+        console.log('[loadVoteCounts] Complete. DevRel:', devRelCount.toString(), '/ 1, DAO_HIC:', daoHicCount.toString(), '/', 'Community:', communityCount.toString(), '/ ∞');
+      } catch (error) {
+        console.error('[loadVoteCounts] Error:', error);
+        setVoteCounts({ devRel: 0, daoHic: 0, community: 0 });
+        setTotalCommunityVoters(0);
+      }
+    },
+    [],
+  );
+
+  const loadBadges = useCallback(
+    async (
+      address: string,
+      rpcProvider: JsonRpcProvider,
+      allIterations: Iteration[],
+    ) => {
+      console.log('[loadBadges] Starting for address:', address);
+      console.log('[loadBadges] Loading badges from', allIterations.length, 'iterations');
+
+      const iface = new Interface(PoB_01ABI);
+      const transferTopic = iface.getEvent('Transfer')?.topicHash;
+      if (!transferTopic) return;
+
+      const allBadgesMap = new Map<string, Badge>();
+      const communityMap = new Map<string, CommunityBadgeState>();
+
+      // Query badges from ALL iterations for badge history
+      for (const iteration of allIterations) {
+        try {
+          const iterationPobContract = new Contract(iteration.pob, PoB_01ABI, rpcProvider);
+          const fromBlock = iteration.deployBlockHint !== undefined ? iteration.deployBlockHint : 0;
+
+          console.log(`[loadBadges] Querying iteration ${iteration.iteration} from block:`, fromBlock);
+
+          const [logs, iterationValue] = await Promise.all([
+            rpcProvider.getLogs({
+              address: iteration.pob,
+              fromBlock,
+              toBlock: 'latest',
+              topics: [transferTopic, null, ethers.zeroPadValue(address, 32)],
+            }),
+            iterationPobContract.iteration(),
+          ]);
+
+          const iterationNumber = Number(iterationValue);
+          console.log(`[loadBadges] Found ${logs?.length || 0} transfer logs for iteration ${iteration.iteration}`);
+
+          if (!logs?.length) continue;
+
+          for (const log of logs) {
+            try {
+              const parsed = iface.parseLog(log);
+              if (!parsed) continue;
+              const tokenId = parsed.args?.tokenId?.toString();
+              if (!tokenId) continue;
+
+              const [owner, role, claimed] = await Promise.all([
+                iterationPobContract.ownerOf(tokenId),
+                iterationPobContract.roleOf(tokenId),
+                iterationPobContract.claimed(tokenId),
+              ]);
+
+              if (owner.toLowerCase() !== address.toLowerCase()) continue;
+
+              const badge: Badge = {
+                tokenId, // Keep original tokenId for contract calls
+                role: role.toLowerCase() as ParticipantRole,
+                iteration: iterationNumber,
+                claimed,
+              };
+              // Use composite key for uniqueness across iterations
+              const badgeKey = `${iteration.iteration}-${tokenId}`;
+              allBadgesMap.set(badgeKey, badge);
+
+              // Only load voting status for current iteration community badges
+              if (badge.role === 'community' && currentIteration && iteration.iteration === currentIteration.iteration) {
+                const iterationJuryContract = new Contract(iteration.jurySC, JurySC_01ABI, rpcProvider);
+                const [hasVoted, vote] = await Promise.all([
+                  iterationJuryContract.communityHasVoted(tokenId),
+                  iterationJuryContract.communityVoteOf(tokenId),
+                ]);
+                communityMap.set(badgeKey, {
+                  ...badge,
+                  hasVoted: Boolean(hasVoted),
+                  vote: normalizeAddress(vote),
+                });
+              }
+            } catch (badgeError) {
+              console.warn('Failed to parse badge log', badgeError);
+            }
+          }
+        } catch (iterationError) {
+          console.warn(`Failed to load badges from iteration ${iteration.iteration}`, iterationError);
+        }
+      }
+
+      const badgeList = Array.from(allBadgesMap.values());
+      setBadges(badgeList);
+      setCommunityBadges(Array.from(communityMap.values()));
+      setRoles((current) => ({
+        ...current,
+        community: badgeList.some((badge) => badge.role === 'community' && badge.iteration === currentIteration?.iteration),
+      }));
+      console.log('[loadBadges] Complete. Total badges across all iterations:', badgeList.length, 'Current iteration community badges:', communityMap.size);
+    },
+    [currentIteration],
+  );
+
+  const refreshProjects = useCallback(async () => {
+    if (!signer || !currentIteration) return;
+    console.log('[refreshProjects] Refreshing projects list...');
+    const contract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
+    await loadProjects(contract);
+  }, [signer, currentIteration, loadProjects]);
+
+  const refreshOwnerData = useCallback(async () => {
+    if (!signer || !currentIteration) return;
+    console.log('[refreshOwnerData] Refreshing owner data...');
+    const contract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
+    await loadOwnerData(contract);
+  }, [signer, currentIteration, loadOwnerData]);
+
+  const refreshVotingData = useCallback(async () => {
+    if (!signer || !currentIteration || !walletAddress) return;
+    console.log('[refreshVotingData] Refreshing voting data...');
+    const juryContract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
+    const statusFlags = await loadVotingStatus(juryContract, walletAddress);
+    console.log('[refreshVotingData] Flags:', statusFlags);
+    await loadEntityVotes(juryContract, statusFlags.isActive, statusFlags.votingEnded);
+    if (statusFlags.isActive || statusFlags.votingEnded) {
+      console.log('[refreshVotingData] Calling loadVoteCounts...');
+      await loadVoteCounts(juryContract);
+    } else {
+      console.log('[refreshVotingData] Skipping loadVoteCounts - not active/ended');
+    }
+  }, [signer, currentIteration, walletAddress, loadVotingStatus, loadEntityVotes, loadVoteCounts]);
+
+  const refreshBadges = useCallback(async () => {
+    if (!publicProvider || !currentIteration || !walletAddress) return;
+    console.log('[refreshBadges] Refreshing badges...');
+    await loadBadges(walletAddress, publicProvider, allIterations);
+  }, [currentIteration, walletAddress, publicProvider, allIterations, loadBadges]);
+
+  const loadIterationState = useCallback(async () => {
+    console.log('=== [loadIterationState] Starting ===');
+    console.log('[loadIterationState] Checking conditions...');
+    console.log('  - signer:', !!signer);
+    console.log('  - walletAddress:', walletAddress);
+    console.log('  - currentIteration:', currentIteration?.name);
+    console.log('  - correctNetwork:', correctNetwork);
+    console.log('  - publicProvider:', !!publicProvider);
+    console.log('  - projectMetadataLoading:', projectMetadataLoading);
+    console.log('  - hasLoadError:', hasLoadError);
+
+    // Only require publicProvider and currentIteration for read-only data
+    // Wallet/signer only needed for write operations (which will be disabled in UI)
+    if (!currentIteration || !correctNetwork || !publicProvider) {
+      console.log('[loadIterationState] Skipping - missing required conditions');
+      return;
+    }
+    if (projectMetadataLoading) {
+      console.log('[loadIterationState] Skipping - project metadata still loading');
+      return;
+    }
+    if (hasLoadError) {
+      console.log('[loadIterationState] Skipping - has load error');
+      return;
+    }
+    if (chainId !== null && currentIteration?.chainId !== chainId) {
+      console.log('[loadIterationState] Skipping - chain mismatch. Expected:', currentIteration?.chainId, 'Got:', chainId);
+      return;
+    }
+
+    // Validate addresses are valid hex (not ENS or placeholders)
+    const isValidAddress = (addr: string) => /^0x[0-9a-fA-F]{40}$/.test(addr);
+    if (!isValidAddress(currentIteration?.jurySC) || !isValidAddress(currentIteration?.pob)) {
+      console.error('[loadIterationState] Invalid contract addresses');
+      throw new Error('Iteration addresses are invalid or not configured. Please check iterations.json');
+    }
+
+    console.log('[loadIterationState] All conditions met - proceeding with load');
+    setLoading(true);
+    setHasLoadError(false);
+    try {
+      // Use publicProvider for read-only operations, signer for write operations (if available)
+      const juryContract = new Contract(currentIteration?.jurySC, JurySC_01ABI, publicProvider);
+
+      console.log('[loadIterationState] Phase 1: Loading voting status...');
+      // First, load voting status to get state flags
+      const statusFlags = await loadVotingStatus(juryContract, walletAddress);
+
+      console.log('[loadIterationState] Phase 2: Loading all other data in parallel...');
+      // Then load everything else, passing status flags to loadEntityVotes
+      await Promise.all([
+        loadProjects(juryContract),
+        walletAddress ? loadOwnerData(juryContract) : Promise.resolve(),
+        loadEntityVotes(juryContract, statusFlags.isActive, statusFlags.votingEnded),
+        walletAddress ? loadRoles(juryContract, walletAddress) : Promise.resolve(),
+        walletAddress ? loadBadges(walletAddress, publicProvider, allIterations) : Promise.resolve(),
+        statusFlags.isActive || statusFlags.votingEnded ? loadVoteCounts(juryContract) : Promise.resolve(),
+      ]);
+      console.log('=== [loadIterationState] Complete ===');
+    } catch (contractError) {
+      console.error('[loadIterationState] Error:', contractError);
+      setHasLoadError(true);
+      throw contractError;
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    signer,
+    walletAddress,
+    currentIteration,
+    correctNetwork,
+    publicProvider,
+    projectMetadataLoading,
+    hasLoadError,
+    loadProjects,
+    loadOwnerData,
+    loadEntityVotes,
+    loadRoles,
+    loadVotingStatus,
+    loadBadges,
+    loadVoteCounts,
+    chainId,
+    allIterations,
+  ]);
+
+  // Load iteration when iteration is selected (wallet optional for read-only viewing)
+  useEffect(() => {
+    if (currentIteration && publicProvider && correctNetwork && !hasLoadError && !projectMetadataLoading) {
+      console.log('[useEffect] Triggering loadIterationState - iteration selected, publicProvider available, metadata loaded');
+      loadIterationState().catch((err) => {
+        console.error('[useEffect] loadIterationState failed:', err);
+      });
+    } else if (projectMetadataLoading) {
+      console.log('[useEffect] Waiting for project metadata to load...');
+    }
+  }, [currentIteration?.iteration, publicProvider, correctNetwork, loadIterationState, hasLoadError, projectMetadataLoading]);
+
+  const retryLoadIteration = useCallback(() => {
+    setHasLoadError(false);
+    loadIterationState().catch((err) => {
+      console.error('[retryLoadIteration] failed:', err);
+    });
+  }, [loadIterationState]);
+
+  return {
+    roles,
+    isOwner,
+    projects,
+    setProjects,
+    devRelAccount,
+    daoHicVoters,
+    projectsLocked,
+    contractLocked,
+    voteCounts,
+    totalCommunityVoters,
+    badges,
+    communityBadges,
+    devRelVote,
+    daoHicVote,
+    winner,
+    statusFlags,
+    iterationTimes,
+    loading,
+    hasLoadError,
+    resetState,
+    loadIterationState,
+    refreshProjects,
+    refreshOwnerData,
+    refreshVotingData,
+    refreshBadges,
+    retryLoadIteration,
+  };
+}

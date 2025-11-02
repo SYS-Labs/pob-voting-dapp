@@ -1,0 +1,7 @@
+node_modules
+.env
+cache
+artifacts
+
+# Debug scripts
+scripts/debug/
