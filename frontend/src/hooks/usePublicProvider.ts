@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { JsonRpcProvider } from 'ethers';
-import { PUBLIC_RPC_URLS } from '~/constants/networks';
+import { NETWORKS } from '~/constants/networks';
 
 /**
  * Hook that provides a public RPC provider for read-only operations
@@ -14,14 +14,14 @@ export function usePublicProvider(chainId: number | null): JsonRpcProvider | nul
       return null;
     }
 
-    const rpcUrl = PUBLIC_RPC_URLS[chainId];
-    if (!rpcUrl) {
-      console.warn(`[usePublicProvider] No public RPC URL for chain ID ${chainId}`);
+    const network = NETWORKS[chainId];
+    if (!network) {
+      console.warn(`[usePublicProvider] No network config for chain ID ${chainId}`);
       return null;
     }
 
-    console.log(`[usePublicProvider] Creating public provider for chain ${chainId} with RPC URL: ${rpcUrl}`);
-    const provider = new JsonRpcProvider(rpcUrl, chainId, { staticNetwork: true });
+    console.log(`[usePublicProvider] Creating public provider for chain ${chainId} with RPC URL: ${network.rpcUrl}`);
+    const provider = new JsonRpcProvider(network.rpcUrl, chainId, { staticNetwork: true });
 
     // Test the connection
     provider.getBlockNumber().then((blockNumber) => {

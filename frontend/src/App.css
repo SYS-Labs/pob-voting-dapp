@@ -193,6 +193,12 @@ body {
   transition: transform var(--pob-transition), box-shadow var(--pob-transition);
   border: 1px solid transparent;
   box-shadow: none;
+  text-decoration: none;
+}
+
+.pob-button:hover,
+.pob-button:focus {
+  text-decoration: none;
 }
 
 .pob-button:hover {

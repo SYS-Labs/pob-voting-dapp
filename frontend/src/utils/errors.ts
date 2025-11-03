@@ -39,7 +39,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   'InvalidNFT': 'This NFT is not valid for the current iteration.',
   'ProjectCannotVote': 'Project addresses cannot vote.',
   'NotDevRelAccount': 'You are not authorized as a DevRel account.',
-  'NotDaoHicVoter': 'You are not authorized as a DAO_HIC voter.',
+  'NotDaoHicVoter': 'You are not authorized as a DAO HIC voter.',
   'NoConsensus': 'No consensus has been reached among the voting entities.',
   'AlreadyClosed': 'This iteration has already been closed.',
 

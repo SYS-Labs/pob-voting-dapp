@@ -3,7 +3,7 @@ import { Contract, JsonRpcSigner, ethers } from 'ethers';
 import { JurySC_01ABI, PoB_01ABI } from '~/abis';
 import type { Iteration, ParticipantRole } from '~/interfaces';
 import { ROLE_LABELS } from '~/constants/roles';
-import { MINT_AMOUNTS } from '~/constants/networks';
+import { NETWORKS } from '~/constants/networks';
 
 export function useTransactions(
   signer: JsonRpcSigner | null,
@@ -22,7 +22,7 @@ export function useTransactions(
       throw new Error('Please connect your wallet to continue.');
     }
     if (!correctNetwork) {
-      throw new Error('Please switch to Syscoin NEVM (chainId 57 or 5700).');
+      throw new Error('Please switch to a supported network (Syscoin NEVM).');
     }
     return true;
   }, [walletAddress, correctNetwork]);
@@ -64,14 +64,14 @@ export function useTransactions(
 
           // Map of error signatures to user-friendly messages
           const errorMap: Record<string, string> = {
-            '0x380fcdc1': 'Cannot activate: You must set a DevRel account and add at least 1 DAO_HIC voter first.',
+            '0x380fcdc1': 'Cannot activate: You must set a DevRel account and add at least 1 DAO HIC voter first.',
             '0xbe8aa6fc': 'Invalid project: Project is not registered.',
             '0xef65161f': 'Contract is already activated.',
             '0xfbf2f40f': 'Projects are locked and cannot be modified.',
             '0x6f5ffb7e': 'Contract is locked for history.',
             '0x7c9a1cf9': 'You have already voted.',
             '0x6470d829': 'You are not the DevRel account.',
-            '0x4fe1ec77': 'You are not a DAO_HIC voter.',
+            '0x4fe1ec77': 'You are not a DAO HIC voter.',
             '0x80cb55e2': 'Voting is not active yet.',
             '0xdcc08b25': 'Projects cannot vote.',
             '0x0f3e2a3e': 'Invalid NFT: You do not own this token.',
@@ -107,7 +107,8 @@ export function useTransactions(
       let label: string;
 
       // Get network-specific mint amount
-      const mintAmount = chainId ? MINT_AMOUNTS[chainId] ?? '30' : '30';
+      const network = chainId ? NETWORKS[chainId] : null;
+      const mintAmount = network?.mintAmount ?? '30';
 
       switch (role) {
         case 'community':
@@ -120,7 +121,7 @@ export function useTransactions(
           break;
         case 'dao_hic':
           tx = () => contract.mintDaoHic();
-          label = 'Mint DAO_HIC Badge';
+          label = 'Mint DAO HIC Badge';
           break;
         case 'project':
           tx = () => contract.mintProject();

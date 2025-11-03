@@ -23,10 +23,10 @@ const ConfirmRemoveModal = ({
   entityLabel,
   confirmLabel,
 }: ConfirmRemoveModalProps) => {
-  const modalTitle = title ?? 'Remove DAO_HIC Voter?';
+  const modalTitle = title ?? 'Remove DAO HIC Voter?';
   const modalDescription =
     description ?? 'This will revoke voting access for the following address:';
-  const modalEntityLabel = entityLabel ?? 'DAO_HIC voter';
+  const modalEntityLabel = entityLabel ?? 'DAO HIC voter';
   const modalConfirmLabel = confirmLabel ?? 'Yes, remove';
 
   const handleConfirm = () => {

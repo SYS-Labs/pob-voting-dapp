@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Modal from './Modal';
+import { NETWORKS } from '~/constants/networks';
 
 interface HeaderProps {
   walletAddress: string | null;
@@ -16,15 +17,9 @@ interface HeaderProps {
   currentIteration: number | null;
 }
 
-const NETWORK_NAMES: Record<number, string> = {
-  57: 'NEVM Mainnet',
-  5700: 'NEVM Testnet',
-  31337: 'Hardhat',
-};
-
 export const getNetworkLabel = (chainId: number | null): string => {
   if (!chainId) return 'No Network';
-  return NETWORK_NAMES[chainId] || `Chain ${chainId}`;
+  return NETWORKS[chainId]?.name || `Chain ${chainId}`;
 };
 
 const Header = ({

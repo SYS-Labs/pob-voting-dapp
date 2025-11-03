@@ -19,9 +19,12 @@ const IterationCard = ({ iteration, isActive, statusBadge, onSelect }: Iteration
           onSelect?.();
         }
       }}
-      className={`pob-pane pob-pane--subtle flex flex-col justify-between ${
-        isActive ? 'border-[rgba(247,147,26,0.5)] shadow-[0_0_22px_rgba(247,147,26,0.35)]' : ''
-      } transition`}
+      className={`pob-pane pob-pane--subtle flex flex-col justify-between transition ${
+        isActive ? 'shadow-[0_0_22px_rgba(247,147,26,0.35)]' : ''
+      }`}
+      style={{
+        borderColor: isActive ? 'var(--pob-primary)' : 'rgba(247, 147, 26, 0.4)',
+      }}
     >
       <div className="space-y-3">
         <div className="pob-pane__heading">
@@ -31,25 +34,8 @@ const IterationCard = ({ iteration, isActive, statusBadge, onSelect }: Iteration
           Iteration #{iteration.iteration}
         </p>
       </div>
-      <div className="mt-4 flex items-center justify-between">
-        <a
-          href={iteration.link ?? '#'}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm font-semibold text-[var(--pob-primary)] underline"
-          onClick={(event) => {
-            if (!iteration.link) {
-              event.preventDefault();
-            }
-          }}
-        >
-          View brief
-        </a>
-        {statusBadge && (
-          <span className={statusBadge.color}>
-            {statusBadge.label}
-          </span>
-        )}
+      <div className="mt-4 flex items-center justify-end">
+        {statusBadge && <span className={statusBadge.color}>{statusBadge.label}</span>}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import type { ParticipantRole } from '~/interfaces';
 import { ROLE_LABELS, ROLE_COLORS } from '~/constants/roles';
-import { MINT_AMOUNTS, TOKEN_SYMBOLS } from '~/constants/networks';
+import { NETWORKS } from '~/constants/networks';
 
 interface CommunityBadge {
   tokenId: string;
@@ -68,8 +68,9 @@ const JuryPanel = ({
   if (!hasJuryRole && !canBecomeCommunity) return null;
 
   // Get network-specific values
-  const mintAmount = chainId ? MINT_AMOUNTS[chainId] ?? '30' : '30';
-  const tokenSymbol = chainId ? TOKEN_SYMBOLS[chainId] ?? 'TSYS' : 'TSYS';
+  const network = chainId ? NETWORKS[chainId] : null;
+  const mintAmount = network?.mintAmount ?? '30';
+  const tokenSymbol = network?.tokenSymbol ?? 'TSYS';
 
   // Determine which role tag to show in header
   const headerRoleTag = roles.devrel
@@ -99,7 +100,16 @@ const JuryPanel = ({
               As DevRel, you represent the developer relations entity and cast one vote for a project during the active voting period. Mint your commemorative badge after voting ends.
             </p>
             <p className="text-sm text-[var(--pob-text-muted)]">
-              {devRelVote ? `Voted for ${getProjectLabel(devRelVote)}` : 'Not voted yet'}
+              {devRelVote ? (
+                <>
+                  Voted for{' '}
+                  <span className="italic">
+                    {getProjectLabel(devRelVote) ?? 'Unknown project'}
+                  </span>
+                </>
+              ) : (
+                'Not voted yet'
+              )}
             </p>
             {hasDevRelBadge ? (
               <p className="text-sm text-green-400">
@@ -129,14 +139,23 @@ const JuryPanel = ({
           </>
         )}
 
-        {/* DAO_HIC Role */}
+        {/* DAO HIC Role */}
         {roles.dao_hic && (
           <>
             <p className="text-sm text-[var(--pob-text-muted)]">
-              As a DAO_HIC voter, you are part of the high-integrity council. Cast your vote during the active voting period. The council's decision is determined by majority consensus. Mint your commemorative badge after voting ends.
+              As a DAO HIC voter, you are part of the high-integrity council. Cast your vote during the active voting period. The council's decision is determined by majority consensus. Mint your commemorative badge after voting ends.
             </p>
             <p className="text-sm text-[var(--pob-text-muted)]">
-              {daoHicVote ? `Voted for ${getProjectLabel(daoHicVote)}` : 'Not voted yet'}
+              {daoHicVote ? (
+                <>
+                  Voted for{' '}
+                  <span className="italic">
+                    {getProjectLabel(daoHicVote) ?? 'Unknown project'}
+                  </span>
+                </>
+              ) : (
+                'Not voted yet'
+              )}
             </p>
             {hasDaoHicBadge ? (
               <p className="text-sm text-green-400">
@@ -153,7 +172,7 @@ const JuryPanel = ({
                     className="pob-button w-full justify-center text-xs"
                     disabled={pendingAction !== null || !walletAddress}
                   >
-                    {pendingAction === 'Mint DAO_HIC Badge' ? 'Minting…' : 'Mint DAO_HIC badge'}
+                    {pendingAction === 'Mint DAO HIC Badge' ? 'Minting…' : 'Mint DAO HIC badge'}
                   </button>
                 )}
                 {!statusFlags.votingEnded && (
@@ -211,7 +230,10 @@ const JuryPanel = ({
             {roles.community && communityBadges.length > 0 && communityBadges.some(b => b.hasVoted) && (
               <>
                 <p className="text-sm text-[var(--pob-text-muted)]">
-                  Voted for <span className="font-semibold text-white">{getProjectLabel(communityBadges.find(b => b.hasVoted)?.vote ?? null)}</span>
+                  Voted for{' '}
+                  <span className="font-semibold text-white italic">
+                    {getProjectLabel(communityBadges.find(b => b.hasVoted)?.vote ?? null) ?? 'Unknown project'}
+                  </span>
                 </p>
                 <p className="text-xs text-[var(--pob-text-muted)] italic">
                   You can change your vote at any time during the voting period.

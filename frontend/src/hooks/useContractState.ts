@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Contract, Interface, JsonRpcProvider, JsonRpcSigner, ethers } from 'ethers';
 import { JurySC_01ABI, PoB_01ABI } from '~/abis';
+import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
 import type {
   Badge,
   Iteration,
@@ -44,6 +45,7 @@ export function useContractState(
   projectMetadata: Record<string, ProjectMetadata>,
   projectMetadataLoading: boolean,
   allIterations: Iteration[],
+  currentPage: 'iterations' | 'iteration' | 'badges' | 'faq',
 ) {
   const [roles, setRoles] = useState<RoleStatuses>({
     community: false,
@@ -63,7 +65,7 @@ export function useContractState(
     community: 0
   });
   const [totalCommunityVoters, setTotalCommunityVoters] = useState<number>(0);
-  const [, setEntityVotes] = useState<EntityVotes>({
+  const [entityVotes, setEntityVotes] = useState<EntityVotes>({
     devRel: null,
     daoHic: null,
     community: null,
@@ -117,29 +119,42 @@ export function useContractState(
   const loadProjects = useCallback(
     async (contract: Contract) => {
       console.log('[loadProjects] Starting...');
-      const [countRaw, projectsLockedFlag, contractLockedFlag] = await Promise.all([
-        contract.projectCount(),
-        contract.projectsLocked().catch(() => false),
-        contract.locked().catch(() => false),
+      const iterationNum = currentIteration?.iteration;
+      const [countRaw, projectsLockedFlag, contractLockedFlag] = await cachedPromiseAll(publicProvider, selectedChainId, [
+        { key: `iteration:${iterationNum}:projectCount`, promise: contract.projectCount() },
+        { key: `iteration:${iterationNum}:projectsLocked`, promise: contract.projectsLocked().catch(() => false) },
+        { key: `iteration:${iterationNum}:locked`, promise: contract.locked().catch(() => false) },
       ]);
       const count = Number(countRaw);
       console.log('[loadProjects] Project count:', count);
       setProjectsLocked(Boolean(projectsLockedFlag));
       setContractLocked(Boolean(contractLockedFlag));
-      const entries: Project[] = [];
+
+      // Load all project addresses in parallel
+      const projectAddressCalls = [];
       for (let index = 1; index <= count; index += 1) {
-        const address = await contract.projectAddress(index);
+        projectAddressCalls.push({
+          key: `iteration:${iterationNum}:projectAddress:${index}`,
+          promise: contract.projectAddress(index),
+        });
+      }
+      const addresses = await cachedPromiseAll(publicProvider, selectedChainId, projectAddressCalls);
+
+      // Build project entries
+      const entries: Project[] = addresses.map((address, idx) => {
+        const index = idx + 1; // project IDs are 1-indexed
         const metadataKey = selectedChainId !== null ? `${selectedChainId}:${address.toLowerCase()}` : null;
-        entries.push({
+        return {
           id: index,
           address,
           metadata: metadataKey ? projectMetadata[metadataKey] : undefined,
-        });
-      }
+        };
+      });
+
       setProjects(entries);
       console.log('[loadProjects] Complete. Loaded', entries.length, 'projects', '| projectsLocked:', projectsLockedFlag, '| contractLocked:', contractLockedFlag);
     },
-    [projectMetadata, selectedChainId],
+    [publicProvider, selectedChainId, currentIteration, projectMetadata],
   );
 
   useEffect(() => {
@@ -162,9 +177,12 @@ export function useContractState(
   const loadOwnerData = useCallback(
     async (contract: Contract) => {
       console.log('[loadOwnerData] Starting...');
+      const iterationNum = currentIteration?.iteration;
       try {
-        const devRelAddress = await contract.devRelAccount().catch(() => ethers.ZeroAddress);
-        const daoHicAddressesResponse = await contract.getDaoHicVoters().catch(() => [] as string[]);
+        const [devRelAddress, daoHicAddressesResponse] = await cachedPromiseAll(publicProvider, selectedChainId, [
+          { key: `iteration:${iterationNum}:devRelAccount`, promise: contract.devRelAccount().catch(() => ethers.ZeroAddress) },
+          { key: `iteration:${iterationNum}:getDaoHicVoters`, promise: contract.getDaoHicVoters().catch(() => [] as string[]) },
+        ]);
 
         const normalizedDevRel =
           typeof devRelAddress === 'string' && devRelAddress !== ethers.ZeroAddress ? devRelAddress : null;
@@ -187,7 +205,7 @@ export function useContractState(
         setDaoHicVoters([]);
       }
     },
-    [],
+    [publicProvider, selectedChainId, currentIteration],
   );
 
   const loadEntityVotes = useCallback(async (contract: Contract, isActive: boolean, votingEnded: boolean) => {
@@ -202,11 +220,12 @@ export function useContractState(
 
     try {
       console.log('[loadEntityVotes] Loading entity votes from contract...');
-      const [devRelRaw, daoHicRaw, communityRaw, winnerRaw] = await Promise.all([
-        contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress),
-        contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress),
-        contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress),
-        contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
+      const iterationNum = currentIteration?.iteration;
+      const [devRelRaw, daoHicRaw, communityRaw, winnerRaw] = await cachedPromiseAll(publicProvider, selectedChainId, [
+        { key: `iteration:${iterationNum}:getDevRelEntityVote`, promise: contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress) },
+        { key: `iteration:${iterationNum}:getDaoHicEntityVote`, promise: contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress) },
+        { key: `iteration:${iterationNum}:getCommunityEntityVote`, promise: contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress) },
+        { key: `iteration:${iterationNum}:getWinner`, promise: contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) },
       ]);
 
       const devRelAddress = normalizeAddress(devRelRaw);
@@ -240,16 +259,17 @@ export function useContractState(
       setEntityVotes({ devRel: null, daoHic: null, community: null });
       setWinner({ projectAddress: null, hasWinner: false });
     }
-  }, []);
+  }, [publicProvider, selectedChainId, currentIteration]);
 
   const loadRoles = useCallback(
     async (contract: Contract, address: string) => {
       console.log('[loadRoles] Starting for address:', address);
-      const [isDevRel, isDaoHic, isProject, owner] = await Promise.all([
-        contract.isDevRelAccount(address),
-        contract.isDaoHicVoter(address),
-        contract.isRegisteredProject(address),
-        contract.owner(),
+      const iterationNum = currentIteration?.iteration;
+      const [isDevRel, isDaoHic, isProject, owner] = await cachedPromiseAll(publicProvider, selectedChainId, [
+        { key: `iteration:${iterationNum}:isDevRelAccount:${address}`, promise: contract.isDevRelAccount(address) },
+        { key: `iteration:${iterationNum}:isDaoHicVoter:${address}`, promise: contract.isDaoHicVoter(address) },
+        { key: `iteration:${iterationNum}:isRegisteredProject:${address}`, promise: contract.isRegisteredProject(address) },
+        { key: `iteration:${iterationNum}:owner`, promise: contract.owner() },
       ]);
       console.log('[loadRoles] Contract owner:', owner);
       console.log('[loadRoles] Connected address:', address);
@@ -263,22 +283,23 @@ export function useContractState(
       setIsOwner(ownerStatus);
       console.log('[loadRoles] Complete. DevRel:', Boolean(isDevRel), 'DaoHic:', Boolean(isDaoHic), 'Project:', Boolean(isProject), 'IS OWNER:', ownerStatus);
     },
-    [],
+    [publicProvider, selectedChainId, currentIteration],
   );
 
   const loadVotingStatus = useCallback(
     async (contract: Contract, address: string | null) => {
       console.log('[loadVotingStatus] Starting for address:', address);
+      const iterationNum = currentIteration?.iteration;
       const [isActive, votingEnded, devRelVoted, devRelVoteValue, daoVote, daoVoted, startTime, endTime] =
-        await Promise.all([
-          contract.isActive(),
-          contract.votingEnded(),
-          contract.devRelHasVoted(),
-          contract.devRelVote(),
-          address ? contract.daoHicVoteOf(address) : Promise.resolve(null),
-          address ? contract.daoHicHasVoted(address) : Promise.resolve(false),
-          contract.startTime(),
-          contract.endTime(),
+        await cachedPromiseAll(publicProvider, selectedChainId, [
+          { key: `iteration:${iterationNum}:isActive`, promise: contract.isActive() },
+          { key: `iteration:${iterationNum}:votingEnded`, promise: contract.votingEnded() },
+          { key: `iteration:${iterationNum}:devRelHasVoted`, promise: contract.devRelHasVoted() },
+          { key: `iteration:${iterationNum}:devRelVote`, promise: contract.devRelVote() },
+          { key: `iteration:${iterationNum}:daoHicVoteOf:${address}`, promise: address ? contract.daoHicVoteOf(address) : Promise.resolve(null) },
+          { key: `iteration:${iterationNum}:daoHicHasVoted:${address}`, promise: address ? contract.daoHicHasVoted(address) : Promise.resolve(false) },
+          { key: `iteration:${iterationNum}:startTime`, promise: contract.startTime() },
+          { key: `iteration:${iterationNum}:endTime`, promise: contract.endTime() },
         ]);
 
       const statusFlags = {
@@ -302,18 +323,21 @@ export function useContractState(
 
       console.log('[loadVotingStatus] Complete. isActive:', statusFlags.isActive, 'votingEnded:', statusFlags.votingEnded);
       console.log('[loadVotingStatus] DevRel vote:', normalizedDevRelVote ?? 'Not cast');
-      console.log('[loadVotingStatus] DAO_HIC vote:', normalizedDaoVote ?? 'Not cast');
+      console.log('[loadVotingStatus] DAO HIC vote:', normalizedDaoVote ?? 'Not cast');
       console.log('[loadVotingStatus] Times - start:', times.startTime, 'end:', times.endTime);
       return statusFlags;
     },
-    [],
+    [publicProvider, selectedChainId, currentIteration],
   );
 
   const loadVoteCounts = useCallback(
     async (juryContract: Contract) => {
       console.log('[loadVoteCounts] Starting...');
+      const iterationNum = currentIteration?.iteration;
       try {
-        const [devRelCount, daoHicCount, communityCount] = await juryContract.getVoteParticipationCounts();
+        const [[devRelCount, daoHicCount, communityCount]] = await cachedPromiseAll(publicProvider, selectedChainId, [
+          { key: `iteration:${iterationNum}:getVoteParticipationCounts`, promise: juryContract.getVoteParticipationCounts() },
+        ]);
 
         setVoteCounts({
           devRel: Number(devRelCount),
@@ -324,14 +348,14 @@ export function useContractState(
         // So we set totalCommunityVoters to 0 which will display as ∞ in the UI
         setTotalCommunityVoters(0);
 
-        console.log('[loadVoteCounts] Complete. DevRel:', devRelCount.toString(), '/ 1, DAO_HIC:', daoHicCount.toString(), '/', 'Community:', communityCount.toString(), '/ ∞');
+        console.log('[loadVoteCounts] Complete. DevRel:', devRelCount.toString(), '/ 1, DAO HIC:', daoHicCount.toString(), '/', 'Community:', communityCount.toString(), '/ ∞');
       } catch (error) {
         console.error('[loadVoteCounts] Error:', error);
         setVoteCounts({ devRel: 0, daoHic: 0, community: 0 });
         setTotalCommunityVoters(0);
       }
     },
-    [],
+    [publicProvider, selectedChainId, currentIteration],
   );
 
   const loadBadges = useCallback(
@@ -380,10 +404,10 @@ export function useContractState(
               const tokenId = parsed.args?.tokenId?.toString();
               if (!tokenId) continue;
 
-              const [owner, role, claimed] = await Promise.all([
-                iterationPobContract.ownerOf(tokenId),
-                iterationPobContract.roleOf(tokenId),
-                iterationPobContract.claimed(tokenId),
+              const [owner, role, claimed] = await cachedPromiseAll(rpcProvider, iteration.chainId, [
+                { key: `ownerOf:${iteration.pob}:${tokenId}`, promise: iterationPobContract.ownerOf(tokenId) },
+                { key: `roleOf:${iteration.pob}:${tokenId}`, promise: iterationPobContract.roleOf(tokenId) },
+                { key: `claimed:${iteration.pob}:${tokenId}`, promise: iterationPobContract.claimed(tokenId) },
               ]);
 
               if (owner.toLowerCase() !== address.toLowerCase()) continue;
@@ -398,21 +422,29 @@ export function useContractState(
               const badgeKey = `${iteration.iteration}-${tokenId}`;
               allBadgesMap.set(badgeKey, badge);
 
-              // Only load voting status for current iteration community badges
-              if (badge.role === 'community' && currentIteration && iteration.iteration === currentIteration.iteration) {
-                const iterationJuryContract = new Contract(iteration.jurySC, JurySC_01ABI, rpcProvider);
-                const [hasVoted, vote] = await Promise.all([
-                  iterationJuryContract.communityHasVoted(tokenId),
-                  iterationJuryContract.communityVoteOf(tokenId),
-                ]);
-                communityMap.set(badgeKey, {
-                  ...badge,
-                  hasVoted: Boolean(hasVoted),
-                  vote: normalizeAddress(vote),
-                });
+              // Load community badge voting info if this is a community badge in the current iteration
+              if (
+                badge.role === 'community' &&
+                currentIteration &&
+                iteration.iteration === currentIteration.iteration
+              ) {
+                try {
+                  const iterationJuryContract = new Contract(iteration.jurySC, JurySC_01ABI, rpcProvider);
+                  const [hasVoted, vote] = await cachedPromiseAll(rpcProvider, iteration.chainId, [
+                    { key: `communityHasVoted:${iteration.jurySC}:${tokenId}`, promise: iterationJuryContract.communityHasVoted(tokenId) },
+                    { key: `communityVoteOf:${iteration.jurySC}:${tokenId}`, promise: iterationJuryContract.communityVoteOf(tokenId) },
+                  ]);
+                  communityMap.set(badgeKey, {
+                    ...badge,
+                    hasVoted: Boolean(hasVoted),
+                    vote: normalizeAddress(vote),
+                  });
+                } catch (voteError) {
+                  console.warn(`Failed to load vote for community badge ${tokenId}`, voteError);
+                }
               }
-            } catch (badgeError) {
-              console.warn('Failed to parse badge log', badgeError);
+            } catch (parseError) {
+              console.warn('Failed to parse or process badge log', parseError);
             }
           }
         } catch (iterationError) {
@@ -515,16 +547,50 @@ export function useContractState(
       // First, load voting status to get state flags
       const statusFlags = await loadVotingStatus(juryContract, walletAddress);
 
-      console.log('[loadIterationState] Phase 2: Loading all other data in parallel...');
-      // Then load everything else, passing status flags to loadEntityVotes
-      await Promise.all([
-        loadProjects(juryContract),
-        walletAddress ? loadOwnerData(juryContract) : Promise.resolve(),
+      console.log('[loadIterationState] Phase 2: Loading data based on current page...');
+      console.log('[loadIterationState] Current page:', currentPage);
+
+      // Build conditional loading array based on current page
+      const loadTasks = [
+        // Always load entity votes (needed for iteration header)
         loadEntityVotes(juryContract, statusFlags.isActive, statusFlags.votingEnded),
+        // Always load roles if wallet connected (needed to determine panels)
         walletAddress ? loadRoles(juryContract, walletAddress) : Promise.resolve(),
-        walletAddress ? loadBadges(walletAddress, publicProvider, allIterations) : Promise.resolve(),
-        statusFlags.isActive || statusFlags.votingEnded ? loadVoteCounts(juryContract) : Promise.resolve(),
-      ]);
+      ];
+
+      // Lazy load projects - only on iteration page
+      if (currentPage === 'iteration') {
+        console.log('[loadIterationState] Loading projects (iteration page)');
+        loadTasks.push(loadProjects(juryContract));
+      } else {
+        console.log('[loadIterationState] Skipping projects (not on iteration page)');
+      }
+
+      // Lazy load owner data - only on iteration page AND if owner
+      if (currentPage === 'iteration' && walletAddress && isOwner) {
+        console.log('[loadIterationState] Loading owner data (owner on iteration page)');
+        loadTasks.push(loadOwnerData(juryContract));
+      } else {
+        console.log('[loadIterationState] Skipping owner data');
+      }
+
+      // Lazy load badges - only on badges page OR if on iteration page with wallet
+      if (currentPage === 'badges' || (currentPage === 'iteration' && walletAddress)) {
+        console.log('[loadIterationState] Loading badges');
+        loadTasks.push(loadBadges(walletAddress!, publicProvider, allIterations));
+      } else {
+        console.log('[loadIterationState] Skipping badges');
+      }
+
+      // Lazy load vote counts - only on iteration page AND if active/ended
+      if (currentPage === 'iteration' && (statusFlags.isActive || statusFlags.votingEnded)) {
+        console.log('[loadIterationState] Loading vote counts (active/ended on iteration page)');
+        loadTasks.push(loadVoteCounts(juryContract));
+      } else {
+        console.log('[loadIterationState] Skipping vote counts');
+      }
+
+      await Promise.all(loadTasks);
       console.log('=== [loadIterationState] Complete ===');
     } catch (contractError) {
       console.error('[loadIterationState] Error:', contractError);
@@ -533,6 +599,7 @@ export function useContractState(
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     signer,
     walletAddress,
@@ -541,15 +608,10 @@ export function useContractState(
     publicProvider,
     projectMetadataLoading,
     hasLoadError,
-    loadProjects,
-    loadOwnerData,
-    loadEntityVotes,
-    loadRoles,
-    loadVotingStatus,
-    loadBadges,
-    loadVoteCounts,
     chainId,
     allIterations,
+    currentPage,
+    isOwner,
   ]);
 
   // Load iteration when iteration is selected (wallet optional for read-only viewing)
@@ -562,7 +624,8 @@ export function useContractState(
     } else if (projectMetadataLoading) {
       console.log('[useEffect] Waiting for project metadata to load...');
     }
-  }, [currentIteration?.iteration, publicProvider, correctNetwork, loadIterationState, hasLoadError, projectMetadataLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIteration?.iteration, currentIteration?.jurySC, walletAddress, publicProvider, correctNetwork, hasLoadError, projectMetadataLoading, currentPage]);
 
   const retryLoadIteration = useCallback(() => {
     setHasLoadError(false);
@@ -586,6 +649,7 @@ export function useContractState(
     communityBadges,
     devRelVote,
     daoHicVote,
+    entityVotes,
     winner,
     statusFlags,
     iterationTimes,

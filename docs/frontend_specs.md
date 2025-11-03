@@ -14,13 +14,34 @@
 
 ---
 
-## 2) Tech Stack
+## 2) Architecture Overview
+
+### Contract Deployment Model
+**Each iteration = 2 contracts (not shared):**
+- One PoB_01 NFT contract per iteration (immutable)
+- One JurySC_01 voting contract per iteration (upgradeable)
+
+### Minting Windows (IMPORTANT)
+Different roles have different minting timing:
+- **Community**: Can mint ONLY during active voting (need NFT to vote)
+- **DevRel/DAO_HIC**: Can mint ONLY after voting ends (commemorative)
+- **Projects**: Can mint after voting starts (commemorative)
+
+### Frontend must enforce timing:
+- Disable Community mint button if `!isActive()`
+- Disable DevRel/DAO_HIC mint buttons if `!votingEnded()`
+- Disable Project mint button if `!projectsLocked()`
+
+---
+
+## 3) Tech Stack
 
 * **React + Vite**, TypeScript.
 * **ethers** (or viem) for RPC and native SYS transactions.
 * **wagmi** optional (wallet connect).
 * **Tailwind** for styling.
 * **Network**: Syscoin NEVM (chainId: 57 mainnet, 5700 testnet).
+* **RPC Optimization**: Block-height-based caching (see CLAUDE.md)
 
 ---
 
@@ -172,9 +193,11 @@ function claim(uint256 tokenId) external  // Community only, after voting ends
 
 **Pre-Minting (no NFT yet):**
 - Check: `hasMinted[walletAddress] == false`
-- Show: **"Mint Community Badge"** button
+- Check: `isActive() == true` (can only mint during voting window)
+- Show: **"Mint Community Badge"** button (disabled if voting not active)
 - Action: `PoB_01.mint{value: 30 ether}()`
 - Display: "Lock 30 SYS to participate"
+- Note: If voting hasn't started yet, show "Minting opens when voting starts"
 
 **Post-Minting (has NFT):**
 - Discover NFT via Transfer logs: `roleOf[tokenId] == "Community"`
@@ -203,8 +226,10 @@ function claim(uint256 tokenId) external  // Community only, after voting ends
 
 **Pre-Minting (no badge):**
 - Check: `hasMinted[walletAddress] == false`
-- Show: **"Mint DevRel Badge"** button (free)
+- Check: `votingEnded() == true` (can only mint after voting ends)
+- Show: **"Mint DevRel Badge"** button (free, disabled if voting not ended)
 - Action: `PoB_01.mintDevRel()`
+- Note: Show "Badge available after voting ends" if still active
 
 **Post-Minting:**
 - Show: Badge card with iteration, "DevRel" role
@@ -225,8 +250,10 @@ function claim(uint256 tokenId) external  // Community only, after voting ends
 
 **Pre-Minting (no badge):**
 - Check: `hasMinted[walletAddress] == false`
-- Show: **"Mint DAO_HIC Badge"** button (free)
+- Check: `votingEnded() == true` (can only mint after voting ends)
+- Show: **"Mint DAO_HIC Badge"** button (free, disabled if voting not ended)
 - Action: `PoB_01.mintDaoHic()`
+- Note: Show "Badge available after voting ends" if still active
 
 **Post-Minting:**
 - Show: Badge card with iteration, "DAO-HIC" role
@@ -247,8 +274,10 @@ function claim(uint256 tokenId) external  // Community only, after voting ends
 
 **Pre-Minting (no badge):**
 - Check: `hasMinted[walletAddress] == false`
-- Show: **"Mint Project Badge"** button (free)
+- Check: `projectsLocked() == true` (can only mint after voting starts)
+- Show: **"Mint Project Badge"** button (free, disabled if projects not locked)
 - Action: `PoB_01.mintProject()`
+- Note: Show "Badge available after voting starts" if not yet activated
 
 **Post-Minting:**
 - Show: Badge card with iteration, "Project" role
@@ -408,18 +437,21 @@ const [devRelVote, daoHicVote, communityVote] = await JurySC_01.getEntityVoteCou
 
 **Before Activation:**
 - All roles: Show "Voting not started yet"
-- Community: Allow minting (pre-lock 30 SYS)
-- Other roles: Allow badge minting
+- Community: **Cannot mint** (button disabled, minting opens when voting starts)
+- DevRel/DAO_HIC: **Cannot mint** (button disabled, minting available after voting ends)
+- Projects: **Cannot mint** (button disabled, minting available after voting starts)
 
 **During Voting (isActive):**
 - Show time remaining
-- Enable voting for eligible roles
-- Disable minting for new participants (optional, spec doesn't restrict)
+- **Community: Can mint and vote** (need NFT to participate)
+- DevRel/DAO_HIC: Can vote (no NFT required), **cannot mint yet**
+- Projects: Can mint badge, cannot vote
 
 **After Voting (votingEnded):**
-- Show results
-- Community: Enable claiming
-- All roles: Show final vote tallies
+- Show results and final vote tallies
+- Community: Enable claiming (reclaim 30 SYS)
+- **DevRel/DAO_HIC: Can now mint badges** (commemorative proof of participation)
+- Projects: Can continue minting badges
 
 **After Locking:**
 - Read-only display

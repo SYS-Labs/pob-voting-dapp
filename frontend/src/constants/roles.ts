@@ -3,7 +3,7 @@ import type { ParticipantRole } from '~/interfaces';
 export const ROLE_LABELS: Record<ParticipantRole, string> = {
   community: 'Community',
   devrel: 'DevRel',
-  dao_hic: 'DAO_HIC',
+  dao_hic: 'DAO HIC',
   project: 'Project',
 };
 

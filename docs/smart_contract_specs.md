@@ -33,6 +33,43 @@
 
 ---
 
+## 2.1) Deployment Architecture
+
+**Each iteration deploys BOTH contracts (not shared):**
+
+```
+Iteration 1:
+├── PoB_01 (iteration=1, immutable)
+└── JurySC_01 (iteration=1, upgradeable via UUPS)
+
+Iteration 2:
+├── PoB_01 (iteration=2, immutable)
+└── JurySC_01 (iteration=2, upgradeable via UUPS)
+```
+
+**Relationship between contracts:**
+
+1. **Deployment order:**
+   - Deploy PoB_01 first with `iteration` parameter
+   - Deploy JurySC_01 (UUPS proxy) with PoB_01 address
+   - Transfer PoB_01 ownership to JurySC_01 address
+
+2. **Bidirectional link:**
+   - `JurySC_01 → PoB_01`: JurySC stores PoB_01 address (to validate NFTs)
+   - `PoB_01 → JurySC_01`: PoB_01's owner is JurySC (queries voting status via `owner()`)
+
+3. **Voter list freeze:**
+   - Community minting is locked when voting ends (`isActive() == false`)
+   - New iteration = new PoB_01 = fresh voter list
+   - Old iteration NFTs remain as historical proof
+
+**Why not share PoB_01 across iterations?**
+- Each PoB_01 has immutable `iteration` number in metadata
+- Community minting window is tied to ONE specific JurySC's `isActive()` state
+- Keeps iteration data isolated and immutable
+
+---
+
 ## 3) Participant Roles & NFT Traits
 
 ### 3.1 NFT Trait System
@@ -549,11 +586,7 @@ function getRoleOf(uint256 tokenId) public view returns (string)
 4. Owner registers projects via `registerProject(address, name)`
 5. Owner sets DevRel account via `setDevRelAccount()`
 6. Owner adds DAO_HIC voters via `addDaoHicVoter()`
-7. **Participants mint NFT badges:**
-   - Community: `PoB_01.mint{value: 30 ether}()`
-  - DevRel: `PoB_01.mintDevRel()`
-  - DAO_HIC: `PoB_01.mintDaoHic()`
-  - Projects: `PoB_01.mintProject()`
+7. **NOTE:** Badge minting timing varies by role (see Minting Windows below)
 
 **Activation:**
 8. Owner calls `activate(startTime)`.
@@ -576,6 +609,44 @@ function getRoleOf(uint256 tokenId) public view returns (string)
 * Only Community `claim()` operations allowed.
 * No new voting, no new participants.
 * NFTs remain as permanent badges of participation.
+
+---
+
+## 6.1) NFT Badge Minting Windows
+
+**IMPORTANT:** Each role has different timing requirements for minting badges:
+
+### Community Badge Minting
+* **When:** Only during "Voting Active" period (`isActive() == true`)
+* **Why:** Community participants need their NFT to vote
+* **Enforcement:** `PoB_01.mint()` calls `jury.isActive()` and reverts if false
+* **Deposit:** 30 SYS required
+* **Flow:** Mint NFT → Vote with NFT → Claim deposit after voting ends
+
+### DevRel Badge Minting
+* **When:** Only after "Voting Ended" (`hasVotingEnded() == true`)
+* **Why:** DevRel account is confirmed only after voting completes
+* **Enforcement:** `PoB_01.mintDevRel()` calls `jury.hasVotingEnded()` and reverts if false
+* **Deposit:** Free (commemorative badge)
+* **Flow:** Vote directly (no NFT required) → Mint badge after voting ends
+
+### DAO_HIC Badge Minting
+* **When:** Only after "Voting Ended" (`hasVotingEnded() == true`)
+* **Why:** DAO_HIC voter list is final only after voting completes
+* **Enforcement:** `PoB_01.mintDaoHic()` calls `jury.hasVotingEnded()` and reverts if false
+* **Deposit:** Free (commemorative badge)
+* **Flow:** Vote directly (no NFT required) → Mint badge after voting ends
+
+### Project Badge Minting
+* **When:** Only after projects are locked (`projectsLocked() == true`)
+* **Why:** Project list is locked when voting starts
+* **Enforcement:** `PoB_01.mintProject()` calls `jury.projectsLocked()` and reverts if false
+* **Deposit:** Free (commemorative badge)
+* **Flow:** Get registered → Wait for voting to start → Mint badge anytime after
+
+**Key Insight:** Community is the only role that mints BEFORE/DURING voting (because they need the NFT to vote). All other roles mint AFTER their participation window ends (as commemorative proof of participation).
+
+**All roles can mint even after contract is locked** - badges remain available as historical proof of participation.
 
 ---
 

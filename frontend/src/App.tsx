@@ -9,7 +9,7 @@ import TxPendingModal from '~/components/TxPendingModal';
 import ErrorModal from '~/components/ErrorModal';
 import Footer from '~/components/Footer';
 import { JurySC_01ABI } from '~/abis';
-import { SYS_COIN_ID, SYS_TESTNET_ID, HARDHAT_ID } from '~/constants/networks';
+import { SYS_COIN_ID, SYS_TESTNET_ID, HARDHAT_ID, NETWORKS } from '~/constants/networks';
 import { formatAddress } from '~/utils';
 
 // Hooks
@@ -99,6 +99,7 @@ function App() {
     communityBadges,
     devRelVote,
     daoHicVote,
+    entityVotes,
     winner,
     statusFlags,
     iterationTimes,
@@ -109,7 +110,7 @@ function App() {
     refreshVotingData,
     refreshBadges,
     retryLoadIteration,
-  } = useContractState(signer, walletAddress, currentIteration, correctNetwork, publicProvider, chainId, projectMetadata, projectMetadataLoading, filteredIterations);
+  } = useContractState(signer, walletAddress, currentIteration, correctNetwork, publicProvider, chainId, projectMetadata, projectMetadataLoading, filteredIterations, currentPage);
 
   // Transactions
   const {
@@ -205,7 +206,7 @@ function App() {
     if (!pendingRemovalVoter || !signer || !currentIteration) return;
     const contract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
     await runTransaction(
-      'Remove DAO_HIC Voter',
+      'Remove DAO HIC Voter',
       () => contract.removeDaoHicVoter(pendingRemovalVoter),
       refreshOwnerData,
     );
@@ -265,7 +266,7 @@ function App() {
         }}
         walletAddress={walletAddress || ''}
         chainId={chainId}
-        networkLabel={chainId === SYS_COIN_ID ? 'Syscoin NEVM' : chainId === SYS_TESTNET_ID ? 'Syscoin Tanenbaum Testnet' : chainId === HARDHAT_ID ? 'Hardhat Local' : 'Unknown Network'}
+        networkLabel={chainId ? NETWORKS[chainId]?.name ?? `Chain ${chainId}` : 'Unknown Network'}
       />
 
       <ConfirmRemoveModal
@@ -274,9 +275,9 @@ function App() {
         onConfirm={handleConfirmRemoveVoter}
         targetAddress={pendingRemovalVoter ?? ''}
         isPending={pendingAction !== null}
-        title="Remove DAO_HIC Voter?"
+        title="Remove DAO HIC Voter?"
         description="This will revoke voting access for the following address:"
-        entityLabel="DAO_HIC voter"
+        entityLabel="DAO HIC voter"
         confirmLabel="Yes, remove"
       />
 
@@ -340,6 +341,7 @@ function App() {
             badges={badges}
             devRelVote={devRelVote}
             daoHicVote={daoHicVote}
+            entityVotes={entityVotes}
             pendingAction={pendingAction}
             walletAddress={walletAddress}
             chainId={chainId}

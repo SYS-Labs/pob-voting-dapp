@@ -347,7 +347,7 @@ const OwnerPanel = ({
         </article>
         )}
 
-        {/* Add DAO_HIC Voter - Only show before voting ends */}
+        {/* Add DAO HIC Voter - Only show before voting ends */}
         {!statusFlags.votingEnded && (
           <article
             className={`pob-accordion-item${openAdminSection === 'dao_hic' ? ' is-open' : ''}`}
@@ -359,7 +359,7 @@ const OwnerPanel = ({
               aria-expanded={openAdminSection === 'dao_hic'}
               aria-controls="owner-daohic"
             >
-              <span>DAO_HIC Voters</span>
+              <span>DAO HIC Voters</span>
             <svg
               className={`pob-accordion-icon${openAdminSection === 'dao_hic' ? ' is-open' : ''}`}
               width="12"
@@ -385,7 +385,7 @@ const OwnerPanel = ({
                         <div className="pob-admin-voter__info">
                           <span className="pob-admin-voter__badge">#{index + 1}</span>
                           <div>
-                            <p className="pob-admin-voter__label">DAO_HIC voter</p>
+                            <p className="pob-admin-voter__label">DAO HIC voter</p>
                             <p className="pob-admin-voter__brief">{formatAddress(voter)}</p>
                           </div>
                         </div>
@@ -402,13 +402,13 @@ const OwnerPanel = ({
                   </ul>
                 ) : (
                   <div className="text-sm text-[var(--pob-text-muted)]" style={{ padding: '0 1.25rem' }}>
-                    No DAO_HIC voters registered yet.
+                    No DAO HIC voters registered yet.
                   </div>
                 )}
                 <div className="pob-fieldset pob-form-group" style={{ marginTop: '1rem' }}>
                   <input
                     type="text"
-                    placeholder="DAO_HIC voter address (0x...)"
+                    placeholder="DAO HIC voter address (0x...)"
                     id="daohic-address"
                     className="pob-input"
                   />
@@ -423,7 +423,7 @@ const OwnerPanel = ({
                       }
                       const contract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
                       await runTransaction(
-                        'Add DAO_HIC Voter',
+                        'Add DAO HIC Voter',
                         () => contract.addDaoHicVoter(address),
                         refreshOwnerData,
                       );
@@ -482,9 +482,12 @@ const OwnerPanel = ({
                 ) : null}
                 {!contractLocked && statusFlags.votingEnded ? (
                   winner.hasWinner ? (
-                    <p className="text-sm text-white">
-                      Winner: {getProjectLabel(winner.projectAddress) ?? 'Unknown'}
-                    </p>
+                      <p className="text-sm text-white">
+                        Winner:{' '}
+                        <span className="italic">
+                          {getProjectLabel(winner.projectAddress) ?? 'Unknown'}
+                        </span>
+                      </p>
                   ) : (
                     <p className="text-sm text-[var(--pob-text-muted)]">
                       No consensus reached (tie or insufficient votes)

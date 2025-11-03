@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { JsonRpcProvider, Contract } from 'ethers';
 import { JurySC_01ABI } from '~/abis';
+import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
 import type { Iteration, IterationStatus } from '~/interfaces';
 
 interface IterationStatusMap {
@@ -53,13 +54,9 @@ export function useIterationStatuses(
           console.log(`[useIterationStatuses] Loading iteration ${iteration.iteration} from contract ${iteration.jurySC}`);
           const contract = new Contract(iteration.jurySC, JurySC_01ABI, provider);
 
-          // Check if contract exists at address
-          const code = await provider.getCode(iteration.jurySC);
-          console.log(`[useIterationStatuses] Contract code length at ${iteration.jurySC}:`, code.length);
-
-          const [isActive, votingEnded] = await Promise.all([
-            contract.isActive(),
-            contract.votingEnded(),
+          const [isActive, votingEnded] = await cachedPromiseAll(provider, iteration.chainId, [
+            { key: `iteration:${iteration.iteration}:isActive`, promise: contract.isActive() },
+            { key: `iteration:${iteration.iteration}:votingEnded`, promise: contract.votingEnded() },
           ]);
 
           console.log(`[useIterationStatuses] Iteration ${iteration.iteration} contract responses:`, {

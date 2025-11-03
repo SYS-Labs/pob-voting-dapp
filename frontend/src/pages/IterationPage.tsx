@@ -7,6 +7,7 @@ import JuryPanel from '~/components/JuryPanel';
 import ParticipantPanel from '~/components/ParticipantPanel';
 import OwnerPanel from '~/components/OwnerPanel';
 import BadgePanel from '~/components/BadgePanel';
+import DateTimePanel from '~/components/DateTimePanel';
 
 interface CommunityBadge {
   tokenId: string;
@@ -44,6 +45,12 @@ interface VoteCounts {
   community: number;
 }
 
+interface EntityVotes {
+  devRel: string | null;
+  daoHic: string | null;
+  community: string | null;
+}
+
 interface IterationPageProps {
   currentIteration: Iteration | null;
   statusBadge: { label: string; color: string };
@@ -58,6 +65,7 @@ interface IterationPageProps {
   badges: Badge[];
   devRelVote: string | null;
   daoHicVote: string | null;
+  entityVotes: EntityVotes;
   pendingAction: string | null;
   walletAddress: string | null;
   chainId: number | null;
@@ -100,6 +108,7 @@ const IterationPage = ({
   badges,
   devRelVote,
   daoHicVote,
+  entityVotes,
   pendingAction,
   walletAddress,
   chainId,
@@ -171,6 +180,10 @@ const IterationPage = ({
           iteration={currentIteration}
           statusBadge={statusBadge}
           iterationTimes={iterationTimes}
+          votingEnded={statusFlags.votingEnded}
+          winner={winner}
+          entityVotes={entityVotes}
+          getProjectLabel={getProjectLabel}
         />
 
         {currentIteration ? (
@@ -253,6 +266,9 @@ const IterationPage = ({
       </div>
 
       <div className="pob-stack lg:pl-4">
+        {/* DateTime Panel - Shows current time for owner */}
+        {isOwner && <DateTimePanel />}
+
         {/* Badge Panel - Shows current iteration badge like a seal */}
         <BadgePanel
           badges={currentIterationBadges}
@@ -319,9 +335,6 @@ const IterationPage = ({
             voteCounts={voteCounts}
             daoHicVoters={daoHicVoters}
             totalCommunityVoters={totalCommunityVoters}
-            winner={winner}
-            votingEnded={statusFlags.votingEnded}
-            getProjectLabel={getProjectLabel}
           />
         ) : null}
       </div>
