@@ -31,7 +31,7 @@ const IterationCard = ({ iteration, isActive, statusBadge, onSelect }: Iteration
           <h2 className="pob-pane__title text-lg">{iteration.name}</h2>
         </div>
         <p className="text-xs uppercase tracking-[0.18em] text-[var(--pob-text-muted)]">
-          Iteration #{iteration.iteration}
+          Iteration #{iteration.iteration}{iteration.round ? ` - Round #${iteration.round}` : ''}
         </p>
       </div>
       <div className="mt-4 flex items-center justify-end">

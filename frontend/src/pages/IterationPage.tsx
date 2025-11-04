@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from 'react';
 import type { Iteration, ParticipantRole, Project, Badge } from '~/interfaces';
 import IterationHeader from '~/components/IterationHeader';
+import PreviousRoundCard from '~/components/PreviousRoundCard';
 import VotingProgress from '~/components/VotingProgress';
 import ProjectCard from '~/components/ProjectCard';
 import JuryPanel from '~/components/JuryPanel';
@@ -78,6 +79,7 @@ interface IterationPageProps {
   totalCommunityVoters: number;
   openAdminSection: string | null;
   signer: any;
+  publicProvider: any;
   JurySC_01ABI: any;
   getProjectLabel: (address: string | null) => string | null;
   executeMint: (role: ParticipantRole) => void;
@@ -121,6 +123,7 @@ const IterationPage = ({
   totalCommunityVoters,
   openAdminSection,
   signer,
+  publicProvider,
   JurySC_01ABI,
   getProjectLabel,
   executeMint,
@@ -184,7 +187,21 @@ const IterationPage = ({
           winner={winner}
           entityVotes={entityVotes}
           getProjectLabel={getProjectLabel}
+          isOwner={isOwner}
         />
+
+        {currentIteration?.prev_rounds && currentIteration.prev_rounds.length > 0 &&
+          currentIteration.prev_rounds.map((round) => (
+            <PreviousRoundCard
+              key={round.round}
+              round={round}
+              chainId={currentIteration.chainId}
+              publicProvider={publicProvider}
+              isOwner={isOwner}
+              getProjectLabel={getProjectLabel}
+            />
+          ))
+        }
 
         {currentIteration ? (
           <section className="pob-pane pob-pane--subtle">

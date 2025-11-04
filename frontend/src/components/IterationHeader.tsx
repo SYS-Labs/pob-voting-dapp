@@ -10,9 +10,19 @@ interface IterationHeaderProps {
   winner?: { projectAddress: string | null; hasWinner: boolean };
   entityVotes?: { devRel: string | null; daoHic: string | null; community: string | null };
   getProjectLabel?: (address: string | null) => string | null;
+  isOwner?: boolean;
 }
 
-const IterationHeader = ({ iteration, statusBadge, iterationTimes, votingEnded, winner, entityVotes, getProjectLabel }: IterationHeaderProps) => {
+const IterationHeader = ({
+  iteration,
+  statusBadge,
+  iterationTimes,
+  votingEnded,
+  winner,
+  entityVotes,
+  getProjectLabel,
+  isOwner = false,
+}: IterationHeaderProps) => {
   if (!iteration) {
     return (
       <section className="pob-pane">
@@ -48,7 +58,9 @@ const IterationHeader = ({ iteration, statusBadge, iterationTimes, votingEnded, 
         <div>
           <p className="pob-pane__meta">Current iteration</p>
           <h2 className="pob-pane__title text-3xl">{iteration.name}</h2>
-          <p className="mt-1 text-sm text-[var(--pob-text-muted)]">Iteration #{iteration.iteration}</p>
+          <p className="mt-1 text-sm text-[var(--pob-text-muted)]">
+            Iteration #{iteration.iteration}{iteration.round ? ` - Round #${iteration.round}` : ''}
+          </p>
         </div>
         <span className={statusBadge.color}>{statusBadge.label}</span>
       </div>
@@ -135,9 +147,13 @@ const IterationHeader = ({ iteration, statusBadge, iterationTimes, votingEnded, 
                     <p key={label}>
                       • {label}:{' '}
                       {address ? (
-                        <span className="italic">
-                          {getProjectLabel ? getProjectLabel(address) ?? 'Voted' : 'Voted'}
-                        </span>
+                        isOwner ? (
+                          <span className="italic">
+                            {getProjectLabel ? getProjectLabel(address) ?? 'Voted' : 'Voted'}
+                          </span>
+                        ) : (
+                          <span className="italic">Hidden (owner only)</span>
+                        )
                       ) : (
                         'Did not vote'
                       )}

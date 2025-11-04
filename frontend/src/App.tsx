@@ -354,6 +354,7 @@ function App() {
             totalCommunityVoters={totalCommunityVoters}
             openAdminSection={openAdminSection}
             signer={signer}
+            publicProvider={publicProvider}
             JurySC_01ABI={JurySC_01ABI}
             getProjectLabel={getProjectLabel}
             executeMint={executeMint}

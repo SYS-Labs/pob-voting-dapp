@@ -1,7 +1,15 @@
 export type IterationStatus = 'upcoming' | 'active' | 'ended';
 
+export interface PreviousRound {
+  round: number;
+  jurySC: string;
+  pob: string;
+  deployBlockHint?: number;
+}
+
 export interface Iteration {
   iteration: number;
+  round?: number; // Current round number (optional)
   name: string;
   jurySC: string;
   pob: string;
@@ -9,6 +17,7 @@ export interface Iteration {
   deployBlockHint?: number;
   link?: string;
   status?: IterationStatus; // Optional: if set in JSON, overrides contract state
+  prev_rounds?: PreviousRound[]; // Array of previous voting rounds for this iteration
 }
 
 export type ParticipantRole = 'community' | 'devrel' | 'dao_hic' | 'project';
