@@ -166,11 +166,13 @@ export default function TxPendingModal({
           </div>
           <div className="flex-1">
             <h2 className="text-xl font-bold text-white">
-              {status === 'pending'
-                ? 'Transaction Pending'
-                : status === 'confirmed'
-                  ? 'Confirmed!'
-                  : 'Failed'}
+              {!txHash
+                ? 'Awaiting Wallet Approval'
+                : status === 'pending'
+                  ? 'Transaction Pending'
+                  : status === 'confirmed'
+                    ? 'Confirmed!'
+                    : 'Failed'}
             </h2>
             <p className="text-sm text-[var(--pob-text-muted)]">{actionLabel}</p>
           </div>
@@ -184,7 +186,10 @@ export default function TxPendingModal({
         )}
 
         <div className="text-sm text-[var(--pob-text-muted)]">
-          {status === 'pending' && (
+          {!txHash && (
+            <p>Please confirm the transaction in your wallet...</p>
+          )}
+          {txHash && status === 'pending' && (
             <>
               <p>Waiting for confirmation...</p>
               <p className="mt-1 text-xs">
@@ -197,13 +202,15 @@ export default function TxPendingModal({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="pob-button pob-button--outline w-full justify-center"
-        >
-          {status === 'pending' ? 'Close (polling continues)' : 'Close'}
-        </button>
+        {status !== 'pending' && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="pob-button pob-button--outline w-full justify-center"
+          >
+            Close
+          </button>
+        )}
       </div>
     </Modal>
   );

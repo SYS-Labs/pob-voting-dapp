@@ -41,5 +41,6 @@ export interface Badge {
   tokenId: string;
   role: ParticipantRole;
   iteration: number;
+  round?: number; // Round number within the iteration (optional)
   claimed?: boolean;
 }

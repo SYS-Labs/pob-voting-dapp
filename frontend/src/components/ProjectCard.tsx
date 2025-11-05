@@ -19,7 +19,6 @@ const ProjectCard = ({
   project,
   votingRole,
   hasVotedForProject,
-  canVote,
   isOwner,
   projectsLocked,
   pendingAction,
@@ -78,7 +77,7 @@ const ProjectCard = ({
               <span className="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)]">
                 VOTED
               </span>
-            ) : canVote ? (
+            ) : (
               <button
                 type="button"
                 onClick={() => {
@@ -92,9 +91,8 @@ const ProjectCard = ({
                     // Community voters have exactly one badge per iteration (enforced by contract)
                     // Use first badge for both initial vote and vote changes
                     const badge = communityBadges[0];
-                    if (badge) {
-                      onVote(project.address, badge.tokenId);
-                    }
+                    // Call onVote even without badge - modal will handle showing mint button
+                    onVote(project.address, badge?.tokenId);
                   } else {
                     onVote(project.address);
                   }
@@ -104,7 +102,7 @@ const ProjectCard = ({
               >
                 VOTE
               </button>
-            ) : null
+            )
           ) : null}
         </div>
       </div>

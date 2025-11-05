@@ -12,7 +12,9 @@ const BadgeCard = ({ badge }: BadgeCardProps) => {
       <div className="aspect-square w-full rounded-lg bg-gradient-to-br from-[var(--pob-orange)]/20 to-[var(--pob-orange)]/5 flex items-center justify-center border border-[var(--pob-orange)]/30">
         <div className="text-center space-y-2">
           <div className="text-4xl">🏅</div>
-          <div className="text-xs text-[var(--pob-text-muted)]">Iteration {badge.iteration}</div>
+          <div className="text-xs text-[var(--pob-text-muted)]">
+            Iteration {badge.iteration}{badge.round ? ` - Round #${badge.round}` : ''}
+          </div>
         </div>
       </div>
 

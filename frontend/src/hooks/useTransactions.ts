@@ -180,6 +180,7 @@ export function useTransactions(
   const clearTxPending = useCallback(() => {
     setTxPendingHash(null);
     setTxPendingLabel('');
+    setPendingAction(null);
   }, []);
 
   return {

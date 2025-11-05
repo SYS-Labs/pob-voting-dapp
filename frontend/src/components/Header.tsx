@@ -59,7 +59,7 @@ const Header = ({
         </div>
 
         {/* Navigation - tabs on desktop, menu button on mobile */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="header-nav-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {/* Desktop tabs - shows on medium+ screens */}
           <nav className="header-nav-desktop" style={{ alignItems: 'center', gap: '0.5rem' }}>
             {visibleTabs.map((tab) => (
@@ -84,11 +84,14 @@ const Header = ({
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="header-nav-mobile pob-button pob-button--header pob-button--outline"
           >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginRight: '0.5rem' }}>
+              <path d="M2 4h16M2 10h16M2 16h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
             <span>Menu</span>
           </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifySelf: 'end' }}>
+        <div className="wallet-button-container" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifySelf: 'end' }}>
 
           {walletAddress ? (
             correctNetwork ? (

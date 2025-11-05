@@ -335,8 +335,9 @@ export function useContractState(
       console.log('[loadVoteCounts] Starting...');
       const iterationNum = currentIteration?.iteration;
       try {
-        const [[devRelCount, daoHicCount, communityCount]] = await cachedPromiseAll(publicProvider, selectedChainId, [
+        const [[devRelCount, daoHicCount, communityCount], daoHicAddressesResponse] = await cachedPromiseAll(publicProvider, selectedChainId, [
           { key: `iteration:${iterationNum}:getVoteParticipationCounts`, promise: juryContract.getVoteParticipationCounts() },
+          { key: `iteration:${iterationNum}:getDaoHicVoters`, promise: juryContract.getDaoHicVoters().catch(() => [] as string[]) },
         ]);
 
         setVoteCounts({
@@ -344,14 +345,23 @@ export function useContractState(
           daoHic: Number(daoHicCount),
           community: Number(communityCount),
         });
+
+        // Update daoHicVoters array for progress display
+        const normalizedDaoHic = (Array.isArray(daoHicAddressesResponse) ? daoHicAddressesResponse : []).filter(
+          (addr): addr is string =>
+            typeof addr === 'string' && addr.length > 0 && addr !== ethers.ZeroAddress,
+        );
+        setDaoHicVoters(normalizedDaoHic);
+
         // Community voting is unlimited (anyone can mint with deposit during voting, amount varies by network)
         // So we set totalCommunityVoters to 0 which will display as ∞ in the UI
         setTotalCommunityVoters(0);
 
-        console.log('[loadVoteCounts] Complete. DevRel:', devRelCount.toString(), '/ 1, DAO HIC:', daoHicCount.toString(), '/', 'Community:', communityCount.toString(), '/ ∞');
+        console.log('[loadVoteCounts] Complete. DevRel:', devRelCount.toString(), '/ 1, DAO HIC:', daoHicCount.toString(), '/', normalizedDaoHic.length, 'Community:', communityCount.toString(), '/ ∞');
       } catch (error) {
         console.error('[loadVoteCounts] Error:', error);
         setVoteCounts({ devRel: 0, daoHic: 0, community: 0 });
+        setDaoHicVoters([]);
         setTotalCommunityVoters(0);
       }
     },
@@ -374,17 +384,49 @@ export function useContractState(
       const allBadgesMap = new Map<string, Badge>();
       const communityMap = new Map<string, CommunityBadgeState>();
 
-      // Query badges from ALL iterations for badge history
-      for (const iteration of allIterations) {
-        try {
-          const iterationPobContract = new Contract(iteration.pob, PoB_01ABI, rpcProvider);
-          const fromBlock = iteration.deployBlockHint !== undefined ? iteration.deployBlockHint : 0;
+      // Build list of all PoB contracts to query (main rounds + previous rounds)
+      const contractsToQuery: Array<{ iteration: number; round?: number; pob: string; jurySC: string; chainId: number; deployBlockHint?: number }> = [];
 
-          console.log(`[loadBadges] Querying iteration ${iteration.iteration} from block:`, fromBlock);
+      for (const iteration of allIterations) {
+        // Add current/main round
+        contractsToQuery.push({
+          iteration: iteration.iteration,
+          round: iteration.round,
+          pob: iteration.pob,
+          jurySC: iteration.jurySC,
+          chainId: iteration.chainId,
+          deployBlockHint: iteration.deployBlockHint,
+        });
+
+        // Add previous rounds if they exist
+        if (iteration.prev_rounds && iteration.prev_rounds.length > 0) {
+          for (const prevRound of iteration.prev_rounds) {
+            contractsToQuery.push({
+              iteration: iteration.iteration,
+              round: prevRound.round,
+              pob: prevRound.pob,
+              jurySC: prevRound.jurySC,
+              chainId: iteration.chainId,
+              deployBlockHint: prevRound.deployBlockHint,
+            });
+          }
+        }
+      }
+
+      console.log(`[loadBadges] Querying ${contractsToQuery.length} PoB contracts (main rounds + prev rounds)`);
+
+      // Query badges from ALL contracts
+      for (const contract of contractsToQuery) {
+        const roundLabel = contract.round ? ` Round #${contract.round}` : '';
+        try {
+          const iterationPobContract = new Contract(contract.pob, PoB_01ABI, rpcProvider);
+          const fromBlock = contract.deployBlockHint !== undefined ? contract.deployBlockHint : 0;
+
+          console.log(`[loadBadges] Querying iteration ${contract.iteration}${roundLabel} from block:`, fromBlock);
 
           const [logs, iterationValue] = await Promise.all([
             rpcProvider.getLogs({
-              address: iteration.pob,
+              address: contract.pob,
               fromBlock,
               toBlock: 'latest',
               topics: [transferTopic, null, ethers.zeroPadValue(address, 32)],
@@ -393,7 +435,7 @@ export function useContractState(
           ]);
 
           const iterationNumber = Number(iterationValue);
-          console.log(`[loadBadges] Found ${logs?.length || 0} transfer logs for iteration ${iteration.iteration}`);
+          console.log(`[loadBadges] Found ${logs?.length || 0} transfer logs for iteration ${contract.iteration}${roundLabel}`);
 
           if (!logs?.length) continue;
 
@@ -404,10 +446,10 @@ export function useContractState(
               const tokenId = parsed.args?.tokenId?.toString();
               if (!tokenId) continue;
 
-              const [owner, role, claimed] = await cachedPromiseAll(rpcProvider, iteration.chainId, [
-                { key: `ownerOf:${iteration.pob}:${tokenId}`, promise: iterationPobContract.ownerOf(tokenId) },
-                { key: `roleOf:${iteration.pob}:${tokenId}`, promise: iterationPobContract.roleOf(tokenId) },
-                { key: `claimed:${iteration.pob}:${tokenId}`, promise: iterationPobContract.claimed(tokenId) },
+              const [owner, role, claimed] = await cachedPromiseAll(rpcProvider, contract.chainId, [
+                { key: `ownerOf:${contract.pob}:${tokenId}`, promise: iterationPobContract.ownerOf(tokenId) },
+                { key: `roleOf:${contract.pob}:${tokenId}`, promise: iterationPobContract.roleOf(tokenId) },
+                { key: `claimed:${contract.pob}:${tokenId}`, promise: iterationPobContract.claimed(tokenId) },
               ]);
 
               if (owner.toLowerCase() !== address.toLowerCase()) continue;
@@ -416,23 +458,25 @@ export function useContractState(
                 tokenId, // Keep original tokenId for contract calls
                 role: role.toLowerCase() as ParticipantRole,
                 iteration: iterationNumber,
+                round: contract.round, // Round number from the contract being queried
                 claimed,
               };
-              // Use composite key for uniqueness across iterations
-              const badgeKey = `${iteration.iteration}-${tokenId}`;
+              // Use composite key for uniqueness across iterations and rounds
+              const badgeKey = `${contract.iteration}-${contract.round || 'main'}-${tokenId}`;
               allBadgesMap.set(badgeKey, badge);
 
               // Load community badge voting info if this is a community badge in the current iteration
               if (
                 badge.role === 'community' &&
                 currentIteration &&
-                iteration.iteration === currentIteration.iteration
+                contract.iteration === currentIteration.iteration &&
+                contract.round === currentIteration.round
               ) {
                 try {
-                  const iterationJuryContract = new Contract(iteration.jurySC, JurySC_01ABI, rpcProvider);
-                  const [hasVoted, vote] = await cachedPromiseAll(rpcProvider, iteration.chainId, [
-                    { key: `communityHasVoted:${iteration.jurySC}:${tokenId}`, promise: iterationJuryContract.communityHasVoted(tokenId) },
-                    { key: `communityVoteOf:${iteration.jurySC}:${tokenId}`, promise: iterationJuryContract.communityVoteOf(tokenId) },
+                  const iterationJuryContract = new Contract(contract.jurySC, JurySC_01ABI, rpcProvider);
+                  const [hasVoted, vote] = await cachedPromiseAll(rpcProvider, contract.chainId, [
+                    { key: `communityHasVoted:${contract.jurySC}:${tokenId}`, promise: iterationJuryContract.communityHasVoted(tokenId) },
+                    { key: `communityVoteOf:${contract.jurySC}:${tokenId}`, promise: iterationJuryContract.communityVoteOf(tokenId) },
                   ]);
                   communityMap.set(badgeKey, {
                     ...badge,
@@ -448,7 +492,7 @@ export function useContractState(
             }
           }
         } catch (iterationError) {
-          console.warn(`Failed to load badges from iteration ${iteration.iteration}`, iterationError);
+          console.warn(`Failed to load badges from iteration ${contract.iteration}${roundLabel}`, iterationError);
         }
       }
 
@@ -480,10 +524,44 @@ export function useContractState(
 
   const refreshVotingData = useCallback(async () => {
     if (!signer || !currentIteration || !walletAddress) return;
-    console.log('[refreshVotingData] Refreshing voting data...');
+    console.log('[refreshVotingData] Refreshing voting data (bypassing cache)...');
     const juryContract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
-    const statusFlags = await loadVotingStatus(juryContract, walletAddress);
-    console.log('[refreshVotingData] Flags:', statusFlags);
+
+    // Bypass cache for fresh data after transaction
+    const iterationNum = currentIteration?.iteration;
+    const [isActive, votingEnded, devRelVoted, devRelVoteValue, daoVote, daoVoted, startTime, endTime] =
+      await cachedPromiseAll(publicProvider, selectedChainId, [
+        { key: `iteration:${iterationNum}:isActive`, promise: juryContract.isActive(), skipCache: true },
+        { key: `iteration:${iterationNum}:votingEnded`, promise: juryContract.votingEnded(), skipCache: true },
+        { key: `iteration:${iterationNum}:devRelHasVoted`, promise: juryContract.devRelHasVoted(), skipCache: true },
+        { key: `iteration:${iterationNum}:devRelVote`, promise: juryContract.devRelVote(), skipCache: true },
+        { key: `iteration:${iterationNum}:daoHicVoteOf:${walletAddress}`, promise: juryContract.daoHicVoteOf(walletAddress), skipCache: true },
+        { key: `iteration:${iterationNum}:daoHicHasVoted:${walletAddress}`, promise: juryContract.daoHicHasVoted(walletAddress), skipCache: true },
+        { key: `iteration:${iterationNum}:startTime`, promise: juryContract.startTime(), skipCache: true },
+        { key: `iteration:${iterationNum}:endTime`, promise: juryContract.endTime(), skipCache: true },
+      ]);
+
+    const statusFlags = {
+      isActive: Boolean(isActive),
+      votingEnded: Boolean(votingEnded),
+    };
+    setStatusFlags(statusFlags);
+
+    const normalizedDevRelVote = Boolean(devRelVoted) ? normalizeAddress(devRelVoteValue) : null;
+    const normalizedDaoVote = Boolean(daoVoted) ? normalizeAddress(daoVote) : null;
+
+    setDevRelVote(normalizedDevRelVote);
+    setDaoHicVote(normalizedDaoVote);
+
+    const times = {
+      startTime: Number(startTime),
+      endTime: Number(endTime),
+    };
+    setIterationTimes(times);
+
+    console.log('[refreshVotingData] DevRel vote:', normalizedDevRelVote ?? 'Not cast');
+    console.log('[refreshVotingData] DAO HIC vote:', normalizedDaoVote ?? 'Not cast');
+
     await loadEntityVotes(juryContract, statusFlags.isActive, statusFlags.votingEnded);
     if (statusFlags.isActive || statusFlags.votingEnded) {
       console.log('[refreshVotingData] Calling loadVoteCounts...');
@@ -491,7 +569,12 @@ export function useContractState(
     } else {
       console.log('[refreshVotingData] Skipping loadVoteCounts - not active/ended');
     }
-  }, [signer, currentIteration, walletAddress, loadVotingStatus, loadEntityVotes, loadVoteCounts]);
+
+    // Also refresh badges for community voters (reloads community votes)
+    if (publicProvider && walletAddress) {
+      await loadBadges(walletAddress, publicProvider, allIterations);
+    }
+  }, [signer, currentIteration, walletAddress, publicProvider, selectedChainId, loadEntityVotes, loadVoteCounts, loadBadges, allIterations]);
 
   const refreshBadges = useCallback(async () => {
     if (!publicProvider || !currentIteration || !walletAddress) return;

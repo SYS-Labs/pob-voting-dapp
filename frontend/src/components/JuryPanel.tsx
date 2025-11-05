@@ -194,14 +194,14 @@ const JuryPanel = ({
                 <p className="text-sm text-[var(--pob-text-muted)]">
                   As a community juror, mint your badge ({mintAmount} {tokenSymbol} deposit) during the active voting period to participate. After voting ends, you can reclaim your deposit.
                 </p>
-                {statusFlags.isActive && (
+                {statusFlags.isActive && walletAddress && (
                   <button
                     type="button"
                     onClick={() => {
                       void executeMint('community');
                     }}
                     className="pob-button w-full justify-center text-xs"
-                    disabled={pendingAction !== null || !walletAddress}
+                    disabled={pendingAction !== null}
                   >
                     {pendingAction === 'Mint Community Badge' ? 'Minting…' : `Mint community badge (${mintAmount} ${tokenSymbol})`}
                   </button>

@@ -11,6 +11,7 @@ interface RoleStatuses {
 interface ParticipantPanelProps {
   roles: RoleStatuses;
   projectsLocked: boolean;
+  votingEnded: boolean;
   pendingAction: string | null;
   walletAddress: string | null;
   badges: Badge[];

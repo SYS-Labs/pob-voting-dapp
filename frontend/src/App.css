@@ -745,3 +745,18 @@ body {
     display: none !important;
   }
 }
+
+/* Hide wallet button on mobile (< 1024px), show in toolbox instead */
+@media (max-width: 1023px) {
+  .wallet-button-container {
+    display: none !important;
+  }
+}
+
+/* Mobile adjustments (< 768px) */
+@media (max-width: 767px) {
+  /* Align menu button to the right when wallet button is hidden */
+  .header-nav-container {
+    justify-content: flex-end !important;
+  }
+}

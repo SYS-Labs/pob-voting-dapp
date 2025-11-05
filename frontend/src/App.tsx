@@ -236,11 +236,11 @@ function App() {
       <SwitchNetworkModal isOpen={switchNetworkModalOpen} onClose={() => setSwitchNetworkModalOpen(false)} />
 
       <TxPendingModal
-        isOpen={txPendingHash !== null}
+        isOpen={pendingAction !== null || txPendingHash !== null}
         txHash={txPendingHash}
         provider={provider}
         chainId={chainId}
-        actionLabel={txPendingLabel}
+        actionLabel={txPendingLabel || pendingAction || 'Transaction'}
         onClose={clearTxPending}
         onConfirmed={() => {
           console.log('[App] Transaction confirmed, calling refresh callback');
@@ -369,6 +369,8 @@ function App() {
             setPendingRemovalProject={setPendingRemovalProject}
             setPendingRemovalVoter={setPendingRemovalVoter}
             setError={setError}
+            onOpenDisconnect={() => setDisconnectModalOpen(true)}
+            onConnect={connectWallet}
           />
         ) : null}
 
