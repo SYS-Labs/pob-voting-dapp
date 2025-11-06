@@ -6,9 +6,10 @@ interface IterationsPageProps {
   selectedIteration: number | null;
   iterationStatuses: { [iterationNumber: number]: IterationStatus };
   onSelectIteration: (iteration: number) => void;
+  onNavigateToFaq: () => void;
 }
 
-const IterationsPage = ({ filteredIterations, selectedIteration, iterationStatuses, onSelectIteration }: IterationsPageProps) => {
+const IterationsPage = ({ filteredIterations, selectedIteration, iterationStatuses, onSelectIteration, onNavigateToFaq }: IterationsPageProps) => {
 
   return (
     <div className="pob-stack" id="iterations">
@@ -23,8 +24,8 @@ const IterationsPage = ({ filteredIterations, selectedIteration, iterationStatus
           <div className="space-y-3 text-sm text-[var(--pob-text-muted)]">
             <p>
               <strong className="text-white">What's this about?</strong> This is an ongoing program where you can build real projects
-              on Syscoin (UTXO, NEVM, and zkSYS) and get recognized for it. Every idea, demo, or MVP you share leaves a public footprint
-              on the blockchain, making your progress transparent and verifiable. Think of it as building your portfolio while contributing
+              on Syscoin (UTXO, NEVM, and zkSYS) and get recognized for it. Your participation, votes, and results are recorded on-chain,
+              making the evaluation process transparent and verifiable. Think of it as building your portfolio while contributing
               to the ecosystem.
             </p>
             <p>
@@ -32,11 +33,12 @@ const IterationsPage = ({ filteredIterations, selectedIteration, iterationStatus
               with a special focus on Latin America. We're here to help you learn Web3, collaborate with others, and build cool stuff on
               Syscoin. It's a bridge between learning, getting community feedback, and growing the ecosystem together.
             </p>
-            <p>
-              <strong className="text-white">How it works:</strong> Join anytime (no deadlines!) • Everything is open and verifiable •
-              Follow these phases: Register → Share your idea → Build a demo → Get evaluated → Launch your MVP • Grow alongside
-              Syscoin's community.
-            </p>
+            <button
+              onClick={onNavigateToFaq}
+              className="pob-button pob-button--compact mt-4"
+            >
+              Read the FAQ
+            </button>
           </div>
         </div>
       </section>

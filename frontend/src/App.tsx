@@ -389,6 +389,10 @@ function App() {
               setSelectedIteration(iteration);
               setCurrentPage('iteration');
             }}
+            onNavigateToFaq={() => {
+              setCurrentPage('faq');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           />
         )}
 
@@ -404,7 +408,7 @@ function App() {
           />
         )}
 
-        {currentPage === 'faq' && <FaqPage />}
+        {currentPage === 'faq' && <FaqPage chainId={chainId} />}
       </main>
 
       {/* Footer */}
