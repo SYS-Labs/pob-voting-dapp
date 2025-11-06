@@ -25,57 +25,7 @@ import pkg from "hardhat";
 const { ethers, network, upgrades } = pkg;
 import fs from "fs";
 import path from "path";
-
-/**
- * Wait for transaction with custom polling for slow chains
- */
-async function waitForTxWithPolling(tx, confirmations = 1, pollInterval = 20000) {
-  console.log(`  Transaction hash: ${tx.hash}`);
-  console.log(`  Waiting for ${confirmations} confirmation(s)...`);
-
-  let receipt = null;
-  let attempts = 0;
-  const maxAttempts = 60; // 20 minutes max wait time
-
-  while (!receipt && attempts < maxAttempts) {
-    attempts++;
-    try {
-      receipt = await ethers.provider.getTransactionReceipt(tx.hash);
-      if (receipt) {
-        console.log(`  ✓ Transaction mined in block ${receipt.blockNumber}`);
-
-        // Wait for additional confirmations if needed
-        if (confirmations > 1) {
-          const currentBlock = await ethers.provider.getBlockNumber();
-          const confirmationsReceived = currentBlock - receipt.blockNumber + 1;
-
-          if (confirmationsReceived < confirmations) {
-            console.log(`  Waiting for ${confirmations - confirmationsReceived} more confirmation(s)...`);
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-            continue;
-          }
-        }
-
-        return receipt;
-      }
-    } catch (error) {
-      // Transaction not yet mined, continue polling
-      if (error.code !== 'NETWORK_ERROR') {
-        console.log(`  Polling attempt ${attempts}/${maxAttempts}...`);
-      }
-    }
-
-    if (!receipt) {
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
-    }
-  }
-
-  if (!receipt) {
-    throw new Error(`Transaction ${tx.hash} not mined after ${maxAttempts} attempts`);
-  }
-
-  return receipt;
-}
+import { waitForTxWithPolling } from "./utils/waitForTxWithPolling.js";
 
 /**
  * Deploy proxy with custom polling

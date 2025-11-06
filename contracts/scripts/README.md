@@ -58,6 +58,87 @@ npx hardhat run scripts/seed-local.js --network localhost
 3. Registers projects
 4. Funds all accounts with 1 ETH each
 
+### `check-votes.js`
+
+Displays comprehensive voting progress and results for a specific iteration.
+
+**Usage:**
+```bash
+# Check voting for iteration 1 on testnet
+CHAIN_ID=5700 ITERATION=1 node scripts/check-votes.js
+
+# Check specific round of an iteration
+CHAIN_ID=5700 ITERATION=1 ROUND=2 node scripts/check-votes.js
+
+# Use custom iterations file
+ITERATIONS_FILE=../frontend/public/iterations.json ITERATION=1 node scripts/check-votes.js
+```
+
+**Environment Variables:**
+- `CHAIN_ID`: Network chain ID (default: 5700 for Rollux Tanenbaum)
+  - `5700` - Rollux Tanenbaum testnet
+  - `57` - Syscoin mainnet
+  - `31337` - Local hardhat network
+- `ITERATION`: Iteration number (default: 1)
+- `ROUND`: Optional round number
+  - If not specified: Uses current round (top-level in iterations.json)
+  - If specified: Searches both current round and prev_rounds array
+- `ITERATIONS_FILE`: Path to iterations.json (default: ../frontend/public/iterations.json)
+- `PROJECTS_FILE`: Path to projects.json (default: ../frontend/public/projects.json)
+
+**Note on Round Structure:**
+- Current/active round is stored at the top level with the iteration
+- Past rounds are stored in the `prev_rounds` array within the iteration
+- Example: Iteration 1 with current round 2 and previous round 1 stored in `prev_rounds`
+
+**Report Sections:**
+1. **Vote Activity History** - Chronological list of all votes with timestamps
+2. **Final Vote Per Voter** - Current votes for DevRel, DAO HIC members, and Community
+3. **Projects by Weighted Votes** - All projects ranked by entity votes
+4. **Voting Status** - Current status (Upcoming/Active/Ended) with timing info
+5. **Final Outcome** - Winner based on contract's current voting mode (CONSENSUS or WEIGHTED)
+
+**Example:**
+```bash
+# Check current round (top-level) of iteration 1
+CHAIN_ID=5700 ITERATION=1 node scripts/check-votes.js
+
+# Check previous round (from prev_rounds array)
+CHAIN_ID=5700 ITERATION=1 ROUND=1 node scripts/check-votes.js
+
+# Check current round on local network
+CHAIN_ID=31337 ITERATION=1 node scripts/check-votes.js
+```
+
+### `upgrade.js`
+
+Upgrades an existing JurySC_01 proxy to a new implementation (UUPS upgrade).
+
+**Usage:**
+```bash
+# Validate upgrade without executing
+PROXY_ADDRESS=0x1234... DRY_RUN=true npx hardhat run scripts/upgrade.js --network localhost
+
+# Perform actual upgrade
+PROXY_ADDRESS=0x1234... npx hardhat run scripts/upgrade.js --network localhost
+```
+
+**Environment Variables:**
+- `PROXY_ADDRESS`: Address of existing proxy contract (required)
+- `DRY_RUN`: Set to "true" to validate without upgrading (optional)
+
+**Safety Checks:**
+- ✅ Validates storage layout compatibility
+- ✅ Blocks upgrade during active voting
+- ✅ Blocks upgrade if contract is locked
+- ✅ Preserves all votes and state
+
+**Example:**
+```bash
+# Testnet upgrade
+PROXY_ADDRESS=0xabcd... npx hardhat run scripts/upgrade.js --network testnet
+```
+
 ### `update-abis.js`
 
 Extracts ABIs from compiled contracts and copies them to the frontend.

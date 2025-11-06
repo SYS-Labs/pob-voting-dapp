@@ -102,8 +102,8 @@ describe("JurySC_01 (address-based projects)", function () {
     it("disallows removal once projects locked", async function () {
       await jurySC.connect(owner).setDevRelAccount(devRel.address);
       await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       await expect(jurySC.connect(owner).removeProject(project1.address)).to.be.revertedWithCustomError(
         jurySC,
@@ -118,20 +118,23 @@ describe("JurySC_01 (address-based projects)", function () {
       await jurySC.connect(owner).setDevRelAccount(devRel.address);
       await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
 
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       expect(await jurySC.projectsLocked()).to.equal(true);
-      expect(await jurySC.startTime()).to.equal(now);
-      expect(await jurySC.endTime()).to.equal(now + 48 * 3600);
+
+      const startTime = await jurySC.startTime();
+      const endTime = await jurySC.endTime();
+      expect(startTime).to.be.gt(0);
+      expect(endTime).to.equal(startTime + BigInt(48 * 3600));
     });
 
     it("reverts activation without projects", async function () {
       await jurySC.connect(owner).setDevRelAccount(devRel.address);
       await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
-      const now = Math.floor(Date.now() / 1000);
+      // Activate immediately
 
-      await expect(jurySC.connect(owner).activate(now)).to.be.revertedWithCustomError(jurySC, "InvalidProject");
+      await expect(jurySC.connect(owner).activate()).to.be.revertedWithCustomError(jurySC, "InvalidProject");
     });
   });
 
@@ -143,8 +146,8 @@ describe("JurySC_01 (address-based projects)", function () {
       await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
       await jurySC.connect(owner).addDaoHicVoter(daoHic2.address);
 
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       // Community can only mint after activation (during active voting)
       await pob.connect(community1).mint({ value: DEPOSIT });
@@ -218,6 +221,18 @@ describe("JurySC_01 (address-based projects)", function () {
         "ProjectCannotVote",
       );
     });
+
+    it("prevents a registered project from voting as Community", async function () {
+      // Project1 mints a community NFT
+      const tx = await pob.connect(project1).mint({ value: DEPOSIT });
+      const receipt = await tx.wait();
+      const tokenId = receipt.logs[0].args[2];
+
+      // Project1 tries to vote as community member (should fail)
+      await expect(
+        jurySC.connect(project1).voteCommunity(tokenId, project1.address)
+      ).to.be.revertedWithCustomError(jurySC, "ProjectCannotVote");
+    });
   });
 
   describe("voting dynamics", function () {
@@ -228,8 +243,8 @@ describe("JurySC_01 (address-based projects)", function () {
       await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
       await jurySC.connect(owner).addDaoHicVoter(daoHic2.address);
 
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       // Community can only mint after activation (during active voting)
       await pob.connect(community1).mint({ value: DEPOSIT });
@@ -334,8 +349,8 @@ describe("JurySC_01 (address-based projects)", function () {
         await owner.sendTransaction({ to: wallet.address, value: ethers.parseEther("40") });
       }
 
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       // Community can only mint after activation (during active voting)
       for (let i = 0; i < COMMUNITY_TOTAL; i++) {
@@ -485,8 +500,8 @@ describe("JurySC_01 (address-based projects)", function () {
       await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
       await jurySC.connect(owner).addDaoHicVoter(daoHic2.address);
 
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       // Community can only mint after activation (during active voting)
       await pob.connect(community1).mint({ value: DEPOSIT });
@@ -541,8 +556,8 @@ describe("JurySC_01 (address-based projects)", function () {
       await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
       await jurySC.connect(owner).addDaoHicVoter(daoHic2.address);
 
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       // Community can only mint after activation (during active voting)
       await pob.connect(community1).mint({ value: DEPOSIT });
@@ -609,8 +624,8 @@ describe("JurySC_01 (address-based projects)", function () {
 
     it("allows DevRel account to mint via trusted owner reference", async function () {
       // DevRel can only mint after voting has ended
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
       await jurySC.connect(owner).closeManually();
 
       await expect(pob.connect(devRel).mintDevRel()).to.emit(pob, "Transfer").withArgs(
@@ -628,8 +643,8 @@ describe("JurySC_01 (address-based projects)", function () {
 
     it("allows DAO_HIC voter to mint without passing jury address", async function () {
       // DAO_HIC can only mint after voting has ended
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
       await jurySC.connect(owner).closeManually();
 
       await expect(pob.connect(daoHic1).mintDaoHic()).to.emit(pob, "Transfer").withArgs(
@@ -643,8 +658,8 @@ describe("JurySC_01 (address-based projects)", function () {
 
     it("allows registered project to mint its badge without external parameter", async function () {
       // Project can only mint after projects are locked (after activation)
-      const now = Math.floor(Date.now() / 1000);
-      await jurySC.connect(owner).activate(now);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       await expect(pob.connect(project1).mintProject()).to.emit(pob, "Transfer").withArgs(
         ethers.ZeroAddress,
@@ -666,8 +681,8 @@ describe("JurySC_01 (address-based projects)", function () {
       await jurySC.connect(owner).addDaoHicVoter(daoHic2.address);
 
       // Activate with current block timestamp
-      const block = await ethers.provider.getBlock("latest");
-      await jurySC.connect(owner).activate(block.timestamp + 1);
+      // Activate immediately
+      await jurySC.connect(owner).activate();
 
       // Cast votes
       await jurySC.connect(devRel).voteDevRel(project1.address);
@@ -721,8 +736,8 @@ describe("JurySC_01 (address-based projects)", function () {
         await jurySC.connect(owner).addDaoHicVoter(daoHic2.address);
 
         // Activate
-        const block = await ethers.provider.getBlock("latest");
-        await jurySC.connect(owner).activate(block.timestamp + 1);
+        // Activate immediately
+        await jurySC.connect(owner).activate();
 
         // Create complete tie: all entities abstain or tie internally
         // DevRel: doesn't vote (entity vote = 0)
@@ -843,6 +858,279 @@ describe("JurySC_01 (address-based projects)", function () {
         // Should have received deposit back (minus gas)
         expect(balanceAfter).to.be.gt(balanceBefore);
         expect(await pob.claimed(0)).to.be.true;
+      });
+    });
+  });
+
+  describe("dual voting modes (CONSENSUS vs WEIGHTED)", function () {
+    let community4, community5, daoHic3;
+
+    beforeEach(async function () {
+      [community4, community5, daoHic3] = await ethers.getSigners();
+    });
+
+    it("defaults to CONSENSUS mode", async function () {
+      expect(await jurySC.votingMode()).to.equal(0); // VotingMode.CONSENSUS
+    });
+
+    it("allows owner to change mode before activation", async function () {
+      // Deploy a new contract for this test
+      const PoB_01 = await ethers.getContractFactory("PoB_01");
+      const newPob = await PoB_01.deploy("Proof of Builders v1", "POB1", ITERATION, owner.address);
+      await newPob.waitForDeployment();
+
+      const JurySC_01 = await ethers.getContractFactory("JurySC_01");
+      const newJury = await upgrades.deployProxy(JurySC_01, [await newPob.getAddress(), ITERATION, owner.address], {
+        kind: "uups",
+      });
+      await newJury.waitForDeployment();
+
+      // Should start in CONSENSUS mode
+      expect(await newJury.votingMode()).to.equal(0);
+
+      // Owner can change to WEIGHTED before activation
+      await newJury.connect(owner).setVotingMode(1); // VotingMode.WEIGHTED
+      expect(await newJury.votingMode()).to.equal(1);
+
+      // Can change back to CONSENSUS
+      await newJury.connect(owner).setVotingMode(0);
+      expect(await newJury.votingMode()).to.equal(0);
+    });
+
+    it("prevents changing mode after activation", async function () {
+      // Setup and activate
+      await jurySC.connect(owner).registerProject(project1.address);
+      await jurySC.connect(owner).setDevRelAccount(devRel.address);
+      await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
+
+      // Activate immediately
+      await jurySC.connect(owner).activate();
+
+      await expect(
+        jurySC.connect(owner).setVotingMode(1)
+      ).to.be.revertedWithCustomError(jurySC, "AlreadyActivated");
+    });
+
+    describe("scenario: no entity consensus, community split, devrel votes top community choice", function () {
+      beforeEach(async function () {
+        // Setup: 3 projects
+        await jurySC.connect(owner).registerProject(project1.address);
+        await jurySC.connect(owner).registerProject(project2.address);
+        await jurySC.connect(owner).registerProject(project3.address);
+
+        // Setup voters
+        await jurySC.connect(owner).setDevRelAccount(devRel.address);
+        await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
+        await jurySC.connect(owner).addDaoHicVoter(daoHic2.address);
+        await jurySC.connect(owner).addDaoHicVoter(daoHic3.address);
+
+        // Activate voting (starts immediately)
+        await jurySC.connect(owner).activate();
+
+        // Community votes (5 voters total):
+        // - 2 votes for Project 1
+        // - 2 votes for Project 2
+        // - 1 vote for Project 3
+        // Top 2 are Project 1 and Project 2
+
+        // Community voter 1 votes for Project 1
+        const tx1 = await pob.connect(community1).mint({ value: DEPOSIT });
+        const receipt1 = await tx1.wait();
+        const tokenId1 = receipt1.logs[0].args[2]; // tokenId from Transfer event
+        await jurySC.connect(community1).voteCommunity(tokenId1, project1.address);
+
+        // Community voter 2 votes for Project 1
+        const tx2 = await pob.connect(community2).mint({ value: DEPOSIT });
+        const receipt2 = await tx2.wait();
+        const tokenId2 = receipt2.logs[0].args[2];
+        await jurySC.connect(community2).voteCommunity(tokenId2, project1.address);
+
+        // Community voter 3 votes for Project 2
+        const tx3 = await pob.connect(community3).mint({ value: DEPOSIT });
+        const receipt3 = await tx3.wait();
+        const tokenId3 = receipt3.logs[0].args[2];
+        await jurySC.connect(community3).voteCommunity(tokenId3, project2.address);
+
+        // Community voter 4 votes for Project 2
+        const tx4 = await pob.connect(community4).mint({ value: DEPOSIT });
+        const receipt4 = await tx4.wait();
+        const tokenId4 = receipt4.logs[0].args[2];
+        await jurySC.connect(community4).voteCommunity(tokenId4, project2.address);
+
+        // Community voter 5 votes for Project 3
+        const tx5 = await pob.connect(community5).mint({ value: DEPOSIT });
+        const receipt5 = await tx5.wait();
+        const tokenId5 = receipt5.logs[0].args[2];
+        await jurySC.connect(community5).voteCommunity(tokenId5, project3.address);
+
+        // DevRel votes for Project 1 (one of the top 2 community choices)
+        await jurySC.connect(devRel).voteDevRel(project1.address);
+
+        // DAO HIC all 3 voters vote for Project 3 (different from others)
+        await jurySC.connect(daoHic1).voteDaoHic(project3.address);
+        await jurySC.connect(daoHic2).voteDaoHic(project3.address);
+        await jurySC.connect(daoHic3).voteDaoHic(project3.address);
+      });
+
+      it("CONSENSUS mode: no winner (no 2-out-of-3 agreement)", async function () {
+        // DevRel → Project 1
+        // DAO_HIC → Project 3 (majority)
+        // Community → Tie between Project 1 and Project 2
+
+        const [winner, hasWinner] = await jurySC.getWinnerConsensus();
+        expect(hasWinner).to.be.false;
+        expect(winner).to.equal(ethers.ZeroAddress);
+      });
+
+      it("WEIGHTED mode: Project 1 wins with highest score", async function () {
+        // Project 1 score:
+        //   DevRel: 1/3 (333333333333333333 wei)
+        //   DAO_HIC: 0/3 * 1/3 = 0
+        //   Community: 2/5 * 1/3 = 2/15 (133333333333333333 wei)
+        //   Total: 7/15 ≈ 466666666666666666 wei
+
+        // Project 2 score:
+        //   DevRel: 0
+        //   DAO_HIC: 0
+        //   Community: 2/5 * 1/3 = 2/15
+        //   Total: 2/15 ≈ 133333333333333333 wei
+
+        // Project 3 score:
+        //   DevRel: 0
+        //   DAO_HIC: 3/3 * 1/3 = 1/3 (333333333333333333 wei)
+        //   Community: 1/5 * 1/3 = 1/15 (66666666666666666 wei)
+        //   Total: 6/15 = 399999999999999999 wei
+
+        const [winner, hasWinner] = await jurySC.getWinnerWeighted();
+        expect(hasWinner).to.be.true;
+        expect(winner).to.equal(project1.address);
+
+        // Verify scores
+        const [addresses, scores, totalPossible] = await jurySC.getWinnerWithScores();
+        expect(totalPossible).to.equal(ethers.parseEther("1")); // 1e18
+
+        // Find each project's score
+        const p1Index = addresses.findIndex(addr => addr === project1.address);
+        const p2Index = addresses.findIndex(addr => addr === project2.address);
+        const p3Index = addresses.findIndex(addr => addr === project3.address);
+
+        const p1Score = scores[p1Index];
+        const p2Score = scores[p2Index];
+        const p3Score = scores[p3Index];
+
+        // Project 1 should have highest score
+        expect(p1Score).to.be.gt(p2Score);
+        expect(p1Score).to.be.gt(p3Score);
+
+        // Verify approximate scores (allowing for rounding in integer division)
+        // P1: 7/15 * 1e18 = 466666666666666666
+        expect(p1Score).to.be.closeTo(466666666666666666n, 10n);
+
+        // P2: 2/15 * 1e18 = 133333333333333333
+        expect(p2Score).to.be.closeTo(133333333333333333n, 10n);
+
+        // P3: 6/15 * 1e18 = 400000000000000000 (actually 3/3 * 1/3 + 1/5 * 1/3)
+        expect(p3Score).to.be.closeTo(399999999999999999n, 10n);
+      });
+
+      it("getWinner() uses CONSENSUS mode by default", async function () {
+        // Since votingMode is CONSENSUS (default), getWinner() should match getWinnerConsensus()
+        const [winner, hasWinner] = await jurySC.getWinner();
+        const [consensusWinner, consensusHasWinner] = await jurySC.getWinnerConsensus();
+
+        expect(winner).to.equal(consensusWinner);
+        expect(hasWinner).to.equal(consensusHasWinner);
+        expect(hasWinner).to.be.false; // No consensus
+      });
+    });
+
+    describe("scenario: weighted tie - two projects with identical scores", function () {
+      beforeEach(async function () {
+        // Setup: 2 projects
+        await jurySC.connect(owner).registerProject(project1.address);
+        await jurySC.connect(owner).registerProject(project2.address);
+
+        // Setup voters
+        await jurySC.connect(owner).setDevRelAccount(devRel.address);
+        await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
+        await jurySC.connect(owner).addDaoHicVoter(daoHic2.address);
+
+        // Activate voting (starts immediately)
+        await jurySC.connect(owner).activate();
+
+        // Create a perfect tie scenario:
+        // Project 1 will get: DAO_HIC 100% (1/3) + Community 50% (1/6) = 1/2
+        // Project 2 will get: DevRel 100% (1/3) + Community 50% (1/6) = 1/2
+
+        // DAO_HIC: Both voters vote for Project 1
+        await jurySC.connect(daoHic1).voteDaoHic(project1.address);
+        await jurySC.connect(daoHic2).voteDaoHic(project1.address);
+
+        // Community: 4 voters total, 2 for each project
+        const tx1 = await pob.connect(community1).mint({ value: DEPOSIT });
+        const receipt1 = await tx1.wait();
+        const tokenId1 = receipt1.logs[0].args[2];
+        await jurySC.connect(community1).voteCommunity(tokenId1, project1.address);
+
+        const tx2 = await pob.connect(community2).mint({ value: DEPOSIT });
+        const receipt2 = await tx2.wait();
+        const tokenId2 = receipt2.logs[0].args[2];
+        await jurySC.connect(community2).voteCommunity(tokenId2, project1.address);
+
+        const tx3 = await pob.connect(community3).mint({ value: DEPOSIT });
+        const receipt3 = await tx3.wait();
+        const tokenId3 = receipt3.logs[0].args[2];
+        await jurySC.connect(community3).voteCommunity(tokenId3, project2.address);
+
+        const tx4 = await pob.connect(community4).mint({ value: DEPOSIT });
+        const receipt4 = await tx4.wait();
+        const tokenId4 = receipt4.logs[0].args[2];
+        await jurySC.connect(community4).voteCommunity(tokenId4, project2.address);
+
+        // DevRel votes for Project 2
+        await jurySC.connect(devRel).voteDevRel(project2.address);
+      });
+
+      it("WEIGHTED mode: detects tie and returns no winner", async function () {
+        // Project 1 score:
+        //   DevRel: 0
+        //   DAO_HIC: 2/2 * 1/3 = 1/3 (333333333333333333 wei)
+        //   Community: 2/4 * 1/3 = 1/6 (166666666666666666 wei)
+        //   Total: 1/2 = 499999999999999999 wei (due to integer division)
+
+        // Project 2 score:
+        //   DevRel: 1/3 (333333333333333333 wei)
+        //   DAO_HIC: 0/2 * 1/3 = 0
+        //   Community: 2/4 * 1/3 = 1/6 (166666666666666666 wei)
+        //   Total: 1/2 = 499999999999999999 wei
+
+        const [winner, hasWinner] = await jurySC.getWinnerWeighted();
+        expect(hasWinner).to.be.false;
+        expect(winner).to.equal(ethers.ZeroAddress);
+
+        // Verify both projects have the same score
+        const [addresses, scores, totalPossible] = await jurySC.getWinnerWithScores();
+        expect(totalPossible).to.equal(ethers.parseEther("1"));
+
+        const p1Index = addresses.findIndex(addr => addr === project1.address);
+        const p2Index = addresses.findIndex(addr => addr === project2.address);
+
+        const p1Score = scores[p1Index];
+        const p2Score = scores[p2Index];
+
+        // Both should have score of 1/2 (499999999999999999 wei)
+        expect(p1Score).to.equal(p2Score);
+        expect(p1Score).to.be.closeTo(ethers.parseEther("0.5"), 10n);
+      });
+
+      it("CONSENSUS mode: also has no winner (no 2-out-of-3 agreement)", async function () {
+        // DevRel → Project 2
+        // DAO_HIC → Project 1
+        // Community → Tie between Project 1 and Project 2
+
+        const [winner, hasWinner] = await jurySC.getWinnerConsensus();
+        expect(hasWinner).to.be.false;
+        expect(winner).to.equal(ethers.ZeroAddress);
       });
     });
   });

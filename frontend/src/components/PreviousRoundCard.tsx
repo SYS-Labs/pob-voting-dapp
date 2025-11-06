@@ -5,6 +5,7 @@ import { NETWORKS } from '~/constants/networks';
 import { PoB_01ABI } from '~/abis';
 import { formatDate } from '~/utils';
 import { usePreviousRoundData } from '~/hooks/usePreviousRoundData';
+import FinalResultsPanel from './FinalResultsPanel';
 
 interface PreviousRoundCardProps {
   round: PreviousRound;
@@ -131,9 +132,22 @@ const PreviousRoundCard = ({
     >
       <div className={`pob-pane__heading ${!isExpanded ? 'mb-0' : ''}`}>
         <div>
-          <h3 className="pob-pane__title inline">Round #{round.round}</h3>
+          <h3 className="pob-pane__title inline">
+            Round #{round.round}
+            {(isExpanded && roundData ? (
+              <span className={`pob-pill text-xs ${
+                roundData.winner.hasWinner ? 'pob-pill--success' : 'pob-pill--failure'
+              }`}>
+                {roundData.votingMode === 0 ? 'Consensus' : 'Weighted'} {roundData.winner.hasWinner ? '✓' : '✗'}
+              </span>
+            ) : round.votingMode !== undefined ? (
+              <span className="pob-pill pob-pill--neutral text-xs">
+                {round.votingMode === 0 ? 'Consensus' : 'Weighted'}
+              </span>
+            ) : null)}
+          </h3>
           {!isExpanded && (
-            <span className="text-xs text-[var(--pob-primary)]">&nbsp;&nbsp;(click for details)</span>
+            <span className="text-xs text-[var(--pob-primary)]" style={{ marginLeft: '0.5rem' }}>(click for details)</span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -214,72 +228,16 @@ const PreviousRoundCard = ({
                 </div>
               </dl>
 
-              {/* Winner Section */}
-              <div
-                style={{
-                  padding: '1rem',
-                  border: '2px solid var(--pob-primary)',
-                  borderRadius: '0.5rem',
-                  backgroundColor: 'rgba(247, 147, 26, 0.05)',
-                }}
-              >
-                <h4 className="text-sm font-semibold text-white mb-2">Final Result</h4>
-
-                {roundData.winner.hasWinner && roundData.winner.projectAddress ? (
-                  <div className="space-y-2">
-                    <p className="text-lg font-bold text-[var(--pob-primary)]">
-                      🏆 Winner:{' '}
-                      <span className="italic">
-                        {getProjectLabel(roundData.winner.projectAddress) ?? roundData.winner.projectAddress}
-                      </span>
-                    </p>
-                    <p className="text-xs text-[var(--pob-text-muted)]">
-                      Determined by majority vote across three entities (DevRel, DAO HIC, Community).
-                      This project received the most entity votes.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-yellow-400">⚠️ No Consensus Reached</p>
-                    <p className="text-xs text-[var(--pob-text-muted)] mb-2">
-                      The contract's winner determination logic found no clear winner.
-                      Each of the three voting entities (DevRel, DAO HIC, Community) votes independently,
-                      and the winning project must receive a majority of entity votes.
-                    </p>
-                    <div className="text-xs text-[var(--pob-text-muted)] space-y-1">
-                      <p className="font-semibold text-white">
-                        {isOwner ? 'Entity Votes Cast:' : 'Votes Cast:'}
-                      </p>
-                      {[
-                        { label: 'Community', address: roundData.entityVotes.community },
-                        { label: 'DAO HIC', address: roundData.entityVotes.daoHic },
-                        { label: 'DevRel', address: roundData.entityVotes.devRel },
-                      ]
-                        .sort((a, b) => a.label.localeCompare(b.label))
-                        .map(({ label, address }) => (
-                          <p key={label}>
-                            •{isOwner ? <strong> {label}: </strong> : ' '}
-                            {address ? (
-                              <span className="italic">
-                                {getProjectLabel(address) ?? address}
-                              </span>
-                            ) : (
-                              isOwner ? 'Did not vote' : 'No vote'
-                            )}
-                          </p>
-                        ))}
-                    </div>
-                    {roundData.entityVotes.devRel && roundData.entityVotes.daoHic && roundData.entityVotes.community &&
-                     roundData.entityVotes.devRel !== roundData.entityVotes.daoHic &&
-                     roundData.entityVotes.daoHic !== roundData.entityVotes.community &&
-                     roundData.entityVotes.devRel !== roundData.entityVotes.community ? (
-                      <p className="text-xs text-[var(--pob-text-muted)] mt-2">
-                        Result: Three-way tie (each entity voted for a different project)
-                      </p>
-                    ) : null}
-                  </div>
-                )}
-              </div>
+              {/* Final Results */}
+              <FinalResultsPanel
+                winner={roundData.winner}
+                entityVotes={roundData.entityVotes}
+                votingMode={roundData.votingMode}
+                projects={roundData.projects}
+                projectScores={roundData.projectScores}
+                getProjectLabel={getProjectLabel}
+                isOwner={isOwner}
+              />
             </>
           ) : (
             <p className="text-sm text-[var(--pob-text-muted)]">No data available</p>

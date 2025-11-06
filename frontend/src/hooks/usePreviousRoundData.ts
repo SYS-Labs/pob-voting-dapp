@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Contract, ethers } from 'ethers';
 import type { PreviousRound } from '~/interfaces';
-import { JurySC_01ABI } from '~/abis';
+import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
+import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
 import { loadBadgesFromContract, type Badge } from '~/utils/loadBadgesFromContract';
 
 interface RoundData {
@@ -11,6 +12,9 @@ interface RoundData {
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
   userBadges: Badge[];
   canMint: boolean; // User is eligible to mint a badge for this round
+  votingMode: number;
+  projects: { id: number; address: string }[];
+  projectScores: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null;
 }
 
 const normalizeAddress = (addr: string): string | null => {
@@ -34,22 +38,58 @@ export function usePreviousRoundData(
     const loadRoundData = async () => {
       setLoading(true);
       try {
-        const contract = new Contract(round.jurySC, JurySC_01ABI, publicProvider);
+        // Select ABI based on version
+        const abiToUse = round.version === '001' ? JurySC_01_v001_ABI : JurySC_01_v002_ABI;
+        const contract = new Contract(round.jurySC, abiToUse, publicProvider);
 
         console.log(`[usePreviousRoundData] Loading data for Round #${round.round}`, {
           jurySC: round.jurySC,
           pob: round.pob,
+          version: round.version,
+          abiVersion: round.version === '001' ? 'v001' : 'v002',
           walletAddress,
         });
 
+        // Use version-based detection instead of trying function calls
+        const isV001 = round.version === '001';
+        const isV002OrNewer = round.version >= '002';
+
+        let votingMode = 0;
+
+        if (isV001) {
+          // Version 001: Old contract, use JSON votingMode if provided or default to 0
+          votingMode = round.votingMode !== undefined ? round.votingMode : 0;
+        } else if (isV002OrNewer) {
+          // Version 002+: New contract, check JSON first then query contract
+          if (round.votingMode !== undefined) {
+            votingMode = round.votingMode;
+          } else {
+            try {
+              votingMode = Number(await contract.votingMode());
+            } catch {
+              votingMode = 0;
+            }
+          }
+        }
+
+        // Determine which winner function to call based on version
+        // v001: always use getWinner()
+        // v002+: use getWinnerConsensus() or getWinnerWeighted() based on mode
+        const winnerPromise = isV001
+          ? contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean])
+          : (votingMode === 0
+              ? contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean])
+              : contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]));
+
         // Load contract data and badges in parallel
-        const [devRelRaw, daoHicRaw, communityRaw, winnerRaw, startTime, endTime, userBadges, devRelAccount, daoHicVoters, isRegisteredProject] = await Promise.all([
+        const [devRelRaw, daoHicRaw, communityRaw, winnerRaw, startTime, endTime, projectCount, userBadges, devRelAccount, daoHicVoters, isRegisteredProject] = await Promise.all([
           contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress),
           contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress),
           contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress),
-          contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
+          winnerPromise,
           contract.startTime().catch(() => 0),
           contract.endTime().catch(() => 0),
+          contract.projectCount().catch(() => 0),
           walletAddress
             ? loadBadgesFromContract(round.pob, chainId, walletAddress, publicProvider, round.deployBlockHint, round.round)
             : Promise.resolve([]),
@@ -61,6 +101,35 @@ export function usePreviousRoundData(
         const [winnerAddressRaw, hasWinnerRaw] = Array.isArray(winnerRaw)
           ? winnerRaw
           : [ethers.ZeroAddress, false];
+
+        // Load project addresses
+        const count = Number(projectCount);
+        const projectAddressCalls = [];
+        for (let index = 1; index <= count; index += 1) {
+          projectAddressCalls.push(contract.projectAddress(index));
+        }
+        const projectAddresses = count > 0 ? await Promise.all(projectAddressCalls) : [];
+
+        // Build projects array
+        const projects = projectAddresses.map((addr, index) => ({
+          id: index + 1,
+          address: addr as string,
+        }));
+
+        // Load project scores if in weighted mode AND v002+
+        let projectScores: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null = null;
+        if (votingMode === 1 && isV002OrNewer) {
+          try {
+            const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
+            projectScores = {
+              addresses: addresses as string[],
+              scores: scores as bigint[],
+              totalPossible: totalPossible as bigint,
+            };
+          } catch (error) {
+            console.log('[usePreviousRoundData] getWinnerWithScores not available or failed:', error);
+          }
+        }
 
         // Check if user can mint a badge (participated in this round)
         let canMint = false;
@@ -87,6 +156,9 @@ export function usePreviousRoundData(
           },
           userBadges,
           canMint,
+          votingMode,
+          projects,
+          projectScores,
         };
 
         console.log(`[usePreviousRoundData] Loaded data for Round #${round.round}`, data);
@@ -101,6 +173,9 @@ export function usePreviousRoundData(
           entityVotes: { devRel: null, daoHic: null, community: null },
           userBadges: [],
           canMint: false,
+          votingMode: 0,
+          projects: [],
+          projectScores: null,
         });
       } finally {
         setLoading(false);
@@ -108,7 +183,7 @@ export function usePreviousRoundData(
     };
 
     void loadRoundData();
-  }, [isExpanded, roundData, publicProvider, round.jurySC, round.pob, round.round, chainId, walletAddress]);
+  }, [isExpanded, roundData, publicProvider, round.jurySC, round.pob, round.round, round.version, round.votingMode, chainId, walletAddress]);
 
   return { loading, roundData };
 }

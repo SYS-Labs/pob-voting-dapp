@@ -81,6 +81,8 @@ interface IterationPageProps {
   winner: Winner;
   voteCounts: VoteCounts;
   totalCommunityVoters: number;
+  votingMode: number;
+  projectScores: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null;
   openAdminSection: string | null;
   signer: any;
   publicProvider: any;
@@ -98,6 +100,7 @@ interface IterationPageProps {
   setPendingRemovalProject: (project: Project | null) => void;
   setPendingRemovalVoter: (voter: string | null) => void;
   setError: (error: string | null) => void;
+  setVotingMode: (mode: number) => Promise<void>;
   onOpenDisconnect: () => void;
   onConnect: () => void;
 }
@@ -127,6 +130,8 @@ const IterationPage = ({
   winner,
   voteCounts,
   totalCommunityVoters,
+  votingMode,
+  projectScores,
   openAdminSection,
   signer,
   publicProvider,
@@ -144,6 +149,7 @@ const IterationPage = ({
   setPendingRemovalProject,
   setPendingRemovalVoter,
   setError,
+  setVotingMode,
   onOpenDisconnect,
   onConnect,
 }: IterationPageProps) => {
@@ -266,6 +272,9 @@ const IterationPage = ({
           communityBadges={currentIterationCommunityBadges}
           executeMint={executeMint}
           refreshBadges={refreshBadges}
+          votingMode={votingMode}
+          projects={projects}
+          projectScores={projectScores}
         />
 
         {currentIteration?.prev_rounds && currentIteration.prev_rounds.length > 0 &&
@@ -368,6 +377,7 @@ const IterationPage = ({
             )}
           </section>
         ) : null}
+
         </div>
       )}
 
@@ -428,6 +438,8 @@ const IterationPage = ({
             openAdminSection={openAdminSection}
             signer={signer}
             JurySC_01ABI={JurySC_01ABI}
+            votingMode={votingMode}
+            setVotingMode={setVotingMode}
             getProjectLabel={getProjectLabel}
             handleToggleAdminSection={handleToggleAdminSection}
             runTransaction={runTransaction}

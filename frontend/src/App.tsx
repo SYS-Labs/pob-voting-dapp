@@ -101,6 +101,8 @@ function App() {
     daoHicVote,
     entityVotes,
     winner,
+    votingMode,
+    projectScores,
     statusFlags,
     iterationTimes,
     loading,
@@ -124,6 +126,7 @@ function App() {
     executeMint,
     executeVote,
     executeClaim,
+    setVotingMode,
   } = useTransactions(signer, currentIteration, walletAddress, correctNetwork, chainId);
 
   // Modals
@@ -371,6 +374,9 @@ function App() {
             setError={setError}
             onOpenDisconnect={() => setDisconnectModalOpen(true)}
             onConnect={connectWallet}
+            votingMode={votingMode}
+            projectScores={projectScores}
+            setVotingMode={setVotingMode}
           />
         ) : null}
 

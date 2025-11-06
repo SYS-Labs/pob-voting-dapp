@@ -177,6 +177,22 @@ export function useTransactions(
     [requireWallet, signer, currentIteration],
   );
 
+  const setVotingMode = useCallback(
+    async (mode: number, refreshCallback?: () => Promise<void>) => {
+      if (!requireWallet() || !signer || !currentIteration) return;
+
+      const contract = new Contract(currentIteration.jurySC, JurySC_01ABI, signer);
+      const modeName = mode === 0 ? 'Consensus' : 'Weighted';
+
+      await runTransaction(
+        `Change voting mode to ${modeName}`,
+        () => contract.setVotingMode(mode),
+        refreshCallback
+      );
+    },
+    [requireWallet, signer, currentIteration, runTransaction],
+  );
+
   const clearTxPending = useCallback(() => {
     setTxPendingHash(null);
     setTxPendingLabel('');
@@ -194,5 +210,6 @@ export function useTransactions(
     executeMint,
     executeVote,
     executeClaim,
+    setVotingMode,
   };
 }

@@ -1,6 +1,7 @@
 import type { Iteration, ParticipantRole, Badge } from '~/interfaces';
 import { formatDate } from '~/utils';
 import { NETWORKS } from '~/constants/networks';
+import FinalResultsPanel from './FinalResultsPanel';
 
 interface CommunityBadge {
   tokenId: string;
@@ -35,6 +36,9 @@ interface IterationHeaderProps {
   communityBadges?: CommunityBadge[];
   executeMint?: (role: ParticipantRole, refreshCallback?: () => Promise<void>) => Promise<void>;
   refreshBadges?: () => Promise<void>;
+  votingMode?: number;
+  projects?: { id: number; address: string; metadata?: any }[];
+  projectScores?: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null;
 }
 
 const IterationHeader = ({
@@ -55,6 +59,9 @@ const IterationHeader = ({
   communityBadges,
   executeMint,
   refreshBadges,
+  votingMode = 0,
+  projects = [],
+  projectScores = null,
 }: IterationHeaderProps) => {
   if (!iteration) {
     return (
@@ -95,6 +102,21 @@ const IterationHeader = ({
           <h2 className="pob-pane__title text-3xl">{iteration.name}</h2>
           <p className="mt-1 text-sm text-[var(--pob-text-muted)]">
             Iteration #{iteration.iteration}{iteration.round ? ` - Round #${iteration.round}` : ''}
+            {votingEnded ? (
+              winner?.hasWinner ? (
+                <span className="pob-pill pob-pill--success text-xs">
+                  {votingMode === 0 ? 'Consensus' : 'Weighted'} ✓
+                </span>
+              ) : (
+                <span className="pob-pill pob-pill--failure text-xs">
+                  {votingMode === 0 ? 'Consensus' : 'Weighted'} ✗
+                </span>
+              )
+            ) : (
+              <span className="pob-pill pob-pill--neutral text-xs">
+                {votingMode === 0 ? 'Consensus' : 'Weighted'}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -123,6 +145,7 @@ const IterationHeader = ({
           <dd><ContractAddress address={iteration.pob} label="PoB Contract" /></dd>
         </div>
       </dl>
+
       {/* Program brief (left) and Mint button (right) on same line */}
       {(iteration.link || (walletAddress && executeMint)) && (
         <div className="flex items-center justify-between gap-2">
@@ -208,78 +231,15 @@ const IterationHeader = ({
 
       {/* Winner Section - Only show when voting has ended */}
       {votingEnded && winner && entityVotes ? (
-        <div
-          style={{
-            marginTop: '1rem',
-            padding: '1rem',
-            border: '2px solid var(--pob-primary)',
-            borderRadius: '0.5rem',
-            backgroundColor: 'rgba(247, 147, 26, 0.05)',
-          }}
-        >
-          <h4 className="text-sm font-semibold text-white mb-2">Final Result</h4>
-
-          {winner.hasWinner && winner.projectAddress ? (
-            <div className="space-y-2">
-              <p className="text-lg font-bold text-[var(--pob-primary)]">
-                🏆 Winner:{' '}
-                <span className="italic">
-                  {getProjectLabel
-                    ? getProjectLabel(winner.projectAddress) ?? winner.projectAddress
-                    : winner.projectAddress}
-                </span>
-              </p>
-              <p className="text-xs text-[var(--pob-text-muted)]">
-                Determined by majority vote across three entities (DevRel, DAO HIC, Community).
-                This project received the most entity votes.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-yellow-400">
-                ⚠️ No Consensus Reached
-              </p>
-              <p className="text-xs text-[var(--pob-text-muted)] mb-2">
-                The contract's winner determination logic found no clear winner.
-                Each of the three voting entities (DevRel, DAO HIC, Community) votes independently,
-                and the winning project must receive a majority of entity votes.
-              </p>
-              <div className="text-xs text-[var(--pob-text-muted)] space-y-1">
-                <p className="font-semibold text-white">Entity Votes Cast:</p>
-                {[
-                  { label: 'Community', address: entityVotes.community },
-                  { label: 'DAO HIC', address: entityVotes.daoHic },
-                  { label: 'DevRel', address: entityVotes.devRel },
-                ]
-                  .sort((a, b) => a.label.localeCompare(b.label))
-                  .map(({ label, address }) => (
-                    <p key={label}>
-                      • {label}:{' '}
-                      {address ? (
-                        isOwner ? (
-                          <span className="italic">
-                            {getProjectLabel ? getProjectLabel(address) ?? 'Voted' : 'Voted'}
-                          </span>
-                        ) : (
-                          <span className="italic">Hidden (owner only)</span>
-                        )
-                      ) : (
-                        'Did not vote'
-                      )}
-                    </p>
-                  ))}
-              </div>
-              {entityVotes.devRel && entityVotes.daoHic && entityVotes.community &&
-               entityVotes.devRel !== entityVotes.daoHic &&
-               entityVotes.daoHic !== entityVotes.community &&
-               entityVotes.devRel !== entityVotes.community ? (
-                <p className="text-xs text-[var(--pob-text-muted)] mt-2">
-                  Result: Three-way tie (each entity voted for a different project)
-                </p>
-              ) : null}
-            </div>
-          )}
-        </div>
+        <FinalResultsPanel
+          winner={winner}
+          entityVotes={entityVotes}
+          votingMode={votingMode}
+          projects={projects}
+          projectScores={projectScores}
+          getProjectLabel={getProjectLabel}
+          isOwner={isOwner}
+        />
       ) : null}
     </section>
   );

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Contract, Interface, JsonRpcProvider, JsonRpcSigner, ethers } from 'ethers';
 import { JurySC_01ABI, PoB_01ABI } from '~/abis';
+import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
+import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
 import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
 import type {
   Badge,
@@ -9,6 +11,13 @@ import type {
   Project,
   ProjectMetadata,
 } from '~/interfaces';
+
+// Helper to select ABI based on iteration version
+function getJurySCABI(iteration: Iteration | null) {
+  if (!iteration) return JurySC_01ABI; // Default to latest
+  if (iteration.version === '001') return JurySC_01_v001_ABI;
+  return JurySC_01_v002_ABI; // Default to v002 for "002" and any future versions
+}
 
 interface EntityVotes {
   devRel: string | null;
@@ -78,6 +87,12 @@ export function useContractState(
     projectAddress: null,
     hasWinner: false,
   });
+  const [votingMode, setVotingMode] = useState<number>(0); // 0 = CONSENSUS, 1 = WEIGHTED
+  const [projectScores, setProjectScores] = useState<{
+    addresses: string[];
+    scores: bigint[];
+    totalPossible: bigint;
+  } | null>(null);
   const [statusFlags, setStatusFlags] = useState<{ isActive: boolean; votingEnded: boolean }>({
     isActive: false,
     votingEnded: false,
@@ -210,22 +225,47 @@ export function useContractState(
 
   const loadEntityVotes = useCallback(async (contract: Contract, isActive: boolean, votingEnded: boolean) => {
     console.log('[loadEntityVotes] Starting... isActive:', isActive, 'votingEnded:', votingEnded);
-    // Only load entity votes if contract is active or voting has ended
-    if (!isActive && !votingEnded) {
-      console.log('[loadEntityVotes] Skipping - contract not active and voting not ended');
-      setEntityVotes({ devRel: null, daoHic: null, community: null });
-      setWinner({ projectAddress: null, hasWinner: false });
-      return;
-    }
 
     try {
-      console.log('[loadEntityVotes] Loading entity votes from contract...');
       const iterationNum = currentIteration?.iteration;
+
+      // Always load voting mode (regardless of voting status)
+      const forcedVotingMode = currentIteration?.votingMode;
+
+      console.log('[loadEntityVotes] currentIteration:', currentIteration);
+      console.log('[loadEntityVotes] forcedVotingMode:', forcedVotingMode, 'type:', typeof forcedVotingMode);
+
+      if (forcedVotingMode !== undefined) {
+        console.log('[loadEntityVotes] ✅ Using forced voting mode from JSON:', forcedVotingMode);
+        setVotingMode(forcedVotingMode);
+      } else {
+        console.log('[loadEntityVotes] ❌ No forced voting mode, will query contract');
+        // Load from contract
+        const votingModeFromContract = await contract.votingMode().catch(() => 0);
+        setVotingMode(Number(votingModeFromContract));
+      }
+
+      // Only load entity votes if contract is active or voting has ended
+      if (!isActive && !votingEnded) {
+        console.log('[loadEntityVotes] Skipping entity votes - contract not active and voting not ended');
+        setEntityVotes({ devRel: null, daoHic: null, community: null });
+        setWinner({ projectAddress: null, hasWinner: false });
+        return;
+      }
+
+      console.log('[loadEntityVotes] Loading entity votes from contract...');
+
+      // Determine which winner function to call based on voting mode
+      const currentMode = forcedVotingMode !== undefined ? forcedVotingMode : await contract.votingMode().catch(() => 0);
+      const winnerPromise = Number(currentMode) === 0
+        ? contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean])
+        : contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]);
+
       const [devRelRaw, daoHicRaw, communityRaw, winnerRaw] = await cachedPromiseAll(publicProvider, selectedChainId, [
         { key: `iteration:${iterationNum}:getDevRelEntityVote`, promise: contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress) },
         { key: `iteration:${iterationNum}:getDaoHicEntityVote`, promise: contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress) },
         { key: `iteration:${iterationNum}:getCommunityEntityVote`, promise: contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress) },
-        { key: `iteration:${iterationNum}:getWinner`, promise: contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) },
+        { key: `iteration:${iterationNum}:getWinner:${currentMode}`, promise: winnerPromise },
       ]);
 
       const devRelAddress = normalizeAddress(devRelRaw);
@@ -245,6 +285,25 @@ export function useContractState(
         projectAddress: normalizeAddress(winnerAddressRaw),
         hasWinner: Boolean(hasWinnerRaw),
       });
+
+      // Load project scores if voting ended and in weighted mode
+      // Note: currentMode was already determined above
+      if (votingEnded && Number(currentMode) === 1) {
+        try {
+          const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
+          setProjectScores({
+            addresses: addresses as string[],
+            scores: scores as bigint[],
+            totalPossible: totalPossible as bigint,
+          });
+        } catch (error) {
+          console.log('[loadEntityVotes] getWinnerWithScores not available or failed:', error);
+          setProjectScores(null);
+        }
+      } else {
+        setProjectScores(null);
+      }
+
       console.log(
         '[loadEntityVotes] Complete. DevRel:',
         devRelAddress ?? 'None',
@@ -252,6 +311,8 @@ export function useContractState(
         daoHicAddress ?? 'None',
         'Community:',
         communityAddress ?? 'None',
+        'VotingMode:',
+        currentMode === 0 ? 'CONSENSUS' : 'WEIGHTED',
       );
     } catch (error) {
       console.error('[loadEntityVotes] Error:', error);
@@ -473,7 +534,7 @@ export function useContractState(
                 contract.round === currentIteration.round
               ) {
                 try {
-                  const iterationJuryContract = new Contract(contract.jurySC, JurySC_01ABI, rpcProvider);
+                  const iterationJuryContract = new Contract(contract.jurySC, getJurySCABI(currentIteration), rpcProvider);
                   const [hasVoted, vote] = await cachedPromiseAll(rpcProvider, contract.chainId, [
                     { key: `communityHasVoted:${contract.jurySC}:${tokenId}`, promise: iterationJuryContract.communityHasVoted(tokenId) },
                     { key: `communityVoteOf:${contract.jurySC}:${tokenId}`, promise: iterationJuryContract.communityVoteOf(tokenId) },
@@ -511,21 +572,21 @@ export function useContractState(
   const refreshProjects = useCallback(async () => {
     if (!signer || !currentIteration) return;
     console.log('[refreshProjects] Refreshing projects list...');
-    const contract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
+    const contract = new Contract(currentIteration.jurySC, getJurySCABI(currentIteration), signer);
     await loadProjects(contract);
   }, [signer, currentIteration, loadProjects]);
 
   const refreshOwnerData = useCallback(async () => {
     if (!signer || !currentIteration) return;
     console.log('[refreshOwnerData] Refreshing owner data...');
-    const contract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
+    const contract = new Contract(currentIteration.jurySC, getJurySCABI(currentIteration), signer);
     await loadOwnerData(contract);
   }, [signer, currentIteration, loadOwnerData]);
 
   const refreshVotingData = useCallback(async () => {
     if (!signer || !currentIteration || !walletAddress) return;
     console.log('[refreshVotingData] Refreshing voting data (bypassing cache)...');
-    const juryContract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
+    const juryContract = new Contract(currentIteration.jurySC, getJurySCABI(currentIteration), signer);
 
     // Bypass cache for fresh data after transaction
     const iterationNum = currentIteration?.iteration;
@@ -624,7 +685,7 @@ export function useContractState(
     setHasLoadError(false);
     try {
       // Use publicProvider for read-only operations, signer for write operations (if available)
-      const juryContract = new Contract(currentIteration?.jurySC, JurySC_01ABI, publicProvider);
+      const juryContract = new Contract(currentIteration.jurySC, getJurySCABI(currentIteration), publicProvider);
 
       console.log('[loadIterationState] Phase 1: Loading voting status...');
       // First, load voting status to get state flags
@@ -734,6 +795,8 @@ export function useContractState(
     daoHicVote,
     entityVotes,
     winner,
+    votingMode,
+    projectScores,
     statusFlags,
     iterationTimes,
     loading,

@@ -26,6 +26,8 @@ interface OwnerPanelProps {
   openAdminSection: string | null;
   signer: any;
   JurySC_01ABI: any;
+  votingMode: number;
+  setVotingMode: (mode: number, refreshCallback?: () => Promise<void>) => Promise<void>;
   getProjectLabel: (address: string | null) => string | null;
   handleToggleAdminSection: (sectionId: string) => void;
   runTransaction: (label: string, txFn: () => Promise<any>, refreshFn?: () => Promise<void>) => Promise<boolean>;
@@ -49,6 +51,8 @@ const OwnerPanel = ({
   openAdminSection,
   signer,
   JurySC_01ABI,
+  votingMode,
+  setVotingMode,
   getProjectLabel,
   handleToggleAdminSection,
   runTransaction,
@@ -198,6 +202,76 @@ const OwnerPanel = ({
             </div>
           ) : null}
         </article>
+
+        {/* Voting Mode - Only show before activation */}
+        {!statusFlags.isActive && !statusFlags.votingEnded && (
+          <article
+            className={`pob-accordion-item${openAdminSection === 'voting_mode' ? ' is-open' : ''}`}
+          >
+            <button
+              type="button"
+              className="pob-accordion-trigger"
+              onClick={() => handleToggleAdminSection('voting_mode')}
+              aria-expanded={openAdminSection === 'voting_mode'}
+              aria-controls="owner-voting-mode"
+            >
+              <span>Voting Mode</span>
+              <svg
+                className={`pob-accordion-icon${openAdminSection === 'voting_mode' ? ' is-open' : ''}`}
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                aria-hidden="true"
+              >
+                <path
+                  d="M2.25 4.5 6 8.25 9.75 4.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            {openAdminSection === 'voting_mode' ? (
+              <div className="pob-accordion-content" id="owner-voting-mode">
+                <p className="text-sm text-[var(--pob-text-muted)]">
+                  Current mode: <span className="text-white font-semibold">{votingMode === 0 ? '🎯 Consensus' : '⚖️ Weighted'}</span>
+                  {typeof currentIteration.votingMode === 'number' && (
+                    <span className="text-xs text-[var(--pob-text-muted)]"> (read-only)</span>
+                  )}
+                </p>
+                <p className="pob-form-hint" style={{ marginTop: '0.75rem' }}>
+                  {votingMode === 0
+                    ? 'Consensus mode: Winner must receive votes from at least 2 out of 3 entities (DevRel, DAO HIC, Community).'
+                    : 'Weighted mode: Each entity has 1/3 weight. Winner has the highest proportional score across all entities.'}
+                </p>
+                {typeof currentIteration.votingMode === 'number' ? (
+                  <p className="pob-form-hint" style={{ marginTop: '0.75rem' }}>
+                    ⚠️ Voting mode is set in iterations.json and cannot be changed from UI.
+                  </p>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const newMode = votingMode === 0 ? 1 : 0;
+                        await setVotingMode(newMode, refreshVotingData);
+                      }}
+                      disabled={pendingAction !== null}
+                      className="pob-button pob-button--outline pob-button--full"
+                      style={{ marginTop: '0.75rem' }}
+                    >
+                      Switch to {votingMode === 0 ? '⚖️ Weighted' : '🎯 Consensus'}
+                    </button>
+                    <p className="pob-form-hint" style={{ marginTop: '0.75rem' }}>
+                      ⚠️ Voting mode cannot be changed after activation.
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : null}
+          </article>
+        )}
 
         {/* Register Project - Only show before voting ends */}
         {!statusFlags.votingEnded && (

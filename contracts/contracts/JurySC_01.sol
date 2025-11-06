@@ -15,6 +15,14 @@ import "./PoB_01.sol";
 contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
     uint256 public constant COMMUNITY_DEPOSIT = 30 ether; // 30 SYS
+    uint256 public constant PRECISION = 1 ether; // 1e18 - same as ETH precision
+    uint256 public constant ENTITY_WEIGHT = PRECISION / 3; // Each entity worth 1/3
+
+    // Voting modes
+    enum VotingMode {
+        CONSENSUS,  // 2-out-of-3 entity majority required
+        WEIGHTED    // Proportional vote-weighted scoring
+    }
 
     // Core
     PoB_01 public pob;
@@ -52,6 +60,9 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     uint256 public communityVotesCast;
     mapping(address => uint256) public communityProjectVotes;
 
+    // Upgrade-safe storage additions (v2+)
+    VotingMode public votingMode; // Current voting mode (added in v2)
+
     // Errors
     error NotActive();
     error NotOwner();
@@ -68,6 +79,7 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     error NotDaoHicVoter();
     error NoConsensus();
     error AlreadyClosed();
+    error UpgradesDuringVotingNotAllowed();
 
     // Events
     event ProjectRegistered(uint256 indexed projectId, address indexed projectAddress);
@@ -81,6 +93,7 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     event VotedCommunity(uint256 indexed tokenId, address indexed voter, uint256 indexed projectId);
     event ContractLockedForHistory(address indexed winningProject);
     event ClosedManually(uint64 timestamp);
+    event VotingModeChanged(VotingMode indexed oldMode, VotingMode indexed newMode);
 
     /**
      * @notice Initialize the contract
@@ -95,6 +108,7 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
 
         pob = PoB_01(pob_);
         iteration = iteration_;
+        votingMode = VotingMode.CONSENSUS; // Default to consensus-based voting
     }
 
     // ============================================
@@ -208,17 +222,29 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     }
 
     /**
-     * @notice Activate voting window
-     * @param startTime_ Voting start timestamp
+     * @notice Set voting mode (CONSENSUS or WEIGHTED)
+     * @param mode_ The voting mode to use for determining winner
+     * @dev Can only be changed before voting starts (startTime == 0)
      */
-    function activate(uint64 startTime_) external onlyOwner {
+    function setVotingMode(VotingMode mode_) external onlyOwner {
+        if (startTime != 0) revert AlreadyActivated();
+        VotingMode oldMode = votingMode;
+        votingMode = mode_;
+        emit VotingModeChanged(oldMode, mode_);
+    }
+
+    /**
+     * @notice Activate voting window (starts immediately)
+     * @dev Voting starts at current block timestamp and lasts 48 hours
+     */
+    function activate() external onlyOwner {
         if (startTime != 0) revert AlreadyActivated();
         if (devRelAccount == address(0)) revert NotEnoughVoters();
         if (daoHicVoters.length < 1) revert NotEnoughVoters();
         if (projectCount < 1) revert InvalidProject();
 
-        startTime = startTime_;
-        endTime = startTime_ + 48 hours;
+        startTime = uint64(block.timestamp);
+        endTime = startTime + 48 hours;
         projectsLocked = true;
         manuallyClosed = false;
         manualEndTime = 0;
@@ -270,6 +296,7 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
         if (!isActive()) revert NotActive();
         if (locked) revert ContractLocked();
         if (!isRegisteredProject[project]) revert InvalidProject();
+        if (isRegisteredProject[msg.sender]) revert ProjectCannotVote();
 
         // Verify NFT ownership
         if (pob.ownerOf(tokenId) != msg.sender) revert NotOwner();
@@ -459,11 +486,13 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     }
 
     /**
-     * @notice Get winner (project with most entity votes)
-     * @return winningProject Project address of winner
-     * @return hasWinner True if clear winner exists
+     * @notice Get winner using consensus-based system (2-out-of-3 entity majority)
+     * @dev Requires at least 2 entities to vote for the same project
+     *      Each entity gets one vote based on their internal consensus
+     * @return winningProject Address of winning project
+     * @return hasWinner True if a project has 2+ entity votes
      */
-    function getWinner() public view returns (address winningProject, bool hasWinner) {
+    function getWinnerConsensus() public view returns (address winningProject, bool hasWinner) {
         address devRelVote_ = getDevRelEntityVote();
         address daoHicVote = getDaoHicEntityVote();
         address communityVote = getCommunityEntityVote();
@@ -520,6 +549,143 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
         }
 
         return (projectAddress[winnerId], true);
+    }
+
+    /**
+     * @notice Get winner using weighted proportional scoring system
+     * @dev Each entity (DevRel, DAO HIC, Community) has 1/3 weight (ENTITY_WEIGHT)
+     *      Projects receive fractional weights based on vote distribution within each entity
+     *      Winner is project with highest cumulative score across all entities
+     * @return winningProject Address of winning project
+     * @return hasWinner True if there are votes cast
+     */
+    function getWinnerWeighted() public view returns (address winningProject, bool hasWinner) {
+        if (projectCount == 0) {
+            return (address(0), false);
+        }
+
+        // Calculate proportional scores for each project
+        uint256[] memory scores = new uint256[](projectCount + 1); // 1-indexed
+
+        // DevRel entity: Binary vote (all or nothing)
+        if (devRelHasVoted && devRelVote != address(0)) {
+            uint256 pid = projectIdOf[devRelVote];
+            if (pid != 0) {
+                scores[pid] += ENTITY_WEIGHT; // Full 1/3 weight
+            }
+        }
+
+        // DAO HIC entity: Proportional based on vote distribution
+        if (daoHicVotesCast > 0) {
+            for (uint256 pid = 1; pid <= projectCount; pid++) {
+                address project = projectAddress[pid];
+                uint256 votes = daoHicProjectVotes[project];
+                if (votes > 0) {
+                    // Score = (votes / totalVotes) * ENTITY_WEIGHT
+                    scores[pid] += (votes * ENTITY_WEIGHT) / daoHicVotesCast;
+                }
+            }
+        }
+
+        // Community entity: Proportional based on vote distribution
+        if (communityVotesCast > 0) {
+            for (uint256 pid = 1; pid <= projectCount; pid++) {
+                address project = projectAddress[pid];
+                uint256 votes = communityProjectVotes[project];
+                if (votes > 0) {
+                    // Score = (votes / totalVotes) * ENTITY_WEIGHT
+                    scores[pid] += (votes * ENTITY_WEIGHT) / communityVotesCast;
+                }
+            }
+        }
+
+        // Find project with highest score
+        uint256 maxScore = 0;
+        uint256 winnerId = 0;
+        bool isTie = false;
+
+        for (uint256 pid = 1; pid <= projectCount; pid++) {
+            if (scores[pid] > maxScore) {
+                maxScore = scores[pid];
+                winnerId = pid;
+                isTie = false;
+            } else if (scores[pid] == maxScore && maxScore > 0) {
+                isTie = true;
+            }
+        }
+
+        // No winner if no votes at all or if there's a tie
+        if (winnerId == 0 || maxScore == 0 || isTie) {
+            return (address(0), false);
+        }
+
+        return (projectAddress[winnerId], true);
+    }
+
+    /**
+     * @notice Get detailed scores for all projects (for transparency)
+     * @return projectAddresses Array of project addresses
+     * @return scores Array of scores (in PRECISION units, where PRECISION = 1e18)
+     * @return totalPossibleScore Maximum possible score (3 * ENTITY_WEIGHT = 1e18)
+     */
+    function getWinnerWithScores() public view returns (
+        address[] memory projectAddresses,
+        uint256[] memory scores,
+        uint256 totalPossibleScore
+    ) {
+        projectAddresses = new address[](projectCount);
+        scores = new uint256[](projectCount);
+        totalPossibleScore = PRECISION; // 3 * ENTITY_WEIGHT = 1e18
+
+        if (projectCount == 0) {
+            return (projectAddresses, scores, totalPossibleScore);
+        }
+
+        // Calculate scores for each project
+        for (uint256 pid = 1; pid <= projectCount; pid++) {
+            address project = projectAddress[pid];
+            projectAddresses[pid - 1] = project;
+            uint256 score = 0;
+
+            // DevRel contribution
+            if (devRelHasVoted && devRelVote == project) {
+                score += ENTITY_WEIGHT;
+            }
+
+            // DAO HIC contribution
+            if (daoHicVotesCast > 0) {
+                uint256 daoVotes = daoHicProjectVotes[project];
+                if (daoVotes > 0) {
+                    score += (daoVotes * ENTITY_WEIGHT) / daoHicVotesCast;
+                }
+            }
+
+            // Community contribution
+            if (communityVotesCast > 0) {
+                uint256 commVotes = communityProjectVotes[project];
+                if (commVotes > 0) {
+                    score += (commVotes * ENTITY_WEIGHT) / communityVotesCast;
+                }
+            }
+
+            scores[pid - 1] = score;
+        }
+
+        return (projectAddresses, scores, totalPossibleScore);
+    }
+
+    /**
+     * @notice Get winner based on current voting mode
+     * @dev Dispatches to either getWinnerConsensus() or getWinnerWeighted()
+     * @return winningProject Address of winning project
+     * @return hasWinner True if winner exists based on current mode
+     */
+    function getWinner() public view returns (address winningProject, bool hasWinner) {
+        if (votingMode == VotingMode.CONSENSUS) {
+            return getWinnerConsensus();
+        } else {
+            return getWinnerWeighted();
+        }
     }
 
     /**
@@ -595,9 +761,10 @@ contract JurySC_01 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
 
     /**
      * @notice Authorize upgrade (owner only)
-     * @dev Upgrades are blocked after contract is locked for history
+     * @dev Upgrades are blocked during active voting and after contract is locked for history
      */
     function _authorizeUpgrade(address /* newImplementation */) internal view override onlyOwner {
         if (locked) revert ContractLocked();
+        if (isActive()) revert UpgradesDuringVotingNotAllowed();
     }
 }

@@ -19,6 +19,7 @@ const ProjectCard = ({
   project,
   votingRole,
   hasVotedForProject,
+  canVote,
   isOwner,
   projectsLocked,
   pendingAction,
@@ -77,7 +78,7 @@ const ProjectCard = ({
               <span className="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)]">
                 VOTED
               </span>
-            ) : (
+            ) : canVote ? (
               <button
                 type="button"
                 onClick={() => {
@@ -102,7 +103,7 @@ const ProjectCard = ({
               >
                 VOTE
               </button>
-            )
+            ) : null
           ) : null}
         </div>
       </div>

@@ -14,7 +14,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Paths configuration
-const ARTIFACTS_DIR = process.env.HARDHAT_ARTIFACTS || "/tmp/syscoin-hardhat-artifacts";
+const ARTIFACTS_DIR = path.join(__dirname, "../artifacts");
 const FRONTEND_ABIS_DIR = path.join(__dirname, "../../frontend/src/abis");
 
 const CONTRACTS = [

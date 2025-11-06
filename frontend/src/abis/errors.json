@@ -159,6 +159,11 @@
           "type": "bytes32"
         }
       ]
+    },
+    {
+      "name": "UpgradesDuringVotingNotAllowed",
+      "signature": "UpgradesDuringVotingNotAllowed()",
+      "inputs": []
     }
   ],
   "PoB_01": [
