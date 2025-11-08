@@ -77,11 +77,9 @@ const OwnerPanel = ({
         return;
       }
 
-      const startTime = Math.floor(Date.now() / 1000);
-
       const success = await runTransaction(
         'Activate Program',
-        () => contract.activate(startTime),
+        () => contract.activate(),
         refreshVotingData,
       );
 

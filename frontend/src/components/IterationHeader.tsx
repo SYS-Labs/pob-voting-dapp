@@ -2,6 +2,7 @@ import type { Iteration, ParticipantRole, Badge } from '~/interfaces';
 import { formatDate } from '~/utils';
 import { NETWORKS } from '~/constants/networks';
 import FinalResultsPanel from './FinalResultsPanel';
+import ContractAddress from './ContractAddress';
 
 interface CommunityBadge {
   tokenId: string;
@@ -74,25 +75,8 @@ const IterationHeader = ({
   }
 
   const network = NETWORKS[iteration.chainId];
-  const explorerUrl = network?.explorerUrl;
   const mintAmount = network?.mintAmount ?? '30';
   const tokenSymbol = network?.tokenSymbol ?? 'TSYS';
-
-  const ContractAddress = ({ address }: { address: string; label: string }) => {
-    if (explorerUrl) {
-      return (
-        <a
-          href={`${explorerUrl}/address/${address}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="pob-mono text-xs text-white/80 hover:text-[var(--pob-primary)] transition-colors underline decoration-transparent hover:decoration-inherit"
-        >
-          {address}
-        </a>
-      );
-    }
-    return <span className="pob-mono text-xs text-white/80">{address}</span>;
-  };
 
   return (
     <section className="pob-pane">
@@ -138,11 +122,11 @@ const IterationHeader = ({
         )}
         <div>
           <dt className="pob-label">Jury Contract</dt>
-          <dd><ContractAddress address={iteration.jurySC} label="Jury Contract" /></dd>
+          <dd><ContractAddress address={iteration.jurySC} chainId={iteration.chainId} /></dd>
         </div>
         <div>
           <dt className="pob-label">PoB Contract</dt>
-          <dd><ContractAddress address={iteration.pob} label="PoB Contract" /></dd>
+          <dd><ContractAddress address={iteration.pob} chainId={iteration.chainId} /></dd>
         </div>
       </dl>
 

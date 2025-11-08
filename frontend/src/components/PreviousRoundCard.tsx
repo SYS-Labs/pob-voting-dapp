@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Contract } from 'ethers';
 import type { PreviousRound, ParticipantRole } from '~/interfaces';
-import { NETWORKS } from '~/constants/networks';
 import { PoB_01ABI } from '~/abis';
 import { formatDate } from '~/utils';
 import { usePreviousRoundData } from '~/hooks/usePreviousRoundData';
 import FinalResultsPanel from './FinalResultsPanel';
+import ContractAddress from './ContractAddress';
 
 interface PreviousRoundCardProps {
   round: PreviousRound;
@@ -34,9 +34,6 @@ const PreviousRoundCard = ({
 }: PreviousRoundCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { loading, roundData } = usePreviousRoundData(round, chainId, publicProvider, isExpanded, walletAddress);
-
-  const network = NETWORKS[chainId];
-  const explorerUrl = network?.explorerUrl;
 
   // Determine user's role in this round for minting
   const getUserRole = async (): Promise<ParticipantRole | null> => {
@@ -98,22 +95,6 @@ const PreviousRoundCard = ({
       () => contract.claim(tokenId),
       refreshBadges,
     );
-  };
-
-  const ContractAddress = ({ address }: { address: string }) => {
-    if (explorerUrl) {
-      return (
-        <a
-          href={`${explorerUrl}/address/${address}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="pob-mono text-xs text-white/80 hover:text-[var(--pob-primary)] transition-colors underline decoration-transparent hover:decoration-inherit"
-        >
-          {address}
-        </a>
-      );
-    }
-    return <span className="pob-mono text-xs text-white/80">{address}</span>;
   };
 
   return (
@@ -220,11 +201,11 @@ const PreviousRoundCard = ({
                 </div>
                 <div>
                   <dt className="pob-label">Jury Contract</dt>
-                  <dd><ContractAddress address={round.jurySC} /></dd>
+                  <dd><ContractAddress address={round.jurySC} chainId={chainId} /></dd>
                 </div>
                 <div>
                   <dt className="pob-label">PoB Contract</dt>
-                  <dd><ContractAddress address={round.pob} /></dd>
+                  <dd><ContractAddress address={round.pob} chainId={chainId} /></dd>
                 </div>
               </dl>
 

@@ -210,8 +210,8 @@ const IterationPage = ({
 
   // Wrap executeVote - it internally handles refreshing via txRefreshCallback
   const handleVote = useCallback(
-    (role: ParticipantRole, projectAddress: string, tokenId?: string) => {
-      executeVote(role, projectAddress, tokenId, refreshVotingData);
+    async (role: ParticipantRole, projectAddress: string, tokenId?: string) => {
+      await executeVote(role, projectAddress, tokenId, refreshVotingData);
     },
     [executeVote, refreshVotingData],
   );
@@ -224,7 +224,7 @@ const IterationPage = ({
     [],
   );
 
-  const handleConfirmVote = useCallback(() => {
+  const handleConfirmVote = useCallback(async () => {
     if (!pendingVote) return;
 
     // Determine voting role - projects cannot vote, community is default
@@ -239,11 +239,22 @@ const IterationPage = ({
             : 'community';
 
     if (votingRole) {
-      handleVote(votingRole, pendingVote.project.address, pendingVote.tokenId);
+      await handleVote(votingRole, pendingVote.project.address, pendingVote.tokenId);
+      // Close modal after vote transaction completes
+      setPendingVote(null);
     }
-
-    setPendingVote(null);
   }, [pendingVote, roles, isOwner, handleVote]);
+
+  // Auto-update pendingVote.tokenId when a new badge appears (after minting)
+  useEffect(() => {
+    if (pendingVote && !pendingVote.tokenId && currentIterationCommunityBadges.length > 0) {
+      const newBadge = currentIterationCommunityBadges[0];
+      setPendingVote({
+        project: pendingVote.project,
+        tokenId: newBadge.tokenId
+      });
+    }
+  }, [pendingVote, currentIterationCommunityBadges]);
 
   const handleCloseVoteModal = useCallback(() => {
     setPendingVote(null);

@@ -72,21 +72,6 @@ const VoteConfirmationModal = ({
               </div>
             </div>
 
-            {executeMint && (
-              <button
-                type="button"
-                onClick={() => {
-                  executeMint('community', refreshBadges);
-                  // Don't close immediately - let the TxPendingModal take over
-                  // User can close this modal manually if needed
-                }}
-                disabled={isPending}
-                className="pob-button w-full justify-center mb-3"
-              >
-                {pendingAction === 'Mint Community Badge' ? 'Minting...' : `Mint community badge (${mintAmount} ${tokenSymbol})`}
-              </button>
-            )}
-
             <p className="text-xs text-[var(--pob-text-muted)] italic mb-4">
               After minting, you can vote on any project during the voting period.
             </p>
@@ -100,6 +85,19 @@ const VoteConfirmationModal = ({
               >
                 Cancel
               </button>
+              {executeMint && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await executeMint('community', refreshBadges);
+                    // tokenId will be auto-filled by useEffect in parent after badges refresh
+                  }}
+                  disabled={isPending}
+                  className="pob-button flex-1 justify-center"
+                >
+                  {pendingAction === 'Mint Community Badge' ? 'Minting...' : `Mint Badge (${mintAmount} ${tokenSymbol})`}
+                </button>
+              )}
             </div>
           </>
         ) : (
