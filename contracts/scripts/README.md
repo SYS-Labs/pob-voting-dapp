@@ -75,9 +75,9 @@ ITERATIONS_FILE=../frontend/public/iterations.json ITERATION=1 node scripts/chec
 ```
 
 **Environment Variables:**
-- `CHAIN_ID`: Network chain ID (default: 5700 for Rollux Tanenbaum)
-  - `5700` - Rollux Tanenbaum testnet
-  - `57` - Syscoin mainnet
+- `CHAIN_ID`: Network chain ID (default: 5700 for Syscoin Tanenbaum)
+  - `5700` - Syscoin NEVM testnet
+  - `57` - Syscoin NEVM mainnet
   - `31337` - Local hardhat network
 - `ITERATION`: Iteration number (default: 1)
 - `ROUND`: Optional round number
