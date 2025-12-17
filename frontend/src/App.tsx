@@ -28,16 +28,18 @@ import IterationsPage from '~/pages/IterationsPage';
 import BadgesPage from '~/pages/BadgesPage';
 import FaqPage from '~/pages/FaqPage';
 import IterationPage from '~/pages/IterationPage';
+import ForumPage from '~/pages/ForumPage';
 import NotFoundPage from '~/pages/NotFoundPage';
 import type { IterationStatus } from '~/interfaces';
 
 // Map routes to page types for backward compatibility
-type PageType = 'iterations' | 'iteration' | 'badges' | 'faq';
+type PageType = 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum';
 
 function getPageFromPath(pathname: string): PageType {
   if (pathname.startsWith('/iteration/')) return 'iteration';
   if (pathname === '/badges') return 'badges';
   if (pathname === '/faq') return 'faq';
+  if (pathname === '/forum') return 'forum';
   return 'iterations';
 }
 
@@ -422,6 +424,12 @@ function App() {
 
           {/* FAQ page */}
           <Route path="/faq" element={<FaqPage chainId={chainId} />} />
+
+          {/* Forum page */}
+          <Route
+            path="/forum"
+            element={<ForumPage walletAddress={walletAddress} />}
+          />
 
           {/* 404 - catch all */}
           <Route path="*" element={<NotFoundPage />} />

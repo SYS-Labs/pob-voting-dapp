@@ -54,7 +54,7 @@ export function useContractState(
   projectMetadata: Record<string, ProjectMetadata>,
   projectMetadataLoading: boolean,
   allIterations: Iteration[],
-  currentPage: 'iterations' | 'iteration' | 'badges' | 'faq',
+  currentPage: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum',
 ) {
   const [roles, setRoles] = useState<RoleStatuses>({
     community: false,

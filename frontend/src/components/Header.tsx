@@ -11,8 +11,8 @@ interface HeaderProps {
   pendingAction: string | null;
   onSwitchNetwork: () => void;
   onOpenDisconnect: () => void;
-  currentPage: 'iterations' | 'iteration' | 'badges' | 'faq';
-  onNavigate: (page: 'iterations' | 'iteration' | 'badges' | 'faq') => void;
+  currentPage: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum';
+  onNavigate: (page: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum') => void;
   showIterationTab: boolean;
   showBadgesTab: boolean;
   currentIteration: number | null;
@@ -41,9 +41,10 @@ const Header = ({
 
   const iterationLabel = currentIteration !== null ? `PoB #${currentIteration}` : 'Iteration';
 
-  const tabs: Array<{ id: 'iterations' | 'iteration' | 'badges' | 'faq'; label: string; show: boolean; path: string }> = [
+  const tabs: Array<{ id: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum'; label: string; show: boolean; path: string }> = [
     { id: 'iterations', label: 'Home', show: true, path: '/' },
     { id: 'iteration', label: iterationLabel, show: showIterationTab, path: currentIteration ? `/iteration/${currentIteration}` : '/iteration/1' },
+    { id: 'forum', label: 'Forum', show: true, path: '/forum' },
     { id: 'badges', label: 'Badges', show: showBadgesTab, path: '/badges' },
     { id: 'faq', label: 'FAQ', show: true, path: '/faq' },
   ];

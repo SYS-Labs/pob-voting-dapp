@@ -1,0 +1,108 @@
+/**
+ * Forum Styles
+ *
+ * Styling for Forum page components using PoB dark theme
+ */
+
+/* Thread List */
+.pob-forum-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pob-forum-thread-card {
+  cursor: pointer;
+  transition: all var(--pob-transition);
+  border: 1px solid var(--pob-border);
+}
+
+.pob-forum-thread-card:hover {
+  border-color: var(--pob-border-strong);
+  background: var(--pob-surface-soft);
+}
+
+.pob-forum-thread-card.active {
+  border-color: var(--pob-primary);
+  box-shadow: 0 0 20px rgba(247, 147, 26, 0.15);
+  background: var(--pob-surface-soft);
+}
+
+/* Post Detail */
+.pob-forum-post {
+  border-left: 2px solid var(--pob-border);
+  padding-left: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+}
+
+.pob-forum-post--trusted {
+  border-left-color: var(--pob-primary);
+}
+
+/* Admin Panel */
+.pob-forum-admin {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--pob-border);
+}
+
+/* Forum-specific pill variants */
+.pob-pill--muted {
+  background: var(--pob-surface-soft);
+  color: var(--pob-text-dim);
+}
+
+.pob-pill--warning {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+}
+
+.pob-pill--danger {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+}
+
+.pob-pill--success {
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+}
+
+/* Input field styling */
+.pob-input {
+  background: var(--pob-surface);
+  border: 1px solid var(--pob-border);
+  border-radius: var(--pob-radius-mobile);
+  padding: 0.75rem 1rem;
+  color: var(--pob-text);
+  font-size: 0.875rem;
+  transition: all var(--pob-transition);
+}
+
+.pob-input:focus {
+  outline: none;
+  border-color: var(--pob-primary);
+  box-shadow: 0 0 0 3px rgba(247, 147, 26, 0.1);
+}
+
+.pob-input::placeholder {
+  color: var(--pob-text-dim);
+}
+
+@media (min-width: 768px) {
+  .pob-input {
+    border-radius: var(--pob-radius-desktop);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .pob-forum-post {
+    padding-left: 0.5rem;
+  }
+
+  .pob-forum-admin {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "pob-forum-api",
+  "version": "0.1.0",
+  "description": "Backend API for PoB Forum - X/Twitter indexing, AI workers, and blockchain recording",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc && cp src/db/schema.sql dist/db/schema.sql",
+    "dev:indexer": "tsx --env-file=.env src/indexer/index.ts",
+    "dev:api": "tsx --env-file=.env src/api/index.ts",
+    "dev:workers": "tsx --env-file=.env src/workers/index.ts",
+    "db:init": "tsx --env-file=.env src/db/init.ts",
+    "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop all",
+    "pm2:restart": "pm2 restart all",
+    "pm2:delete": "pm2 delete all",
+    "pm2:logs": "pm2 logs",
+    "pm2:status": "pm2 status",
+    "pm2:monit": "pm2 monit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@the-convocation/twitter-scraper": "^0.21.0",
+    "agent-twitter-client": "^0.0.18",
+    "better-sqlite3": "^11.8.1",
+    "crypto-js": "^4.2.0",
+    "ethers": "^6.13.2",
+    "oauth-1.0a": "^2.2.6",
+    "openai": "^4.77.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.2",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "keywords": [
+    "blockchain",
+    "oracle",
+    "twitter",
+    "x",
+    "syscoin",
+    "indexer",
+    "ai",
+    "smart-contract"
+  ],
+  "author": "",
+  "license": "MIT"
+}
