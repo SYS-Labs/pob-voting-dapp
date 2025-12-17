@@ -28,6 +28,7 @@ import IterationsPage from '~/pages/IterationsPage';
 import BadgesPage from '~/pages/BadgesPage';
 import FaqPage from '~/pages/FaqPage';
 import IterationPage from '~/pages/IterationPage';
+import NotFoundPage from '~/pages/NotFoundPage';
 import type { IterationStatus } from '~/interfaces';
 
 // Map routes to page types for backward compatibility
@@ -421,6 +422,9 @@ function App() {
 
           {/* FAQ page */}
           <Route path="/faq" element={<FaqPage chainId={chainId} />} />
+
+          {/* 404 - catch all */}
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
 
