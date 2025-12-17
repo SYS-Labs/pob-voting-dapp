@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { Contract } from 'ethers';
 import '~/App.css';
 import Header from '~/components/Header';
@@ -11,18 +12,15 @@ import Footer from '~/components/Footer';
 import { JurySC_01ABI } from '~/abis';
 import { SYS_COIN_ID, SYS_TESTNET_ID, HARDHAT_ID, NETWORKS } from '~/constants/networks';
 import { formatAddress } from '~/utils';
+import { useAppState } from '~/contexts/AppStateContext';
 
 // Hooks
 import {
-  useWallet,
-  useIteration,
   useIterationStatuses,
   useContractState,
   useTransactions,
   useModals,
   useAdminPanel,
-  useProjectMetadata,
-  usePublicProvider,
 } from '~/hooks';
 
 // Pages
@@ -32,57 +30,51 @@ import FaqPage from '~/pages/FaqPage';
 import IterationPage from '~/pages/IterationPage';
 import type { IterationStatus } from '~/interfaces';
 
+// Map routes to page types for backward compatibility
 type PageType = 'iterations' | 'iteration' | 'badges' | 'faq';
 
+function getPageFromPath(pathname: string): PageType {
+  if (pathname.startsWith('/iteration/')) return 'iteration';
+  if (pathname === '/badges') return 'badges';
+  if (pathname === '/faq') return 'faq';
+  return 'iterations';
+}
+
 function App() {
-  const [currentPage, setCurrentPage] = useState<PageType>('iterations');
+  const location = useLocation();
+  const currentPage = getPageFromPath(location.pathname);
+
   const [error, setError] = useState<string | null>(null);
 
-  // Project metadata
-  const { projectMetadata, projectMetadataLoading } = useProjectMetadata();
+  // Get global state from context
+  const {
+    wallet: { provider, signer, walletAddress, chainId, connectWallet, disconnectWallet },
+    filteredIterations,
+    selectedIterationNumber,
+    setSelectedIteration,
+    currentIteration,
+    iterationStatuses: globalIterationStatuses,
+    updateIterationStatus,
+    projectMetadata,
+    projectMetadataLoading,
+    publicProvider,
+  } = useAppState();
 
-  // Contract state depends on wallet and iteration, so we need resetState first
-  const resetContractState = useCallback(() => {
-    // This will be set by useContractState's resetState
-  }, []);
-
-  // Wallet state
-  const { provider, signer, walletAddress, chainId, connectWallet, disconnectWallet } = useWallet(resetContractState);
-
-  // Iteration management
-  const { selectedIterationNumber, setSelectedIteration, filteredIterations, currentIteration } =
-    useIteration(chainId);
-
-  // Public provider for read-only operations
-  const readChainId = currentIteration?.chainId ?? chainId;
-  const publicProvider = usePublicProvider(readChainId);
-
-  console.log('[App] Read chain setup:', {
-    walletChainId: chainId,
-    currentIterationChainId: currentIteration?.chainId,
-    readChainId,
-    hasPublicProvider: !!publicProvider,
-  });
-
-  // Network validation - allow reading from any iteration network even if wallet is on different network
+  // Network validation
   const correctNetwork =
     chainId === SYS_COIN_ID || chainId === SYS_TESTNET_ID || chainId === HARDHAT_ID || chainId === null;
 
-  // For reading iteration data, we should allow any network if we have a public provider
-  const canReadIterationData = publicProvider !== null;
-
-  console.log('[App] Network validation:', {
-    walletNetwork: chainId,
-    correctNetwork,
-    canReadIterationData,
-  });
-
-  // Iteration statuses - single source of truth for all iteration states
-  const { statuses: iterationStatuses, updateIterationStatus } = useIterationStatuses(
+  // Iteration statuses - always load (useIterationStatuses creates its own providers per chain)
+  const { statuses: contractIterationStatuses } = useIterationStatuses(
     filteredIterations,
-    publicProvider,
-    canReadIterationData,
+    publicProvider, // Kept for backward compatibility but not used
+    true, // Always allow reading - hook creates its own providers
   );
+
+  // Merge statuses: prefer context, fallback to contract
+  const iterationStatuses = useMemo(() => {
+    return { ...contractIterationStatuses, ...globalIterationStatuses };
+  }, [contractIterationStatuses, globalIterationStatuses]);
 
   // Contract state
   const {
@@ -112,7 +104,18 @@ function App() {
     refreshVotingData,
     refreshBadges,
     retryLoadIteration,
-  } = useContractState(signer, walletAddress, currentIteration, correctNetwork, publicProvider, chainId, projectMetadata, projectMetadataLoading, filteredIterations, currentPage);
+  } = useContractState(
+    signer,
+    walletAddress,
+    currentIteration,
+    correctNetwork,
+    publicProvider,
+    chainId,
+    projectMetadata,
+    projectMetadataLoading,
+    filteredIterations,
+    currentPage,
+  );
 
   // Transactions
   const {
@@ -146,7 +149,6 @@ function App() {
 
   // Computed values
   const shuffledProjects = useMemo(() => {
-    // Fisher-Yates shuffle algorithm to randomize project order
     const shuffled = [...projects];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -155,15 +157,20 @@ function App() {
     return shuffled;
   }, [projects]);
 
-  // Get status for current iteration from the single source of truth
   const iterationStatus = useMemo((): IterationStatus => {
     if (!currentIteration) return 'upcoming';
     const status = iterationStatuses[currentIteration.iteration];
     return status ?? 'upcoming';
   }, [currentIteration, iterationStatuses]);
 
-  // Update statuses map when statusFlags changes (keep them in sync)
+  // Update statuses map when statusFlags changes (only on iteration detail page)
   useMemo(() => {
+    // Only update from statusFlags on iteration detail page (not on iterations list page)
+    // On iterations page, statusFlags isn't loaded so it would incorrectly set "upcoming"
+    if (currentPage !== 'iteration') {
+      return;
+    }
+
     if (currentIteration && statusFlags) {
       let newStatus: IterationStatus = 'upcoming';
       if (statusFlags.votingEnded) {
@@ -172,13 +179,12 @@ function App() {
         newStatus = 'active';
       }
 
-      // Only update if different from current
       const currentStatus = iterationStatuses[currentIteration.iteration];
       if (currentStatus !== newStatus) {
         updateIterationStatus(currentIteration.iteration, newStatus);
       }
     }
-  }, [currentIteration, statusFlags, iterationStatuses, updateIterationStatus]);
+  }, [currentPage, currentIteration, statusFlags, iterationStatuses, updateIterationStatus]);
 
   const statusBadge = useMemo(() => {
     if (iterationStatus === 'upcoming') return { label: 'Upcoming', color: 'pob-pill pob-pill--upcoming' };
@@ -186,7 +192,6 @@ function App() {
     return { label: 'Active', color: 'pob-pill pob-pill--active' };
   }, [iterationStatus]);
 
-  // Show iteration page if there's a current iteration (wallet not required for viewing)
   const showIterationPage = Boolean(currentIteration);
 
   const getProjectLabel = useCallback(
@@ -248,7 +253,6 @@ function App() {
         onConfirmed={() => {
           console.log('[App] Transaction confirmed, calling refresh callback');
           clearTxPending();
-          // Call the targeted refresh callback if available
           if (txRefreshCallback) {
             console.log('[App] Executing txRefreshCallback');
             void txRefreshCallback();
@@ -306,7 +310,7 @@ function App() {
         title={hasLoadError ? 'Error Loading Program' : 'Transaction Error'}
       />
 
-      {/* Header */}
+      {/* Header - will be updated to use Link in next step */}
       <Header
         walletAddress={walletAddress}
         onConnect={connectWallet}
@@ -316,8 +320,8 @@ function App() {
         onSwitchNetwork={() => setSwitchNetworkModalOpen(true)}
         onOpenDisconnect={() => setDisconnectModalOpen(true)}
         currentPage={currentPage}
-        onNavigate={(page) => {
-          setCurrentPage(page);
+        onNavigate={(_page) => {
+          // This will be replaced with navigate() in Header component
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         showIterationTab={Boolean(currentIteration)}
@@ -325,90 +329,99 @@ function App() {
         currentIteration={currentIteration?.iteration ?? null}
       />
 
-      {/* Main content */}
-      <main
-        className={`pob-main relative z-10 ${currentPage === 'iteration' && showIterationPage ? 'pob-main--desktop' : ''}`}
-      >
-        {currentPage === 'iteration' && showIterationPage ? (
-          <IterationPage
-            currentIteration={currentIteration}
-            statusBadge={statusBadge}
-            iterationTimes={iterationTimes}
-            projects={projects}
-            shuffledProjects={shuffledProjects}
-            loading={loading}
-            roles={roles}
-            isOwner={isOwner}
-            statusFlags={statusFlags}
-            communityBadges={communityBadges}
-            badges={badges}
-            devRelVote={devRelVote}
-            daoHicVote={daoHicVote}
-            entityVotes={entityVotes}
-            pendingAction={pendingAction}
-            walletAddress={walletAddress}
-            chainId={chainId}
-            projectsLocked={projectsLocked}
-            contractLocked={contractLocked}
-            devRelAccount={devRelAccount}
-            daoHicVoters={daoHicVoters}
-            winner={winner}
-            voteCounts={voteCounts}
-            totalCommunityVoters={totalCommunityVoters}
-            openAdminSection={openAdminSection}
-            signer={signer}
-            publicProvider={publicProvider}
-            JurySC_01ABI={JurySC_01ABI}
-            getProjectLabel={getProjectLabel}
-            executeMint={executeMint}
-            executeVote={executeVote}
-            executeClaim={executeClaim}
-            handleToggleAdminSection={handleToggleAdminSection}
-            runTransaction={runTransaction}
-            refreshVotingData={refreshVotingData}
-            refreshProjects={refreshProjects}
-            refreshOwnerData={refreshOwnerData}
-            refreshBadges={refreshBadges}
-            setPendingRemovalProject={setPendingRemovalProject}
-            setPendingRemovalVoter={setPendingRemovalVoter}
-            setError={setError}
-            onOpenDisconnect={() => setDisconnectModalOpen(true)}
-            onConnect={connectWallet}
-            votingMode={votingMode}
-            projectScores={projectScores}
-            setVotingMode={setVotingMode}
+      {/* Main content with Routes */}
+      <main className={`pob-main relative z-10 ${currentPage === 'iteration' && showIterationPage ? 'pob-main--desktop' : ''}`}>
+        <Routes>
+          {/* Home page - Iterations list */}
+          <Route
+            path="/"
+            element={
+              <IterationsPage
+                filteredIterations={filteredIterations}
+                selectedIteration={selectedIterationNumber}
+                iterationStatuses={iterationStatuses}
+                onSelectIteration={(iteration: number) => {
+                  setSelectedIteration(iteration);
+                  // Navigation will happen via Link in IterationsPage
+                }}
+              />
+            }
           />
-        ) : null}
 
-        {currentPage === 'iterations' && (
-          <IterationsPage
-            filteredIterations={filteredIterations}
-            selectedIteration={selectedIterationNumber}
-            iterationStatuses={iterationStatuses}
-            onSelectIteration={(iteration: number) => {
-              setSelectedIteration(iteration);
-              setCurrentPage('iteration');
-            }}
-            onNavigateToFaq={() => {
-              setCurrentPage('faq');
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
+          {/* Iteration detail page */}
+          <Route
+            path="/iteration/:id"
+            element={
+              showIterationPage ? (
+                <IterationPage
+                    currentIteration={currentIteration}
+                    statusBadge={statusBadge}
+                    iterationTimes={iterationTimes}
+                    projects={projects}
+                    shuffledProjects={shuffledProjects}
+                    loading={loading}
+                    roles={roles}
+                    isOwner={isOwner}
+                    statusFlags={statusFlags}
+                    communityBadges={communityBadges}
+                    badges={badges}
+                    devRelVote={devRelVote}
+                    daoHicVote={daoHicVote}
+                    entityVotes={entityVotes}
+                    pendingAction={pendingAction}
+                    walletAddress={walletAddress}
+                    chainId={chainId}
+                    projectsLocked={projectsLocked}
+                    contractLocked={contractLocked}
+                    devRelAccount={devRelAccount}
+                    daoHicVoters={daoHicVoters}
+                    winner={winner}
+                    voteCounts={voteCounts}
+                    totalCommunityVoters={totalCommunityVoters}
+                    openAdminSection={openAdminSection}
+                    signer={signer}
+                    publicProvider={publicProvider}
+                    JurySC_01ABI={JurySC_01ABI}
+                    getProjectLabel={getProjectLabel}
+                    executeMint={executeMint}
+                    executeVote={executeVote}
+                    executeClaim={executeClaim}
+                    handleToggleAdminSection={handleToggleAdminSection}
+                    runTransaction={runTransaction}
+                    refreshVotingData={refreshVotingData}
+                    refreshProjects={refreshProjects}
+                    refreshOwnerData={refreshOwnerData}
+                    refreshBadges={refreshBadges}
+                    setPendingRemovalProject={setPendingRemovalProject}
+                    setPendingRemovalVoter={setPendingRemovalVoter}
+                    setError={setError}
+                    onOpenDisconnect={() => setDisconnectModalOpen(true)}
+                    onConnect={connectWallet}
+                    votingMode={votingMode}
+                    projectScores={projectScores}
+                    setVotingMode={setVotingMode}
+                  />
+              ) : (
+                <NotFoundPage />
+              )
+            }
           />
-        )}
 
-        {currentPage === 'badges' && (
-          <BadgesPage
-            badges={badges}
-            walletAddress={walletAddress}
-            iterations={filteredIterations}
-            onSelectIteration={(iteration: number) => {
-              setSelectedIteration(iteration);
-              setCurrentPage('iteration');
-            }}
+          {/* Badges page */}
+          <Route
+            path="/badges"
+            element={
+              <BadgesPage
+                badges={badges}
+                walletAddress={walletAddress}
+                loading={loading}
+              />
+            }
           />
-        )}
 
-        {currentPage === 'faq' && <FaqPage chainId={chainId} />}
+          {/* FAQ page */}
+          <Route path="/faq" element={<FaqPage chainId={chainId} />} />
+        </Routes>
       </main>
 
       {/* Footer */}

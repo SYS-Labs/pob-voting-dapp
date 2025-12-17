@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 interface PendingBadgeCardProps {
   iterationNumber: number;
   iterationName: string;
@@ -24,13 +26,13 @@ const PendingBadgeCard = ({ iterationNumber, iterationName, onNavigateToIteratio
 
       {/* Action button - navigate to iteration */}
       <div className="mt-3">
-        <button
-          type="button"
-          onClick={onNavigateToIteration}
-          className="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)] w-full flex items-center justify-center py-2 cursor-pointer hover:bg-[rgba(247,147,26,0.2)] transition-colors"
+        <Link
+          to={`/iteration/${iterationNumber}`}
+          onClick={() => onNavigateToIteration()}
+          className="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)] w-full flex items-center justify-center py-2 cursor-pointer hover:bg-[rgba(247,147,26,0.2)] transition-colors no-underline"
         >
           View iteration
-        </button>
+        </Link>
       </div>
     </div>
   );

@@ -1,11 +1,21 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { JsonRpcProvider, Contract } from 'ethers';
 import { JurySC_01ABI } from '~/abis';
+import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
+import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
+import { NETWORKS } from '~/constants/networks';
 import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
 import type { Iteration, IterationStatus } from '~/interfaces';
 
 interface IterationStatusMap {
   [iterationNumber: number]: IterationStatus;
+}
+
+// Helper to select ABI based on iteration version
+function getJurySCABI(iteration: Iteration | null) {
+  if (!iteration) return JurySC_01ABI; // Default to latest
+  if (iteration.version === '001') return JurySC_01_v001_ABI;
+  return JurySC_01_v002_ABI; // Default to v002 for "002" and any future versions
 }
 
 /**
@@ -16,25 +26,42 @@ interface IterationStatusMap {
  */
 export function useIterationStatuses(
   iterations: Iteration[],
-  provider: JsonRpcProvider | null,
+  _provider: JsonRpcProvider | null, // Kept for backward compatibility but not used
   canReadData: boolean,
 ) {
   const [statuses, setStatuses] = useState<IterationStatusMap>({});
   const [loading, setLoading] = useState(false);
 
+  // Create providers for each unique chainId
+  const providersByChain = useMemo(() => {
+    const providers: Record<number, JsonRpcProvider> = {};
+    const uniqueChains = new Set(iterations.map(it => it.chainId));
+
+    for (const chainId of uniqueChains) {
+      const network = NETWORKS[chainId];
+      if (network) {
+        providers[chainId] = new JsonRpcProvider(network.rpcUrl, chainId, { staticNetwork: true });
+      }
+    }
+
+    return providers;
+  }, [iterations]);
+
   // Load statuses for all iterations
   const loadStatuses = useCallback(async () => {
-    if (!provider || !canReadData || iterations.length === 0) {
-      console.log('[useIterationStatuses] Skipping load:', {
-        hasProvider: !!provider,
-        canReadData,
-        iterationsLength: iterations.length,
-      });
+    console.log('[useIterationStatuses] loadStatuses called -', {
+      canReadData,
+      iterationsLength: iterations.length,
+      iterations: iterations.map(it => ({ iteration: it.iteration, round: it.round, chainId: it.chainId, version: it.version })),
+      providersByChainKeys: Object.keys(providersByChain),
+    });
+
+    if (!canReadData || iterations.length === 0) {
+      console.log('[useIterationStatuses] Skipping load - canReadData:', canReadData, 'iterations.length:', iterations.length);
       return;
     }
 
-    console.log('[useIterationStatuses] Loading statuses for', iterations.length, 'iterations');
-    console.log('[useIterationStatuses] Provider network:', await provider.getNetwork());
+    console.log('[useIterationStatuses] Starting status load for', iterations.length, 'iterations');
     setLoading(true);
 
     const newStatuses: IterationStatusMap = {};
@@ -51,8 +78,15 @@ export function useIterationStatuses(
 
         // Otherwise, load from contract
         try {
-          console.log(`[useIterationStatuses] Loading iteration ${iteration.iteration} from contract ${iteration.jurySC}`);
-          const contract = new Contract(iteration.jurySC, JurySC_01ABI, provider);
+          const provider = providersByChain[iteration.chainId];
+          if (!provider) {
+            console.warn(`[useIterationStatuses] No provider for chainId ${iteration.chainId}`);
+            newStatuses[iteration.iteration] = 'upcoming';
+            return;
+          }
+
+          console.log(`[useIterationStatuses] Loading iteration ${iteration.iteration} from contract ${iteration.jurySC} on chain ${iteration.chainId} with version ${iteration.version || 'latest'}`);
+          const contract = new Contract(iteration.jurySC, getJurySCABI(iteration), provider);
 
           const [isActive, votingEnded] = await cachedPromiseAll(provider, iteration.chainId, [
             { key: `iteration:${iteration.iteration}:isActive`, promise: contract.isActive() },
@@ -84,7 +118,7 @@ export function useIterationStatuses(
     setStatuses(newStatuses);
     setLoading(false);
     console.log('[useIterationStatuses] All statuses loaded:', newStatuses);
-  }, [iterations, provider, canReadData]);
+  }, [iterations, providersByChain, canReadData]);
 
   // Update status for a specific iteration (when refreshing current iteration)
   const updateIterationStatus = useCallback((iterationNumber: number, status: IterationStatus) => {

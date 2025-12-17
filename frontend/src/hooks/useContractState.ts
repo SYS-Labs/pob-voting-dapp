@@ -429,24 +429,27 @@ export function useContractState(
     [publicProvider, selectedChainId, currentIteration],
   );
 
-  const loadBadges = useCallback(
+  /**
+   * Load minimal badge metadata (tokenId, role, claimed) for display
+   * This is optimized for the badges page and uses batched RPC calls
+   */
+  const loadBadgesMinimal = useCallback(
     async (
       address: string,
       rpcProvider: JsonRpcProvider,
       allIterations: Iteration[],
     ) => {
-      console.log('[loadBadges] Starting for address:', address);
-      console.log('[loadBadges] Loading badges from', allIterations.length, 'iterations');
+      console.log('[loadBadgesMinimal] Starting for address:', address);
+      console.log('[loadBadgesMinimal] Loading badges from', allIterations.length, 'iterations');
 
       const iface = new Interface(PoB_01ABI);
       const transferTopic = iface.getEvent('Transfer')?.topicHash;
       if (!transferTopic) return;
 
       const allBadgesMap = new Map<string, Badge>();
-      const communityMap = new Map<string, CommunityBadgeState>();
 
       // Build list of all PoB contracts to query (main rounds + previous rounds)
-      const contractsToQuery: Array<{ iteration: number; round?: number; pob: string; jurySC: string; chainId: number; deployBlockHint?: number }> = [];
+      const contractsToQuery: Array<{ iteration: number; round?: number; pob: string; chainId: number; deployBlockHint?: number }> = [];
 
       for (const iteration of allIterations) {
         // Add current/main round
@@ -454,7 +457,6 @@ export function useContractState(
           iteration: iteration.iteration,
           round: iteration.round,
           pob: iteration.pob,
-          jurySC: iteration.jurySC,
           chainId: iteration.chainId,
           deployBlockHint: iteration.deployBlockHint,
         });
@@ -466,7 +468,6 @@ export function useContractState(
               iteration: iteration.iteration,
               round: prevRound.round,
               pob: prevRound.pob,
-              jurySC: prevRound.jurySC,
               chainId: iteration.chainId,
               deployBlockHint: prevRound.deployBlockHint,
             });
@@ -474,97 +475,184 @@ export function useContractState(
         }
       }
 
-      console.log(`[loadBadges] Querying ${contractsToQuery.length} PoB contracts (main rounds + prev rounds)`);
+      console.log(`[loadBadgesMinimal] Querying ${contractsToQuery.length} PoB contracts (main rounds + prev rounds) in PARALLEL`);
 
-      // Query badges from ALL contracts
-      for (const contract of contractsToQuery) {
+      // OPTIMIZATION: Query ALL contracts in parallel instead of sequentially
+      const contractPromises = contractsToQuery.map(async (contract) => {
         const roundLabel = contract.round ? ` Round #${contract.round}` : '';
         try {
           const iterationPobContract = new Contract(contract.pob, PoB_01ABI, rpcProvider);
           const fromBlock = contract.deployBlockHint !== undefined ? contract.deployBlockHint : 0;
 
-          console.log(`[loadBadges] Querying iteration ${contract.iteration}${roundLabel} from block:`, fromBlock);
+          console.log(`[loadBadgesMinimal] Querying iteration ${contract.iteration}${roundLabel} from block:`, fromBlock);
 
-          const [logs, iterationValue] = await Promise.all([
-            rpcProvider.getLogs({
-              address: contract.pob,
-              fromBlock,
-              toBlock: 'latest',
-              topics: [transferTopic, null, ethers.zeroPadValue(address, 32)],
-            }),
-            iterationPobContract.iteration(),
-          ]);
+          // Fetch Transfer logs for this user
+          const logs = await rpcProvider.getLogs({
+            address: contract.pob,
+            fromBlock,
+            toBlock: 'latest',
+            topics: [transferTopic, null, ethers.zeroPadValue(address, 32)],
+          });
 
-          const iterationNumber = Number(iterationValue);
-          console.log(`[loadBadges] Found ${logs?.length || 0} transfer logs for iteration ${contract.iteration}${roundLabel}`);
+          console.log(`[loadBadgesMinimal] Found ${logs?.length || 0} transfer logs for iteration ${contract.iteration}${roundLabel}`);
 
-          if (!logs?.length) continue;
+          if (!logs?.length) return [];
 
+          // Parse all tokenIds from logs
+          const tokenIds: string[] = [];
           for (const log of logs) {
             try {
               const parsed = iface.parseLog(log);
-              if (!parsed) continue;
-              const tokenId = parsed.args?.tokenId?.toString();
-              if (!tokenId) continue;
-
-              const [owner, role, claimed] = await cachedPromiseAll(rpcProvider, contract.chainId, [
-                { key: `ownerOf:${contract.pob}:${tokenId}`, promise: iterationPobContract.ownerOf(tokenId) },
-                { key: `roleOf:${contract.pob}:${tokenId}`, promise: iterationPobContract.roleOf(tokenId) },
-                { key: `claimed:${contract.pob}:${tokenId}`, promise: iterationPobContract.claimed(tokenId) },
-              ]);
-
-              if (owner.toLowerCase() !== address.toLowerCase()) continue;
-
-              const badge: Badge = {
-                tokenId, // Keep original tokenId for contract calls
-                role: role.toLowerCase() as ParticipantRole,
-                iteration: iterationNumber,
-                round: contract.round, // Round number from the contract being queried
-                claimed,
-              };
-              // Use composite key for uniqueness across iterations and rounds
-              const badgeKey = `${contract.iteration}-${contract.round || 'main'}-${tokenId}`;
-              allBadgesMap.set(badgeKey, badge);
-
-              // Load community badge voting info if this is a community badge in the current iteration
-              if (
-                badge.role === 'community' &&
-                currentIteration &&
-                contract.iteration === currentIteration.iteration &&
-                contract.round === currentIteration.round
-              ) {
-                try {
-                  const iterationJuryContract = new Contract(contract.jurySC, getJurySCABI(currentIteration), rpcProvider);
-                  const [hasVoted, vote] = await cachedPromiseAll(rpcProvider, contract.chainId, [
-                    { key: `communityHasVoted:${contract.jurySC}:${tokenId}`, promise: iterationJuryContract.communityHasVoted(tokenId) },
-                    { key: `communityVoteOf:${contract.jurySC}:${tokenId}`, promise: iterationJuryContract.communityVoteOf(tokenId) },
-                  ]);
-                  communityMap.set(badgeKey, {
-                    ...badge,
-                    hasVoted: Boolean(hasVoted),
-                    vote: normalizeAddress(vote),
-                  });
-                } catch (voteError) {
-                  console.warn(`Failed to load vote for community badge ${tokenId}`, voteError);
-                }
+              if (parsed?.args?.tokenId) {
+                tokenIds.push(parsed.args.tokenId.toString());
               }
             } catch (parseError) {
-              console.warn('Failed to parse or process badge log', parseError);
+              console.warn('Failed to parse badge log', parseError);
             }
           }
+
+          if (tokenIds.length === 0) return [];
+
+          console.log(`[loadBadgesMinimal] Parsed ${tokenIds.length} tokenIds, batching RPC calls...`);
+
+          // OPTIMIZATION: Batch all RPC calls for this contract
+          const batchedCalls = [
+            ...tokenIds.map(id => ({
+              key: `roleOf:${contract.pob}:${id}`,
+              promise: iterationPobContract.roleOf(id)
+            })),
+            ...tokenIds.map(id => ({
+              key: `claimed:${contract.pob}:${id}`,
+              promise: iterationPobContract.claimed(id)
+            })),
+          ];
+
+          const results = await cachedPromiseAll(rpcProvider, contract.chainId, batchedCalls);
+
+          // Split results: first half is roles, second half is claimed statuses
+          const roles = results.slice(0, tokenIds.length);
+          const claimedStatuses = results.slice(tokenIds.length);
+
+          // Build badge objects
+          const badges: Badge[] = [];
+          for (let i = 0; i < tokenIds.length; i++) {
+            badges.push({
+              tokenId: tokenIds[i],
+              role: roles[i].toLowerCase() as ParticipantRole,
+              iteration: contract.iteration, // Use iteration from JSON, not RPC
+              round: contract.round,
+              claimed: claimedStatuses[i],
+            });
+          }
+
+          console.log(`[loadBadgesMinimal] Loaded ${tokenIds.length} badges for iteration ${contract.iteration}${roundLabel}`);
+          return badges;
         } catch (iterationError) {
           console.warn(`Failed to load badges from iteration ${contract.iteration}${roundLabel}`, iterationError);
+          return [];
+        }
+      });
+
+      // Wait for all contracts to be processed in parallel
+      const badgeArrays = await Promise.all(contractPromises);
+
+      // Flatten and deduplicate badges
+      for (const badges of badgeArrays) {
+        for (const badge of badges) {
+          const badgeKey = `${badge.iteration}-${badge.round || 'main'}-${badge.tokenId}`;
+          allBadgesMap.set(badgeKey, badge);
         }
       }
 
       const badgeList = Array.from(allBadgesMap.values());
       setBadges(badgeList);
-      setCommunityBadges(Array.from(communityMap.values()));
+
+      // Update community role flag
       setRoles((current) => ({
         ...current,
         community: badgeList.some((badge) => badge.role === 'community' && badge.iteration === currentIteration?.iteration),
       }));
-      console.log('[loadBadges] Complete. Total badges across all iterations:', badgeList.length, 'Current iteration community badges:', communityMap.size);
+
+      console.log('[loadBadgesMinimal] Complete. Total badges across all iterations:', badgeList.length);
+      return badgeList;
+    },
+    [currentIteration],
+  );
+
+  /**
+   * Load voting data for community badges in the current iteration
+   * This is only needed on the iteration page for displaying voting status
+   */
+  const loadBadgesVotingData = useCallback(
+    async (
+      rpcProvider: JsonRpcProvider,
+      badgeList: Badge[],
+    ) => {
+      if (!currentIteration) return;
+
+      console.log('[loadBadgesVotingData] Loading voting data for community badges in current iteration');
+
+      const communityMap = new Map<string, CommunityBadgeState>();
+
+      // Filter to only community badges in current iteration
+      const currentIterationCommunityBadges = badgeList.filter(
+        badge =>
+          badge.role === 'community' &&
+          badge.iteration === currentIteration.iteration &&
+          badge.round === currentIteration.round
+      );
+
+      if (currentIterationCommunityBadges.length === 0) {
+        console.log('[loadBadgesVotingData] No community badges in current iteration');
+        setCommunityBadges([]);
+        return;
+      }
+
+      console.log(`[loadBadgesVotingData] Loading voting data for ${currentIterationCommunityBadges.length} community badges`);
+
+      try {
+        const iterationJuryContract = new Contract(
+          currentIteration.jurySC,
+          getJurySCABI(currentIteration),
+          rpcProvider
+        );
+
+        // OPTIMIZATION: Batch all voting data calls
+        const votingCalls = [
+          ...currentIterationCommunityBadges.map(badge => ({
+            key: `communityHasVoted:${currentIteration.jurySC}:${badge.tokenId}`,
+            promise: iterationJuryContract.communityHasVoted(badge.tokenId)
+          })),
+          ...currentIterationCommunityBadges.map(badge => ({
+            key: `communityVoteOf:${currentIteration.jurySC}:${badge.tokenId}`,
+            promise: iterationJuryContract.communityVoteOf(badge.tokenId)
+          })),
+        ];
+
+        const results = await cachedPromiseAll(rpcProvider, currentIteration.chainId, votingCalls);
+
+        // Split results: first half is hasVoted, second half is votes
+        const hasVotedResults = results.slice(0, currentIterationCommunityBadges.length);
+        const voteResults = results.slice(currentIterationCommunityBadges.length);
+
+        // Build community badge state objects
+        for (let i = 0; i < currentIterationCommunityBadges.length; i++) {
+          const badge = currentIterationCommunityBadges[i];
+          const badgeKey = `${badge.iteration}-${badge.round || 'main'}-${badge.tokenId}`;
+
+          communityMap.set(badgeKey, {
+            ...badge,
+            hasVoted: Boolean(hasVotedResults[i]),
+            vote: normalizeAddress(voteResults[i]),
+          });
+        }
+
+        setCommunityBadges(Array.from(communityMap.values()));
+        console.log('[loadBadgesVotingData] Complete. Loaded voting data for', communityMap.size, 'badges');
+      } catch (error) {
+        console.warn('Failed to load voting data for community badges', error);
+        setCommunityBadges([]);
+      }
     },
     [currentIteration],
   );
@@ -633,15 +721,21 @@ export function useContractState(
 
     // Also refresh badges for community voters (reloads community votes)
     if (publicProvider && walletAddress) {
-      await loadBadges(walletAddress, publicProvider, allIterations);
+      const badgeList = await loadBadgesMinimal(walletAddress, publicProvider, allIterations);
+      if (badgeList && badgeList.length > 0) {
+        await loadBadgesVotingData(publicProvider, badgeList);
+      }
     }
-  }, [signer, currentIteration, walletAddress, publicProvider, selectedChainId, loadEntityVotes, loadVoteCounts, loadBadges, allIterations]);
+  }, [signer, currentIteration, walletAddress, publicProvider, selectedChainId, loadEntityVotes, loadVoteCounts, loadBadgesMinimal, loadBadgesVotingData, allIterations]);
 
   const refreshBadges = useCallback(async () => {
     if (!publicProvider || !currentIteration || !walletAddress) return;
     console.log('[refreshBadges] Refreshing badges...');
-    await loadBadges(walletAddress, publicProvider, allIterations);
-  }, [currentIteration, walletAddress, publicProvider, allIterations, loadBadges]);
+    const badgeList = await loadBadgesMinimal(walletAddress, publicProvider, allIterations);
+    if (badgeList && badgeList.length > 0) {
+      await loadBadgesVotingData(publicProvider, badgeList);
+    }
+  }, [currentIteration, walletAddress, publicProvider, allIterations, loadBadgesMinimal, loadBadgesVotingData]);
 
   const loadIterationState = useCallback(async () => {
     console.log('=== [loadIterationState] Starting ===');
@@ -719,9 +813,21 @@ export function useContractState(
       }
 
       // Lazy load badges - only on badges page OR if on iteration page with wallet
-      if (currentPage === 'badges' || (currentPage === 'iteration' && walletAddress)) {
-        console.log('[loadIterationState] Loading badges');
-        loadTasks.push(loadBadges(walletAddress!, publicProvider, allIterations));
+      if (currentPage === 'badges' && walletAddress) {
+        console.log('[loadIterationState] Loading badges (badges page) - minimal data only');
+        loadTasks.push(
+          loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(() => {})
+        );
+      } else if (currentPage === 'iteration' && walletAddress) {
+        console.log('[loadIterationState] Loading badges (iteration page) - with voting data');
+        // Load minimal badge data first (uses cache if available)
+        const badgesPromise = loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(badgeList => {
+          // Then load voting data for community badges in current iteration
+          if (badgeList && badgeList.length > 0) {
+            return loadBadgesVotingData(publicProvider, badgeList);
+          }
+        });
+        loadTasks.push(badgesPromise);
       } else {
         console.log('[loadIterationState] Skipping badges');
       }
@@ -760,6 +866,12 @@ export function useContractState(
 
   // Load iteration when iteration is selected (wallet optional for read-only viewing)
   useEffect(() => {
+    // Skip loading on iterations page (front page) - only iteration statuses are needed there
+    if (currentPage === 'iterations') {
+      console.log('[useEffect] Skipping loadIterationState - on iterations page (only statuses needed)');
+      return;
+    }
+
     if (currentIteration && publicProvider && correctNetwork && !hasLoadError && !projectMetadataLoading) {
       console.log('[useEffect] Triggering loadIterationState - iteration selected, publicProvider available, metadata loaded');
       loadIterationState().catch((err) => {

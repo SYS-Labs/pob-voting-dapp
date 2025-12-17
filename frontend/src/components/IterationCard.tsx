@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { Iteration } from '~/interfaces';
 
 interface IterationCardProps {
@@ -9,17 +10,10 @@ interface IterationCardProps {
 
 const IterationCard = ({ iteration, isActive, statusBadge, onSelect }: IterationCardProps) => {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onSelect?.();
-        }
-      }}
-      className={`pob-pane pob-pane--subtle flex flex-col justify-between transition ${
+    <Link
+      to={`/iteration/${iteration.iteration}`}
+      onClick={() => onSelect?.()}
+      className={`pob-pane pob-pane--subtle flex flex-col justify-between transition block no-underline ${
         isActive ? 'shadow-[0_0_22px_rgba(247,147,26,0.35)]' : ''
       }`}
       style={{
@@ -37,7 +31,7 @@ const IterationCard = ({ iteration, isActive, statusBadge, onSelect }: Iteration
       <div className="mt-4 flex items-center justify-end">
         {statusBadge && <span className={statusBadge.color}>{statusBadge.label}</span>}
       </div>
-    </div>
+    </Link>
   );
 };
 

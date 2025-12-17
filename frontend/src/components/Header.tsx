@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import Modal from './Modal';
 import { NETWORKS } from '~/constants/networks';
 
@@ -40,11 +41,11 @@ const Header = ({
 
   const iterationLabel = currentIteration !== null ? `PoB #${currentIteration}` : 'Iteration';
 
-  const tabs: Array<{ id: 'iterations' | 'iteration' | 'badges' | 'faq'; label: string; show: boolean }> = [
-    { id: 'iterations', label: 'Home', show: true },
-    { id: 'iteration', label: iterationLabel, show: showIterationTab },
-    { id: 'badges', label: 'Badges', show: showBadgesTab },
-    { id: 'faq', label: 'FAQ', show: true },
+  const tabs: Array<{ id: 'iterations' | 'iteration' | 'badges' | 'faq'; label: string; show: boolean; path: string }> = [
+    { id: 'iterations', label: 'Home', show: true, path: '/' },
+    { id: 'iteration', label: iterationLabel, show: showIterationTab, path: currentIteration ? `/iteration/${currentIteration}` : '/iteration/1' },
+    { id: 'badges', label: 'Badges', show: showBadgesTab, path: '/badges' },
+    { id: 'faq', label: 'FAQ', show: true, path: '/faq' },
   ];
 
   const visibleTabs = tabs.filter((tab) => tab.show);
@@ -63,18 +64,25 @@ const Header = ({
           {/* Desktop tabs - shows on medium+ screens */}
           <nav className="header-nav-desktop" style={{ alignItems: 'center', gap: '0.5rem' }}>
             {visibleTabs.map((tab) => (
-              <button
+              <NavLink
                 key={tab.id}
-                type="button"
-                onClick={() => onNavigate(tab.id)}
-                className={`pob-button pob-button--header ${
-                  currentPage === tab.id
-                    ? ''
-                    : 'pob-button--outline'
-                }`}
+                to={tab.path}
+                onClick={() => {
+                  onNavigate(tab.id);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={({ isActive }) =>
+                  `pob-button pob-button--header ${
+                    (tab.id === 'iterations' && currentPage === 'iterations') ||
+                    (tab.id === 'iteration' && currentPage === 'iteration') ||
+                    (tab.id !== 'iterations' && tab.id !== 'iteration' && isActive)
+                      ? ''
+                      : 'pob-button--outline'
+                  }`
+                }
               >
                 {tab.label}
-              </button>
+              </NavLink>
             ))}
           </nav>
 
@@ -147,18 +155,27 @@ const Header = ({
           </div>
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {visibleTabs.map((tab) => (
-              <button
+              <NavLink
                 key={tab.id}
-                type="button"
+                to={tab.path}
                 onClick={() => {
                   onNavigate(tab.id);
                   setMobileMenuOpen(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className={`pob-button pob-button--header ${currentPage === tab.id ? '' : 'pob-button--outline'}`}
-                style={{ width: '100%', justifyContent: 'center' }}
+                className={({ isActive }) =>
+                  `pob-button pob-button--header ${
+                    (tab.id === 'iterations' && currentPage === 'iterations') ||
+                    (tab.id === 'iteration' && currentPage === 'iteration') ||
+                    (tab.id !== 'iterations' && tab.id !== 'iteration' && isActive)
+                      ? ''
+                      : 'pob-button--outline'
+                  }`
+                }
+                style={{ width: '100%', justifyContent: 'center', textAlign: 'center' }}
               >
                 {tab.label}
-              </button>
+              </NavLink>
             ))}
           </nav>
         </div>

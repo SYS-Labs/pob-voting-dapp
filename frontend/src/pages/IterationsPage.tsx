@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { Iteration, IterationStatus } from '~/interfaces';
 import IterationSection from '~/components/IterationSection';
 
@@ -6,10 +7,9 @@ interface IterationsPageProps {
   selectedIteration: number | null;
   iterationStatuses: { [iterationNumber: number]: IterationStatus };
   onSelectIteration: (iteration: number) => void;
-  onNavigateToFaq: () => void;
 }
 
-const IterationsPage = ({ filteredIterations, selectedIteration, iterationStatuses, onSelectIteration, onNavigateToFaq }: IterationsPageProps) => {
+const IterationsPage = ({ filteredIterations, selectedIteration, iterationStatuses, onSelectIteration }: IterationsPageProps) => {
 
   return (
     <div className="pob-stack" id="iterations">
@@ -33,12 +33,9 @@ const IterationsPage = ({ filteredIterations, selectedIteration, iterationStatus
               with a special focus on Latin America. We're here to help you learn Web3, collaborate with others, and build cool stuff on
               Syscoin. It's a bridge between learning, getting community feedback, and growing the ecosystem together.
             </p>
-            <button
-              onClick={onNavigateToFaq}
-              className="pob-button pob-button--compact mt-4"
-            >
+            <Link to="/faq" className="pob-button pob-button--compact mt-4 inline-block">
               Read the FAQ
-            </button>
+            </Link>
           </div>
         </div>
       </section>
