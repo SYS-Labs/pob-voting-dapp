@@ -211,13 +211,17 @@ export class PostDatabase {
   }
 
   /**
-   * Get root-level posts (depth 0) ordered by newest first
+   * Get root-level posts (depth 0) ordered by most recent activity
+   * (most recent post in the conversation)
    */
   getRootPosts(limit: number = 50): PostRecord[] {
     const stmt = this.db.prepare(
-      `SELECT * FROM posts
-       WHERE depth = 0
-       ORDER BY timestamp DESC
+      `SELECT p.*,
+              (SELECT MAX(timestamp) FROM posts WHERE conversation_id = p.conversation_id) as last_activity,
+              (SELECT COUNT(*) - 1 FROM posts WHERE conversation_id = p.conversation_id) as replies_count
+       FROM posts p
+       WHERE p.depth = 0
+       ORDER BY last_activity DESC
        LIMIT ?`
     );
     return stmt.all(limit) as PostRecord[];
