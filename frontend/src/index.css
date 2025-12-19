@@ -1,3 +1,60 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ========== General Component Styles ========== */
+
+/* Admin Panel Section */
+.pob-forum-admin {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--pob-border);
+}
+
+/* Pill Variants */
+.pob-pill--muted {
+  background: var(--pob-surface-soft);
+  color: var(--pob-text-dim);
+}
+
+.pob-pill--warning {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+}
+
+.pob-pill--danger {
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
+}
+
+.pob-pill--success {
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
+}
+
+/* Input Field Styling */
+.pob-input {
+  background: var(--pob-surface);
+  border: 1px solid var(--pob-border);
+  border-radius: var(--pob-radius-mobile);
+  padding: 0.75rem 1rem;
+  color: var(--pob-text);
+  font-size: 0.875rem;
+  transition: all var(--pob-transition);
+}
+
+.pob-input:focus {
+  outline: none;
+  border-color: var(--pob-primary);
+  box-shadow: 0 0 0 3px rgba(247, 147, 26, 0.1);
+}
+
+.pob-input::placeholder {
+  color: var(--pob-text-dim);
+}
+
+@media (min-width: 768px) {
+  .pob-input {
+    border-radius: var(--pob-radius-desktop);
+  }
+}

@@ -1,13 +1,16 @@
 /**
  * ForumPage Component
  *
- * Main page for X/Twitter thread forum functionality
- * Displays indexed threads, thread details, and admin management interface
+ * Minimalist forum with thread list and detail views
+ * Routes:
+ * - /forum - Thread list (sorted by recent activity)
+ * - /forum/:tweetId - Thread detail
  */
 
-import { useEffect, useState, useMemo } from 'react';
-import ThreadListPanel from '~/components/forum/ThreadListPanel';
-import ThreadDetailPanel from '~/components/forum/ThreadDetailPanel';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import ThreadList from '~/components/forum/ThreadList';
+import ThreadDetail from '~/components/forum/ThreadDetail';
 import AdminPanel from '~/components/forum/AdminPanel';
 import {
   fetchThreads,
@@ -28,8 +31,10 @@ interface ForumPageProps {
 }
 
 const ForumPage = ({ walletAddress }: ForumPageProps) => {
+  const { tweetId } = useParams<{ tweetId: string }>();
+  const navigate = useNavigate();
+
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [posts, setPosts] = useState<ThreadPost[]>([]);
   const [monitoredThreads, setMonitoredThreads] = useState<MonitoredThread[]>([]);
   const [loadingThreads, setLoadingThreads] = useState(false);
@@ -37,34 +42,30 @@ const ForumPage = ({ walletAddress }: ForumPageProps) => {
   const [error, setError] = useState<string | null>(null);
 
   // Check if connected wallet is admin
-  const isAdminConnected = useMemo(() => {
-    if (!walletAddress || !configuredAdmin) return false;
-    return walletAddress.toLowerCase() === configuredAdmin;
-  }, [walletAddress]);
+  const isAdminConnected = walletAddress?.toLowerCase() === configuredAdmin;
 
   // Load threads on mount
   useEffect(() => {
     void loadThreads();
-    void loadMonitoredThreads();
-  }, []);
-
-  // Load thread detail when selection changes
-  useEffect(() => {
-    if (selectedConversation) {
-      void loadThreadDetail(selectedConversation);
+    if (isAdminConnected) {
+      void loadMonitoredThreads();
     }
-  }, [selectedConversation]);
+  }, [isAdminConnected]);
+
+  // Load thread detail when tweetId changes
+  useEffect(() => {
+    if (tweetId) {
+      void loadThreadDetail(tweetId);
+    } else {
+      setPosts([]);
+    }
+  }, [tweetId]);
 
   async function loadThreads() {
     try {
       setLoadingThreads(true);
       const fetchedThreads = await fetchThreads();
       setThreads(fetchedThreads);
-
-      // Auto-select first thread if none selected
-      if (!selectedConversation && fetchedThreads.length > 0) {
-        setSelectedConversation(fetchedThreads[0].conversationId);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -79,6 +80,7 @@ const ForumPage = ({ walletAddress }: ForumPageProps) => {
       setPosts(fetchedPosts);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setPosts([]);
     } finally {
       setLoadingThreadDetail(false);
     }
@@ -89,7 +91,6 @@ const ForumPage = ({ walletAddress }: ForumPageProps) => {
       const fetchedMonitoredThreads = await fetchMonitoredThreads();
       setMonitoredThreads(fetchedMonitoredThreads);
     } catch (err) {
-      // Silent fail for monitored threads - not critical for viewing
       console.error('Failed to load monitored threads:', err);
     }
   }
@@ -118,55 +119,44 @@ const ForumPage = ({ walletAddress }: ForumPageProps) => {
   };
 
   return (
-    <div className="pob-stack" id="forum-page">
-      {/* Hero section */}
-      <section className="pob-pane">
-        <div className="space-y-4">
-          <div>
-            <h2 className="pob-pane__title text-3xl">Forum</h2>
-            <p className="text-sm text-[var(--pob-primary)] mt-1">
-              X/Twitter threads indexed on-chain with AI responses
-            </p>
-          </div>
+    <div className="forum-container">
+      {/* Simple header */}
+      <header className="forum-header">
+        <h1>
+          Forum{' '}
+          {contractAddress && (
+            <a
+              href={`${explorerUrl}/address/${contractAddress}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="forum-contract-link"
+            >
+              ({shortenAddress(contractAddress)})
+            </a>
+          )}
+        </h1>
+      </header>
 
-          {/* Status badges */}
-          <div className="flex gap-2 flex-wrap">
-            {contractAddress && (
-              <a
-                href={`${explorerUrl}/address/${contractAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="pob-pill pob-pill--small hover:opacity-80 transition-opacity"
-                style={{ textDecoration: 'none' }}
-              >
-                Contract: {shortenAddress(contractAddress)} →
-              </a>
-            )}
-            {walletAddress && (
-              <span className={`pob-pill pob-pill--small ${isAdminConnected ? '' : 'pob-pill--warning'}`}>
-                Wallet: {shortenAddress(walletAddress)} {isAdminConnected ? '(Admin)' : ''}
-              </span>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Desktop layout: thread list + detail side-by-side */}
-      <div className="pob-main--desktop">
-        <ThreadListPanel
-          threads={threads}
-          selectedConversation={selectedConversation}
-          onSelectThread={setSelectedConversation}
-          loading={loadingThreads}
-          onRefresh={loadThreads}
-        />
-
-        <ThreadDetailPanel
-          posts={posts}
-          loading={loadingThreadDetail}
-          explorerUrl={explorerUrl}
-        />
-      </div>
+      {/* Main content */}
+      <main className="forum-main">
+        {!tweetId ? (
+          // Thread list view
+          <ThreadList
+            threads={threads}
+            loading={loadingThreads}
+            onRefresh={loadThreads}
+            onSelectThread={(conversationId) => navigate(`/forum/${conversationId}`)}
+          />
+        ) : (
+          // Thread detail view
+          <ThreadDetail
+            posts={posts}
+            loading={loadingThreadDetail}
+            explorerUrl={explorerUrl}
+            onBack={() => navigate('/forum')}
+          />
+        )}
+      </main>
 
       {/* Admin panel (conditional) */}
       {isAdminConnected && (
@@ -182,18 +172,11 @@ const ForumPage = ({ walletAddress }: ForumPageProps) => {
 
       {/* Error toast */}
       {error && (
-        <div className="fixed bottom-4 right-4 pob-card bg-red-900/90 text-white p-4 max-w-md">
-          <div className="flex items-start gap-2">
-            <span className="text-red-400">⚠</span>
-            <div className="flex-1">
-              <p className="text-sm">{error}</p>
-              <button
-                className="text-xs underline mt-1 opacity-75 hover:opacity-100"
-                onClick={() => setError(null)}
-              >
-                Dismiss
-              </button>
-            </div>
+        <div className="forum-error-toast">
+          <span>⚠</span>
+          <div>
+            <p>{error}</p>
+            <button onClick={() => setError(null)}>Dismiss</button>
           </div>
         </div>
       )}

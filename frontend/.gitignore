@@ -30,3 +30,4 @@ projects.local.json
 # Debug scripts and design references
 scripts/debug/
 design-system/
+.env*.local

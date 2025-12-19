@@ -425,9 +425,13 @@ function App() {
           {/* FAQ page */}
           <Route path="/faq" element={<FaqPage chainId={chainId} />} />
 
-          {/* Forum page */}
+          {/* Forum pages */}
           <Route
             path="/forum"
+            element={<ForumPage walletAddress={walletAddress} />}
+          />
+          <Route
+            path="/forum/:tweetId"
             element={<ForumPage walletAddress={walletAddress} />}
           />
 
