@@ -39,7 +39,7 @@ interface IterationHeaderProps {
   refreshBadges?: () => Promise<void>;
   votingMode?: number;
   projects?: { id: number; address: string; metadata?: any }[];
-  projectScores?: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null;
+  projectScores?: { addresses: string[]; scores: string[]; totalPossible: string } | null;
 }
 
 const IterationHeader = ({

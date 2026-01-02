@@ -3,7 +3,7 @@ interface FinalResultsPanelProps {
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
   votingMode: number;
   projects: { id: number; address: string; metadata?: any }[];
-  projectScores?: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null;
+  projectScores?: { addresses: string[]; scores: string[]; totalPossible: string } | null;
   getProjectLabel?: (address: string | null) => string | null;
   isOwner: boolean;
 }
@@ -63,8 +63,9 @@ const FinalResultsPanel = ({
                   addr => addr.toLowerCase() === winner.projectAddress?.toLowerCase()
                 );
                 if (scoreIndex >= 0) {
-                  const score = projectScores.scores[scoreIndex];
-                  const percentage = Number((score * 10000n) / projectScores.totalPossible) / 100;
+                  const score = BigInt(projectScores.scores[scoreIndex]);
+                  const totalPossible = BigInt(projectScores.totalPossible);
+                  const percentage = Number((score * 10000n) / totalPossible) / 100;
                   return (
                     <>
                       <div className="flex items-center justify-between">
@@ -133,8 +134,9 @@ const FinalResultsPanel = ({
                       const scoreIndex = projectScores.addresses.findIndex(
                         addr => addr.toLowerCase() === project.address.toLowerCase()
                       );
-                      const score = scoreIndex >= 0 ? projectScores.scores[scoreIndex] : 0n;
-                      const percentage = Number((score * 10000n) / projectScores.totalPossible) / 100;
+                      const score = scoreIndex >= 0 ? BigInt(projectScores.scores[scoreIndex]) : 0n;
+                      const totalPossible = BigInt(projectScores.totalPossible);
+                      const percentage = Number((score * 10000n) / totalPossible) / 100;
                       return { ...project, score, percentage };
                     })
                     .sort((a, b) => {

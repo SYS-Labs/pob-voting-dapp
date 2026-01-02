@@ -90,8 +90,8 @@ export function useContractState(
   const [votingMode, setVotingMode] = useState<number>(0); // 0 = CONSENSUS, 1 = WEIGHTED
   const [projectScores, setProjectScores] = useState<{
     addresses: string[];
-    scores: bigint[];
-    totalPossible: bigint;
+    scores: string[];
+    totalPossible: string;
   } | null>(null);
   const [statusFlags, setStatusFlags] = useState<{ isActive: boolean; votingEnded: boolean }>({
     isActive: false,
@@ -293,8 +293,8 @@ export function useContractState(
           const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
           setProjectScores({
             addresses: addresses as string[],
-            scores: scores as bigint[],
-            totalPossible: totalPossible as bigint,
+            scores: (scores as bigint[]).map(s => s.toString()),
+            totalPossible: (totalPossible as bigint).toString(),
           });
         } catch (error) {
           console.log('[loadEntityVotes] getWinnerWithScores not available or failed:', error);

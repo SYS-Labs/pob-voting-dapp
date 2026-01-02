@@ -14,7 +14,7 @@ interface RoundData {
   canMint: boolean; // User is eligible to mint a badge for this round
   votingMode: number;
   projects: { id: number; address: string }[];
-  projectScores: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null;
+  projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null;
 }
 
 const normalizeAddress = (addr: string): string | null => {
@@ -117,14 +117,14 @@ export function usePreviousRoundData(
         }));
 
         // Load project scores if in weighted mode AND v002+
-        let projectScores: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null = null;
+        let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
         if (votingMode === 1 && isV002OrNewer) {
           try {
             const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
             projectScores = {
               addresses: addresses as string[],
-              scores: scores as bigint[],
-              totalPossible: totalPossible as bigint,
+              scores: (scores as bigint[]).map(s => s.toString()),
+              totalPossible: (totalPossible as bigint).toString(),
             };
           } catch (error) {
             console.log('[usePreviousRoundData] getWinnerWithScores not available or failed:', error);

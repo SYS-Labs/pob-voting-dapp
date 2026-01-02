@@ -18,8 +18,8 @@ interface IterationData {
   votingMode: number;
   projectScores: {
     addresses: string[];
-    scores: bigint[];
-    totalPossible: bigint;
+    scores: string[];
+    totalPossible: string;
   } | null;
   statusFlags: { isActive: boolean; votingEnded: boolean };
   iterationTimes: { startTime: number | null; endTime: number | null };
@@ -218,15 +218,6 @@ export function IterationDataProvider({ children }: IterationDataProviderProps) 
       if (!stored) return null;
 
       const parsed = JSON.parse(stored);
-
-      // Convert string back to bigint
-      if (parsed.projectScores) {
-        parsed.projectScores = {
-          addresses: parsed.projectScores.addresses,
-          scores: parsed.projectScores.scores.map((s: string) => BigInt(s)),
-          totalPossible: BigInt(parsed.projectScores.totalPossible),
-        };
-      }
 
       console.log(`[IterationDataCache] Loaded persisted data for iteration ${iteration}`);
       return parsed as IterationData;

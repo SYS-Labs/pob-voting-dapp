@@ -2,7 +2,6 @@ import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import type { Iteration, ParticipantRole, Project, Badge } from '~/interfaces';
 import IterationHeader from '~/components/IterationHeader';
 import PreviousRoundCard from '~/components/PreviousRoundCard';
-import VotingProgress from '~/components/VotingProgress';
 import ProjectCard from '~/components/ProjectCard';
 import JuryPanel from '~/components/JuryPanel';
 import ParticipantPanel from '~/components/ParticipantPanel';
@@ -82,7 +81,7 @@ interface IterationPageProps {
   voteCounts: VoteCounts;
   totalCommunityVoters: number;
   votingMode: number;
-  projectScores: { addresses: string[]; scores: bigint[]; totalPossible: bigint } | null;
+  projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null;
   openAdminSection: string | null;
   signer: any;
   publicProvider: any;
@@ -406,6 +405,9 @@ const IterationPage = ({
             statusFlags={statusFlags}
             onClaim={handleClaim}
             pendingAction={pendingAction}
+            voteCounts={voteCounts}
+            daoHicVoters={daoHicVoters}
+            totalCommunityVoters={totalCommunityVoters}
           />
         )}
 
@@ -460,14 +462,6 @@ const IterationPage = ({
             refreshBadges={refreshBadges}
             setPendingRemovalVoter={setPendingRemovalVoter}
             setError={setError}
-          />
-        ) : null}
-
-        {currentIteration && (statusFlags.isActive || statusFlags.votingEnded) ? (
-          <VotingProgress
-            voteCounts={voteCounts}
-            daoHicVoters={daoHicVoters}
-            totalCommunityVoters={totalCommunityVoters}
           />
         ) : null}
         </div>

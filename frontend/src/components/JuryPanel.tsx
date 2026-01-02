@@ -111,11 +111,7 @@ const JuryPanel = ({
                 'Not voted yet'
               )}
             </p>
-            {hasDevRelBadge ? (
-              <p className="text-sm text-green-400">
-                Badge minted successfully!
-              </p>
-            ) : (
+            {!hasDevRelBadge && (
               <>
                 {statusFlags.votingEnded && (
                   <button
@@ -157,11 +153,7 @@ const JuryPanel = ({
                 'Not voted yet'
               )}
             </p>
-            {hasDaoHicBadge ? (
-              <p className="text-sm text-green-400">
-                Badge minted successfully!
-              </p>
-            ) : (
+            {!hasDaoHicBadge && (
               <>
                 {statusFlags.votingEnded && (
                   <button

@@ -357,9 +357,10 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
   }, []);
 
   const filteredIterations = useMemo(() => {
-    if (chainId === null) return iterations;
-    return iterations.filter((iteration) => iteration.chainId === chainId);
-  }, [iterations, chainId]);
+    // Don't filter by wallet chainId - iterations can be on any network
+    // Each iteration uses its own public RPC provider regardless of wallet network
+    return iterations;
+  }, [iterations]);
 
   const currentIteration = useMemo(() => {
     if (!filteredIterations.length) return null;

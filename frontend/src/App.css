@@ -865,6 +865,21 @@ h3 .pob-pill {
   transition: width 0.3s ease;
 }
 
+/* Clickable cursor for interactive elements */
+.cursor-pointer {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Enhanced hover for clickable panes */
+.pob-pane.cursor-pointer:hover {
+  border-color: rgba(247, 147, 26, 0.6);
+  box-shadow:
+    0 28px 50px rgba(0, 0, 0, 0.65),
+    0 0 40px rgba(247, 147, 26, 0.2);
+  transform: translateY(-2px);
+}
+
 /* Hide wallet button on mobile (< 1024px), show in toolbox instead */
 @media (max-width: 1023px) {
   .wallet-button-container {

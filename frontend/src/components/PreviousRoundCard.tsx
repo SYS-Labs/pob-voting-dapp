@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Contract } from 'ethers';
 import type { PreviousRound, ParticipantRole } from '~/interfaces';
 import { PoB_01ABI } from '~/abis';
@@ -97,10 +97,16 @@ const PreviousRoundCard = ({
     );
   };
 
+  const handleCardClick = useCallback(() => {
+    if (isExpanded) return; // Don't do anything if already expanded
+    console.log('[PreviousRoundCard] Card clicked, expanding round', round.round);
+    setIsExpanded(true);
+  }, [isExpanded, round.round]);
+
   return (
     <section
       className={`pob-pane ${!isExpanded ? 'cursor-pointer' : ''}`}
-      onClick={() => !isExpanded && setIsExpanded(true)}
+      onClick={handleCardClick}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { Contract } from 'ethers';
 import '~/App.css';
@@ -62,6 +62,17 @@ function App() {
     projectMetadataLoading,
     publicProvider,
   } = useAppState();
+
+  // Sync URL parameter with selected iteration
+  useEffect(() => {
+    const match = location.pathname.match(/^\/iteration\/(\d+)$/);
+    if (match) {
+      const iterationId = parseInt(match[1], 10);
+      if (selectedIterationNumber !== iterationId) {
+        setSelectedIteration(iterationId);
+      }
+    }
+  }, [location.pathname, selectedIterationNumber, setSelectedIteration]);
 
   // Network validation
   const correctNetwork =
@@ -167,7 +178,7 @@ function App() {
   }, [currentIteration, iterationStatuses]);
 
   // Update statuses map when statusFlags changes (only on iteration detail page)
-  useMemo(() => {
+  useEffect(() => {
     // Only update from statusFlags on iteration detail page (not on iterations list page)
     // On iterations page, statusFlags isn't loaded so it would incorrectly set "upcoming"
     if (currentPage !== 'iteration') {
