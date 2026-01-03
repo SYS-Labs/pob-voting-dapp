@@ -100,3 +100,56 @@ export function generateAvatarImage(username: string): string {
   const encodedSvg = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${svgContent}</svg>`);
   return `data:image/svg+xml;charset=utf-8,${encodedSvg}`;
 }
+
+/**
+ * Format IPFS CID for display (truncate middle)
+ */
+export function formatCID(cid: string): string {
+  if (cid.length <= 20) return cid;
+  return `${cid.slice(0, 10)}...${cid.slice(-6)}`;
+}
+
+/**
+ * Format transaction hash
+ */
+export function formatTxHash(hash: string): string {
+  return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
+}
+
+/**
+ * Get block explorer link for transaction
+ */
+export function getExplorerTxLink(chainId: number, txHash: string): string {
+  const explorers: Record<number, string> = {
+    57: 'https://explorer.syscoin.org',
+    5700: 'https://tanenbaum.io',
+    31337: '#', // Local network has no explorer
+  };
+
+  const explorerUrl = explorers[chainId];
+  if (!explorerUrl || explorerUrl === '#') return '#';
+  return `${explorerUrl}/tx/${txHash}`;
+}
+
+/**
+ * Validate YouTube URL
+ */
+export function isValidYouTubeUrl(url: string): boolean {
+  const patterns = [
+    /^https?:\/\/(www\.)?youtu\.be\/.+$/,
+    /^https?:\/\/(www\.)?youtube\.com\/watch\?v=.+$/,
+  ];
+  return patterns.some(pattern => pattern.test(url));
+}
+
+/**
+ * Validate generic URL
+ */
+export function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}

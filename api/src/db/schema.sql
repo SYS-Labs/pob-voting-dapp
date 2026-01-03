@@ -152,3 +152,44 @@ CREATE TABLE IF NOT EXISTS deployments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_deployments_address ON deployments(contract_address);
+
+-- Metadata updates tracking for IPFS migration
+-- Tracks CID updates and their on-chain confirmation status
+CREATE TABLE IF NOT EXISTS metadata_updates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chain_id INTEGER NOT NULL,
+  iteration_number INTEGER NOT NULL,
+  project_address TEXT,
+  old_cid TEXT,
+  new_cid TEXT NOT NULL,
+  tx_hash TEXT NOT NULL,
+  tx_sent_height INTEGER,
+  confirmations INTEGER DEFAULT 0,
+  confirmed BOOLEAN DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_metadata_updates_pending ON metadata_updates(confirmed, tx_hash);
+CREATE INDEX IF NOT EXISTS idx_metadata_updates_project ON metadata_updates(chain_id, project_address);
+
+-- Unpin queue for safe async unpinning of old CIDs
+-- Only unpins after tx has 10+ confirmations
+CREATE TABLE IF NOT EXISTS unpin_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cid TEXT NOT NULL UNIQUE,
+  reason TEXT,
+  created_at INTEGER NOT NULL
+);
+
+-- IPFS content cache
+-- Stores immutable IPFS content locally (JSON data)
+-- Since IPFS is content-addressed, no need to refresh
+CREATE TABLE IF NOT EXISTS ipfs_cache (
+  cid TEXT PRIMARY KEY,
+  content TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  fetched_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ipfs_cache_fetched ON ipfs_cache(fetched_at);

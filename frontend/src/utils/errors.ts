@@ -5,24 +5,6 @@
  * from smart contract custom errors.
  */
 
-import errorMappings from '../abis/errors.json';
-
-export interface ContractError {
-  name: string;
-  signature: string;
-  inputs: Array<{
-    internalType: string;
-    name: string;
-    type: string;
-  }>;
-}
-
-export interface ErrorMapping {
-  JurySC_01: ContractError[];
-  PoB_01: ContractError[];
-}
-
-const errors = errorMappings as ErrorMapping;
 
 // User-friendly error messages
 export const ERROR_MESSAGES: Record<string, string> = {
@@ -101,13 +83,6 @@ export function getErrorMessage(errorName: string | null): string {
   return ERROR_MESSAGES[errorName] || `Contract error: ${errorName}`;
 }
 
-/**
- * Get error details from error mappings
- */
-export function getErrorDetails(errorName: string, contract: 'JurySC_01' | 'PoB_01'): ContractError | null {
-  const contractErrors = errors[contract];
-  return contractErrors.find(e => e.name === errorName) || null;
-}
 
 /**
  * Format contract error for display
@@ -127,17 +102,3 @@ export function formatContractError(error: any): {
   };
 }
 
-/**
- * Check if error is a specific contract error
- */
-export function isContractError(error: any, errorName: string): boolean {
-  const parsedError = parseContractError(error);
-  return parsedError === errorName;
-}
-
-/**
- * Get all errors for a contract
- */
-export function getContractErrors(contract: 'JurySC_01' | 'PoB_01'): ContractError[] {
-  return errors[contract];
-}

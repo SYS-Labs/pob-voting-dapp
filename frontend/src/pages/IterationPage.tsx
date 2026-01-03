@@ -376,6 +376,15 @@ const IterationPage = ({
                         }
                       }}
                       communityBadges={currentIterationCommunityBadges}
+                      // Metadata editor props
+                      isProjectOwner={
+                        walletAddress?.toLowerCase() === project.address.toLowerCase()
+                      }
+                      votingActive={statusFlags.isActive && !statusFlags.votingEnded}
+                      chainId={chainId}
+                      contractAddress={currentIteration?.jurySC ?? null}
+                      signer={signer}
+                      walletAddress={walletAddress}
                     />
                   );
                 })}

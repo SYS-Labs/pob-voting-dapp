@@ -4,6 +4,7 @@ export * from './useIteration';
 export * from './useIterationStatuses';
 export * from './useModals';
 export * from './useProjectMetadata';
+export * from './useProjectMetadataManager';
 export * from './usePublicProvider';
 export * from './useTransactions';
 export * from './useWallet';

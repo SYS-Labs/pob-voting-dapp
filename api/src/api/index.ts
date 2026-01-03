@@ -14,6 +14,9 @@ import { initDatabase } from '../db/init.js';
 import { createPostDatabase } from '../db/queries.js';
 import { createDeploymentDatabase } from '../db/deployments.js';
 import { createMonitoredThreadsDatabase } from '../db/monitored-threads.js';
+import { createMetadataDatabase } from '../db/metadata.js';
+import { IPFSService } from '../services/ipfs.js';
+import { MetadataService } from '../services/metadata.js';
 import { logger } from '../utils/logger.js';
 import { PostRecord } from '../types/post.js';
 
@@ -23,6 +26,11 @@ const db = initDatabase(config.database.path);
 const postDb = createPostDatabase(db);
 const deploymentDb = createDeploymentDatabase(db);
 const threadsDb = createMonitoredThreadsDatabase(db);
+const metadataDb = createMetadataDatabase(db);
+
+// Initialize IPFS and metadata services
+const ipfsService = new IPFSService();
+const metadataService = new MetadataService(ipfsService);
 
 type Handler = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
 
@@ -86,6 +94,37 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'PATCH' && url.pathname.startsWith('/api/admin/threads/')) {
     await handleUpdateThread(req, res, url);
+    return;
+  }
+
+  // Metadata endpoints
+  if (req.method === 'GET' && url.pathname.startsWith('/api/metadata/project/')) {
+    await handleGetProjectMetadata(req, res, url);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/metadata/iteration/')) {
+    await handleGetIterationMetadata(req, res, url);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/metadata/project') {
+    await handleSetProjectMetadata(req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/metadata/iteration') {
+    await handleSetIterationMetadata(req, res);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/metadata/status/')) {
+    await handleGetMetadataStatus(req, res, url);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/metadata/batch') {
+    await handleBatchGetMetadata(req, res);
     return;
   }
 
@@ -325,6 +364,330 @@ async function handleUpdateThread(
       logger.error('Thread update failed', error);
       sendJson(res, 500, { error: 'Failed to update thread' });
     }
+  }
+}
+
+async function handleGetProjectMetadata(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  try {
+    // Parse URL: /api/metadata/project/:chainId/:contractAddress/:projectAddress
+    const parts = url.pathname.replace('/api/metadata/project/', '').split('/');
+
+    if (parts.length !== 3) {
+      sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/metadata/project/:chainId/:contractAddress/:projectAddress' });
+      return;
+    }
+
+    const [_chainId, contractAddress, projectAddress] = parts;
+
+    if (!ethers.isAddress(contractAddress) || !ethers.isAddress(projectAddress)) {
+      sendJson(res, 400, { error: 'Invalid address format' });
+      return;
+    }
+
+    const metadata = await metadataService.getProjectMetadata(contractAddress, projectAddress);
+    const cid = await metadataService.getProjectMetadataCID(contractAddress, projectAddress);
+
+    sendJson(res, 200, {
+      success: true,
+      metadata,
+      cid
+    });
+  } catch (error) {
+    logger.error('Failed to get project metadata', error);
+    sendJson(res, 500, { success: false, error: 'Failed to fetch metadata' });
+  }
+}
+
+async function handleGetIterationMetadata(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  try {
+    // Parse URL: /api/metadata/iteration/:chainId/:contractAddress
+    const parts = url.pathname.replace('/api/metadata/iteration/', '').split('/');
+
+    if (parts.length !== 2) {
+      sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/metadata/iteration/:chainId/:contractAddress' });
+      return;
+    }
+
+    const [_chainId, contractAddress] = parts;
+
+    if (!ethers.isAddress(contractAddress)) {
+      sendJson(res, 400, { error: 'Invalid contract address format' });
+      return;
+    }
+
+    const metadata = await metadataService.getIterationMetadata(contractAddress);
+    const cid = await metadataService.getIterationMetadataCID(contractAddress);
+
+    sendJson(res, 200, {
+      success: true,
+      metadata,
+      cid
+    });
+  } catch (error) {
+    logger.error('Failed to get iteration metadata', error);
+    sendJson(res, 500, { success: false, error: 'Failed to fetch metadata' });
+  }
+}
+
+async function handleSetProjectMetadata(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const body = await readJsonBody(req) as {
+      chainId?: number;
+      contractAddress?: string;
+      projectAddress?: string;
+      metadata?: any;
+      signature?: string;
+      message?: string;
+    };
+
+    const { chainId, contractAddress, projectAddress, metadata, signature, message } = body;
+
+    // Validate inputs
+    if (!chainId || !contractAddress || !projectAddress || !metadata || !signature || !message) {
+      sendJson(res, 400, { error: 'Missing required fields: chainId, contractAddress, projectAddress, metadata, signature, message' });
+      return;
+    }
+
+    if (!ethers.isAddress(contractAddress) || !ethers.isAddress(projectAddress)) {
+      sendJson(res, 400, { error: 'Invalid address format' });
+      return;
+    }
+
+    // Validate metadata structure
+    if (!metadata.account || !metadata.name || !metadata.yt_vid || !metadata.proposal) {
+      sendJson(res, 400, { error: 'Invalid metadata structure. Required: account, name, yt_vid, proposal' });
+      return;
+    }
+
+    // Get old CID if exists
+    const oldCid = await metadataService.getProjectMetadataCID(contractAddress, projectAddress);
+
+    // Upload to IPFS and set on contract
+    const result = await metadataService.setProjectMetadata(
+      contractAddress,
+      projectAddress,
+      metadata,
+      signature,
+      message
+    );
+
+    // Record in database for confirmation tracking
+    metadataDb.createUpdate({
+      chainId,
+      iterationNumber: 0, // Will need to extract from metadata or pass separately
+      projectAddress,
+      oldCid,
+      newCid: result.cid,
+      txHash: result.txHash,
+      txSentHeight: null
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      cid: result.cid,
+      txHash: result.txHash
+    });
+  } catch (error) {
+    logger.error('Failed to set project metadata', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to set metadata';
+    sendJson(res, 500, { success: false, error: errorMessage });
+  }
+}
+
+async function handleSetIterationMetadata(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const body = await readJsonBody(req) as {
+      chainId?: number;
+      contractAddress?: string;
+      metadata?: any;
+      signature?: string;
+      message?: string;
+    };
+
+    const { chainId, contractAddress, metadata, signature, message } = body;
+
+    // Validate inputs
+    if (!chainId || !contractAddress || !metadata || !signature || !message) {
+      sendJson(res, 400, { error: 'Missing required fields: chainId, contractAddress, metadata, signature, message' });
+      return;
+    }
+
+    if (!ethers.isAddress(contractAddress)) {
+      sendJson(res, 400, { error: 'Invalid contract address format' });
+      return;
+    }
+
+    // Validate metadata structure
+    if (!metadata.iteration || !metadata.round || !metadata.name || !metadata.chainId || typeof metadata.votingMode === 'undefined') {
+      sendJson(res, 400, { error: 'Invalid metadata structure. Required: iteration, round, name, chainId, votingMode' });
+      return;
+    }
+
+    // Get old CID if exists
+    const oldCid = await metadataService.getIterationMetadataCID(contractAddress);
+
+    // Upload to IPFS and set on contract
+    const result = await metadataService.setIterationMetadata(
+      contractAddress,
+      metadata,
+      signature,
+      message
+    );
+
+    // Record in database for confirmation tracking
+    metadataDb.createUpdate({
+      chainId,
+      iterationNumber: metadata.iteration,
+      projectAddress: null,
+      oldCid,
+      newCid: result.cid,
+      txHash: result.txHash,
+      txSentHeight: null
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      cid: result.cid,
+      txHash: result.txHash
+    });
+  } catch (error) {
+    logger.error('Failed to set iteration metadata', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to set metadata';
+    sendJson(res, 500, { success: false, error: errorMessage });
+  }
+}
+
+async function handleGetMetadataStatus(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  try {
+    // Parse URL: /api/metadata/status/:txHash
+    const txHash = url.pathname.replace('/api/metadata/status/', '');
+
+    if (!txHash || txHash.length !== 66 || !txHash.startsWith('0x')) {
+      sendJson(res, 400, { error: 'Invalid transaction hash format' });
+      return;
+    }
+
+    // Get update from database
+    const update = metadataDb.getUpdateByTxHash(txHash);
+
+    if (!update) {
+      sendJson(res, 404, { error: 'Transaction not found' });
+      return;
+    }
+
+    sendJson(res, 200, {
+      success: true,
+      txHash: update.tx_hash,
+      confirmations: update.confirmations,
+      confirmed: Boolean(update.confirmed),
+      oldCid: update.old_cid,
+      newCid: update.new_cid,
+      createdAt: update.created_at,
+      updatedAt: update.updated_at
+    });
+  } catch (error) {
+    logger.error('Failed to get metadata status', error);
+    sendJson(res, 500, { success: false, error: 'Failed to fetch status' });
+  }
+}
+
+async function handleBatchGetMetadata(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const body = await readJsonBody(req) as {
+      cids?: string[];
+    };
+
+    if (!body.cids || !Array.isArray(body.cids)) {
+      sendJson(res, 400, { error: 'Request must include cids array' });
+      return;
+    }
+
+    if (body.cids.length === 0) {
+      sendJson(res, 200, { success: true, metadata: {} });
+      return;
+    }
+
+    if (body.cids.length > 50) {
+      sendJson(res, 400, { error: 'Maximum 50 CIDs per request' });
+      return;
+    }
+
+    // Validate CIDs (basic validation)
+    for (const cid of body.cids) {
+      if (typeof cid !== 'string' || cid.length === 0 || cid.length > 100) {
+        sendJson(res, 400, { error: `Invalid CID format: ${cid}` });
+        return;
+      }
+    }
+
+    // Check cache first
+    const cached = metadataDb.getBatchCachedIPFSContent(body.cids);
+    const result: Record<string, any> = {};
+    const toFetch: string[] = [];
+
+    for (const cid of body.cids) {
+      const cachedItem = cached.get(cid);
+      if (cachedItem) {
+        try {
+          result[cid] = JSON.parse(cachedItem.content);
+        } catch (error) {
+          logger.warn('Failed to parse cached content', { cid, error });
+          toFetch.push(cid);
+        }
+      } else {
+        toFetch.push(cid);
+      }
+    }
+
+    // Fetch missing CIDs from IPFS
+    if (toFetch.length > 0) {
+      const fetchResults = await Promise.allSettled(
+        toFetch.map(async (cid) => {
+          const data = await ipfsService.fetchJSON(cid);
+          // Cache the fetched content
+          metadataDb.cacheIPFSContent(cid, JSON.stringify(data));
+          return { cid, data };
+        })
+      );
+
+      for (const fetchResult of fetchResults) {
+        if (fetchResult.status === 'fulfilled') {
+          result[fetchResult.value.cid] = fetchResult.value.data;
+        } else {
+          logger.warn('Failed to fetch CID', { error: fetchResult.reason });
+          // Don't include in result - empty means not found
+        }
+      }
+    }
+
+    sendJson(res, 200, {
+      success: true,
+      metadata: result
+    });
+  } catch (error) {
+    logger.error('Failed to batch fetch metadata', error);
+    sendJson(res, 500, { success: false, error: 'Failed to fetch metadata' });
   }
 }
 

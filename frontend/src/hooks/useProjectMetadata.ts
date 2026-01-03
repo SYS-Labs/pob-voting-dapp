@@ -9,8 +9,9 @@ export function useProjectMetadata() {
 
   useEffect(() => {
     const isProduction = import.meta.env.PROD;
+    const useAPI = import.meta.env.VITE_USE_METADATA_API === 'true';
 
-    const loadProjectMetadata = async (): Promise<ProjectMetadata[]> => {
+    const loadProjectMetadataFromJSON = async (): Promise<ProjectMetadata[]> => {
       if (isProduction) {
         console.log('[Projects] Loading metadata from projects.json (production)');
         const response = await fetch('/projects.json');
@@ -35,6 +36,26 @@ export function useProjectMetadata() {
           }
           return (await response.json()) as ProjectMetadata[];
         }
+      }
+    };
+
+    const loadProjectMetadata = async (): Promise<ProjectMetadata[]> => {
+      // Try API first if enabled, fallback to JSON
+      if (useAPI) {
+        try {
+          console.log('[Projects] Attempting to load metadata from API...');
+          // Note: This is a simplified version. In a full implementation,
+          // we would need to know which chains/contracts to query.
+          // For now, fallback to JSON loading.
+          console.log('[Projects] API loading not fully implemented yet, falling back to JSON');
+          return await loadProjectMetadataFromJSON();
+        } catch (apiError) {
+          console.warn('[Projects] Failed to load from API, falling back to JSON:', apiError);
+          return await loadProjectMetadataFromJSON();
+        }
+      } else {
+        console.log('[Projects] Using JSON file loading (API disabled)');
+        return await loadProjectMetadataFromJSON();
       }
     };
 

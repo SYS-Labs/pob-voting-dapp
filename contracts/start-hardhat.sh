@@ -57,7 +57,10 @@ if [[ "${READY}" != "true" ]]; then
   exit 1
 fi
 
-echo "Deploying contracts to ${NETWORK} via scripts/deploy.js..."
+echo "Deploying PoBRegistry to ${NETWORK} via scripts/deploy-pob-registry.js..."
+npx hardhat run scripts/deploy-pob-registry.js --network "${NETWORK}"
+
+echo "Deploying iteration contracts to ${NETWORK} via scripts/deploy.js..."
 npx hardhat run scripts/deploy.js --network "${NETWORK}"
 
 if [[ "${NETWORK}" == "localhost" || "${NETWORK}" == "hardhat" ]]; then

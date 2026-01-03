@@ -48,3 +48,25 @@ export interface Badge {
   round?: number; // Round number within the iteration (optional)
   claimed?: boolean;
 }
+
+/**
+ * Iteration metadata stored on IPFS
+ * This is the full metadata for an iteration, including previous rounds
+ */
+export interface IterationMetadata {
+  iteration: number;
+  round: number;
+  name: string;
+  chainId: number;
+  votingMode: number; // 0 = CONSENSUS, 1 = WEIGHTED
+  link?: string; // Social media link (Twitter, etc.)
+  prev_rounds?: Array<{
+    round: number;
+    jurySC: string;
+    pob: string;
+    version: string;
+    deployBlockHint: number;
+    votingMode: number;
+    metadataCID?: string; // CID of previous round metadata
+  }>;
+}
