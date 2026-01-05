@@ -9,6 +9,7 @@ import PoBRegistryABI from '~/abis/PoBRegistry.json';
 import JurySCABI from '~/abis/JurySC_02_v001.json';
 import { REGISTRY_ADDRESSES } from '~/utils/registry';
 import { getPublicProvider } from '~/utils/provider';
+import { ProgressSpinner } from '~/components/ProgressSpinner';
 
 interface IterationsPageProps {
   filteredIterations: Iteration[];
@@ -20,6 +21,7 @@ interface IterationsPageProps {
   signer: JsonRpcSigner | null;
   runTransaction: (label: string, action: () => Promise<unknown>, onConfirmed?: () => Promise<void>) => Promise<boolean>;
   refreshIterations: () => Promise<void>;
+  isLoading?: boolean;
 }
 
 const IterationsPage = ({
@@ -32,6 +34,7 @@ const IterationsPage = ({
   signer,
   runTransaction,
   refreshIterations,
+  isLoading = false,
 }: IterationsPageProps) => {
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
   const [roundModalOpen, setRoundModalOpen] = useState(false);
@@ -316,14 +319,22 @@ const IterationsPage = ({
           </div>
         </div>
       </section>
-      <IterationSection
-        title="Program Iterations"
-        iterations={filteredIterations}
-        selectedIteration={selectedIteration}
-        iterationStatuses={iterationStatuses}
-        onSelectIteration={onSelectIteration}
-        onAddRound={walletAddress && isRegistryOwner ? openRoundModal : undefined}
-        headerAction={walletAddress && isRegistryOwner ? (
+      {isLoading ? (
+        <section className="pob-pane">
+          <div className="flex flex-col items-center justify-center py-12 gap-4">
+            <ProgressSpinner size={48} />
+            <p className="text-sm text-[var(--pob-text-muted)]">Loading iterations...</p>
+          </div>
+        </section>
+      ) : (
+        <IterationSection
+          title="Program Iterations"
+          iterations={filteredIterations}
+          selectedIteration={selectedIteration}
+          iterationStatuses={iterationStatuses}
+          onSelectIteration={onSelectIteration}
+          onAddRound={walletAddress && isRegistryOwner ? openRoundModal : undefined}
+          headerAction={walletAddress && isRegistryOwner ? (
           <button
             type="button"
             onClick={openRegisterModal}
@@ -337,7 +348,8 @@ const IterationsPage = ({
             Add iteration
           </button>
         ) : undefined}
-      />
+        />
+      )}
 
       <Modal
         isOpen={registerModalOpen}

@@ -55,6 +55,7 @@ function App() {
   const {
     wallet: { provider, signer, walletAddress, chainId, connectWallet, disconnectWallet },
     filteredIterations,
+    iterationsLoading,
     selectedIterationNumber,
     setSelectedIteration,
     currentIteration,
@@ -362,6 +363,7 @@ function App() {
                 signer={signer}
                 runTransaction={runTransaction}
                 refreshIterations={refreshIterations}
+                isLoading={iterationsLoading}
               />
             }
           />
