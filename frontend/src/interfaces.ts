@@ -33,6 +33,7 @@ export interface ProjectMetadata {
   description?: string;
   yt_vid?: string;
   proposal?: string;
+  txHash?: string; // Transaction hash when this metadata was set on-chain
 }
 
 export interface Project {
@@ -57,9 +58,11 @@ export interface IterationMetadata {
   iteration: number;
   round: number;
   name: string;
+  description?: string; // Round description/details
   chainId: number;
   votingMode: number; // 0 = CONSENSUS, 1 = WEIGHTED
   link?: string; // Social media link (Twitter, etc.)
+  txHash?: string; // Transaction hash when this metadata was set on-chain
   prev_rounds?: Array<{
     round: number;
     jurySC: string;
