@@ -1,3 +1,4 @@
+import { Link, useParams } from 'react-router-dom';
 import type { ParticipantRole, Badge } from '~/interfaces';
 import { ROLE_LABELS, ROLE_COLORS } from '~/constants/roles';
 
@@ -26,6 +27,8 @@ const ParticipantPanel = ({
   badges,
   executeMint
 }: ParticipantPanelProps) => {
+  const { iterationNumber } = useParams<{ iterationNumber: string }>();
+
   if (!roles.project) return null;
 
   // Check if project has minted a badge
@@ -44,6 +47,14 @@ const ParticipantPanel = ({
           <p className="text-sm text-[var(--pob-text-muted)]">
             You are registered as a project participant in this iteration. Your project will be evaluated by the jury.
           </p>
+
+          {/* Manage Metadata button */}
+          <Link
+            to={`/iteration/${iterationNumber}/metadata`}
+            className="pob-button pob-button--outline w-full justify-center text-xs"
+          >
+            Manage my project
+          </Link>
 
           {/* Mint button - only show if projects locked and no badge yet */}
           {!projectBadge && projectsLocked && (

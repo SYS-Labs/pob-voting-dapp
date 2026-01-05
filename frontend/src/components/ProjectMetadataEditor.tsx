@@ -1,7 +1,10 @@
 import { useState, useMemo } from 'react';
 import type { JsonRpcSigner } from 'ethers';
 import { useProjectMetadataManager, type ProjectMetadataForm } from '~/hooks/useProjectMetadataManager';
-import { formatCID, formatTxHash, getExplorerTxLink, isValidYouTubeUrl, isValidUrl } from '~/utils/format';
+import { formatCID, getExplorerTxLink, isValidYouTubeUrl, isValidUrl } from '~/utils/format';
+import { getMetadataCidUrl } from '~/utils/metadata-api';
+import { isUserRejectedError } from '~/utils/errors';
+import { ProgressSpinner } from './ProgressSpinner';
 
 interface ProjectMetadataEditorProps {
   projectAddress: string;
@@ -100,6 +103,9 @@ const ProjectMetadataEditor = ({
       setEditMode(false);
       setFormData({ name: '', yt_vid: '', proposal: '' });
     } catch (err) {
+      if (isUserRejectedError(err)) {
+        return;
+      }
       console.error('Failed to submit metadata:', err);
       setError(err instanceof Error ? err.message : 'Failed to submit metadata');
     }
@@ -152,28 +158,33 @@ const ProjectMetadataEditor = ({
           {/* Pending CID (if exists) */}
           {pendingCID && (
             <div className="flex items-center justify-between text-xs">
-              <span className="text-[var(--pob-text-muted)]">Pending CID:</span>
+              <span className="text-[var(--pob-text-muted)]">Pending Update:</span>
               <div className="flex items-center gap-2">
-                <code className="pob-mono text-[var(--pob-primary)]">
-                  {formatCID(pendingCID)}
-                </code>
-                <span className="pob-pill">⏳ {pendingConfirmations}/10</span>
+                <a
+                  href={getMetadataCidUrl(pendingCID)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--pob-primary)] hover:underline"
+                  title={`View via API: ${pendingCID}`}
+                >
+                  📦 IPFS
+                </a>
+                {pendingTxHash && (
+                  <a
+                    href={getExplorerTxLink(chainId, pendingTxHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--pob-primary)] hover:underline"
+                    title={`View transaction: ${pendingTxHash}`}
+                  >
+                    🔗 TX
+                  </a>
+                )}
+                <span className="pob-pill flex items-center gap-1">
+                  <ProgressSpinner size={16} progress={(pendingConfirmations / 10) * 100} />
+                  {pendingConfirmations}/10
+                </span>
               </div>
-            </div>
-          )}
-
-          {/* Transaction Hash Link (if pending) */}
-          {pendingTxHash && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[var(--pob-text-muted)]">Transaction:</span>
-              <a
-                href={getExplorerTxLink(chainId, pendingTxHash)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="pob-mono text-[var(--pob-primary)] hover:underline"
-              >
-                {formatTxHash(pendingTxHash)}
-              </a>
             </div>
           )}
 

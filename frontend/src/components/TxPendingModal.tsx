@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import type { BrowserProvider } from 'ethers';
 import Modal from './Modal';
+import { ProgressSpinner } from './ProgressSpinner';
 
 interface TxPendingModalProps {
   isOpen: boolean;
@@ -131,39 +132,7 @@ export default function TxPendingModal({
     >
       <div className="pob-pane space-y-4">
         <div className="flex items-center gap-4">
-          <div
-            className="tx-spinner"
-            style={{
-              ['--rotation-duration' as string]: `${rotationDuration}s`,
-            }}
-          >
-            <svg
-              width="48"
-              height="48"
-              viewBox="0 0 48 48"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <circle
-                cx="24"
-                cy="24"
-                r="20"
-                stroke="rgba(247, 147, 26, 0.2)"
-                strokeWidth="4"
-              />
-              <circle
-                cx="24"
-                cy="24"
-                r="20"
-                stroke="rgb(247, 147, 26)"
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeDasharray="125.6"
-                strokeDashoffset="31.4"
-                className="tx-spinner__circle"
-              />
-            </svg>
-          </div>
+          <ProgressSpinner size={48} rotationDuration={rotationDuration} />
           <div className="flex-1">
             <h2 className="text-xl font-bold text-white">
               {!txHash

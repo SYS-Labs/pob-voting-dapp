@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Iteration, IterationStatus } from '~/interfaces';
 import IterationCard from './IterationCard';
 
@@ -7,11 +8,19 @@ interface IterationSectionProps {
   selectedIteration: number | null;
   iterationStatuses: { [iterationNumber: number]: IterationStatus };
   onSelectIteration: (iteration: number) => void;
+  onAddRound?: (iteration: Iteration) => void;
+  headerAction?: ReactNode;
 }
 
-const IterationSection = ({ title, iterations, selectedIteration, iterationStatuses, onSelectIteration }: IterationSectionProps) => {
-  if (!iterations.length) return null;
-
+const IterationSection = ({
+  title,
+  iterations,
+  selectedIteration,
+  iterationStatuses,
+  onSelectIteration,
+  onAddRound,
+  headerAction,
+}: IterationSectionProps) => {
   const getStatusBadge = (status: IterationStatus | undefined) => {
     const effectiveStatus = status ?? 'upcoming';
     switch (effectiveStatus) {
@@ -29,27 +38,41 @@ const IterationSection = ({ title, iterations, selectedIteration, iterationStatu
     <section className="pob-pane">
       <div className="pob-pane__heading">
         <h3 className="pob-pane__title">{title}</h3>
-        <span className="pob-pane__meta">
-          {iterations.length} iteration{iterations.length !== 1 ? 's' : ''}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="pob-pane__meta">
+            {iterations.length} iteration{iterations.length !== 1 ? 's' : ''}
+          </span>
+          {headerAction}
+        </div>
       </div>
-      <div className="pob-pane__grid md:grid-cols-2 xl:grid-cols-3">
-        {iterations.map((iteration) => {
-          const isSelected = iteration.iteration === selectedIteration;
-          const status = iterationStatuses[iteration.iteration];
-          const statusBadge = getStatusBadge(status);
+      {iterations.length === 0 ? (
+        <div className="pob-info">
+          <p className="text-sm text-[var(--pob-text-muted)]">
+            No iterations registered yet. Use the "Add iteration" button above to get started.
+          </p>
+        </div>
+      ) : (
+        <div className="pob-pane__grid md:grid-cols-2 xl:grid-cols-3">
+          {iterations.map((iteration) => {
+            const isSelected = iteration.iteration === selectedIteration;
+            const status = iterationStatuses[iteration.iteration];
+            const statusBadge = getStatusBadge(status);
+            const needsRound = !iteration.round || !iteration.jurySC || !iteration.pob;
 
-          return (
-            <IterationCard
-              key={`${title}-${iteration.iteration}`}
-              iteration={iteration}
-              isActive={isSelected}
-              statusBadge={statusBadge}
-              onSelect={() => onSelectIteration(iteration.iteration)}
-            />
-          );
-        })}
-      </div>
+            return (
+              <IterationCard
+                key={`${title}-${iteration.iteration}`}
+                iteration={iteration}
+                isActive={isSelected}
+                statusBadge={statusBadge}
+                onSelect={!needsRound ? () => onSelectIteration(iteration.iteration) : undefined}
+                onAddRound={needsRound ? () => onAddRound?.(iteration) : undefined}
+                disableLink={needsRound}
+              />
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 };

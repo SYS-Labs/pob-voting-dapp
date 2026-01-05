@@ -1,8 +1,12 @@
-import type { Iteration, ParticipantRole, Badge } from '~/interfaces';
+import { useEffect, useState } from 'react';
+import type { Iteration, ParticipantRole, Badge, IterationMetadata } from '~/interfaces';
 import { formatDate } from '~/utils';
 import { NETWORKS } from '~/constants/networks';
 import FinalResultsPanel from './FinalResultsPanel';
 import ContractAddress from './ContractAddress';
+import MarkdownRenderer from './MarkdownRenderer';
+import { Link } from 'react-router-dom';
+import { metadataAPI } from '~/utils/metadata-api';
 
 interface CommunityBadge {
   tokenId: string;
@@ -64,6 +68,27 @@ const IterationHeader = ({
   projects = [],
   projectScores = null,
 }: IterationHeaderProps) => {
+  const [metadata, setMetadata] = useState<IterationMetadata | null>(null);
+
+  // Load iteration metadata
+  useEffect(() => {
+    if (!iteration) return;
+
+    const loadMetadata = async () => {
+      try {
+        const data = await metadataAPI.getIterationMetadata(
+          iteration.chainId,
+          iteration.jurySC
+        );
+        setMetadata(data);
+      } catch (error) {
+        console.error('Failed to load iteration metadata:', error);
+      }
+    };
+
+    loadMetadata();
+  }, [iteration?.chainId, iteration?.jurySC]);
+
   if (!iteration) {
     return (
       <section className="pob-pane">
@@ -83,7 +108,7 @@ const IterationHeader = ({
       <div className="pob-pane__heading">
         <div>
           <p className="pob-pane__meta">Current iteration</p>
-          <h2 className="pob-pane__title text-3xl">{iteration.name}</h2>
+          <h2 className="pob-pane__title text-3xl">{metadata?.name || iteration.name}</h2>
           <p className="mt-1 text-sm text-[var(--pob-text-muted)]">
             Iteration #{iteration.iteration}{iteration.round ? ` - Round #${iteration.round}` : ''}
             {votingEnded ? (
@@ -130,19 +155,37 @@ const IterationHeader = ({
         </div>
       </dl>
 
+      {/* Iteration description */}
+      {metadata?.description && (
+        <div className="pob-fieldset" style={{ marginTop: '1rem' }}>
+          <MarkdownRenderer content={metadata.description} />
+        </div>
+      )}
+
       {/* Program brief (left) and Mint button (right) on same line */}
-      {(iteration.link || (walletAddress && executeMint)) && (
+      {(iteration.link || metadata?.link || isOwner || (walletAddress && executeMint)) && (
         <div className="flex items-center justify-between gap-2">
-          {iteration.link && (
-            <a
-              href={iteration.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="pob-button pob-button--compact"
-            >
-              Program brief
-            </a>
-          )}
+          <div className="flex items-center gap-2">
+            {(metadata?.link || iteration.link) && (
+              <a
+                href={metadata?.link || iteration.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="pob-button pob-button--compact"
+              >
+                Program brief
+              </a>
+            )}
+
+            {isOwner && (
+              <Link
+                to={`/iteration/${iteration.iteration}/details`}
+                className="pob-button pob-button--compact pob-button--outline"
+              >
+                Manage iteration
+              </Link>
+            )}
+          </div>
 
           {walletAddress && executeMint && !isOwner && (() => {
             // Determine user's role (matching JuryPanel logic)

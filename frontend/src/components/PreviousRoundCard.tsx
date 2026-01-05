@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Contract } from 'ethers';
 import type { PreviousRound, ParticipantRole } from '~/interfaces';
 import { PoB_01ABI } from '~/abis';
@@ -34,6 +34,23 @@ const PreviousRoundCard = ({
 }: PreviousRoundCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { loading, roundData } = usePreviousRoundData(round, chainId, publicProvider, isExpanded, walletAddress);
+
+  // Create a local getProjectLabel that uses this round's project metadata
+  const localGetProjectLabel = useMemo(() => {
+    if (!roundData?.projects) return getProjectLabel;
+
+    return (address: string | null): string | null => {
+      if (!address) return null;
+      const project = roundData.projects.find(
+        p => p.address.toLowerCase() === address.toLowerCase()
+      );
+      if (project?.metadata?.name) {
+        return project.metadata.name;
+      }
+      // Fallback to parent's getProjectLabel (for current iteration projects)
+      return getProjectLabel(address);
+    };
+  }, [roundData?.projects, getProjectLabel]);
 
   // Determine user's role in this round for minting
   const getUserRole = async (): Promise<ParticipantRole | null> => {
@@ -222,7 +239,7 @@ const PreviousRoundCard = ({
                 votingMode={roundData.votingMode}
                 projects={roundData.projects}
                 projectScores={roundData.projectScores}
-                getProjectLabel={getProjectLabel}
+                getProjectLabel={localGetProjectLabel}
                 isOwner={isOwner}
               />
             </>
