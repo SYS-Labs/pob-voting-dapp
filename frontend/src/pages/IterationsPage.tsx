@@ -1,13 +1,14 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Contract, isAddress } from 'ethers';
-import type { JsonRpcSigner } from 'ethers';
+import type { JsonRpcSigner, JsonRpcProvider } from 'ethers';
 import type { Iteration, IterationStatus } from '~/interfaces';
 import IterationSection from '~/components/IterationSection';
 import Modal from '~/components/Modal';
 import PoBRegistryABI from '~/abis/PoBRegistry.json';
 import JurySCABI from '~/abis/JurySC_02_v001.json';
 import { REGISTRY_ADDRESSES } from '~/utils/registry';
+import { getPublicProvider } from '~/utils/provider';
 
 interface IterationsPageProps {
   filteredIterations: Iteration[];
@@ -52,13 +53,38 @@ const IterationsPage = ({
   } | null>(null);
   const [isFetchingJuryData, setIsFetchingJuryData] = useState(false);
   const [dataVerified, setDataVerified] = useState(false);
+  const [isRegistryOwner, setIsRegistryOwner] = useState(false);
 
   const registryAddress = useMemo(() => {
     if (!chainId) return '';
     return REGISTRY_ADDRESSES[chainId] || '';
   }, [chainId]);
 
-  const canSubmit = Boolean(walletAddress && signer && chainId && registryAddress);
+  // Check if the connected wallet is the registry owner
+  const checkRegistryOwner = useCallback(async () => {
+    if (!walletAddress || !chainId || !registryAddress) {
+      setIsRegistryOwner(false);
+      return;
+    }
+
+    try {
+      const provider = getPublicProvider(chainId) as JsonRpcProvider;
+      const registry = new Contract(registryAddress, PoBRegistryABI, provider);
+      const owner = await registry.owner();
+      const isOwner = owner.toLowerCase() === walletAddress.toLowerCase();
+      setIsRegistryOwner(isOwner);
+    } catch (error) {
+      console.error('Failed to check registry owner:', error);
+      setIsRegistryOwner(false);
+    }
+  }, [walletAddress, chainId, registryAddress]);
+
+  // Check registry owner when wallet/chain changes
+  useEffect(() => {
+    checkRegistryOwner();
+  }, [checkRegistryOwner]);
+
+  const canSubmit = Boolean(walletAddress && signer && chainId && registryAddress && isRegistryOwner);
 
   const openRegisterModal = () => {
     setRegisterError(null);
@@ -296,8 +322,8 @@ const IterationsPage = ({
         selectedIteration={selectedIteration}
         iterationStatuses={iterationStatuses}
         onSelectIteration={onSelectIteration}
-        onAddRound={openRoundModal}
-        headerAction={(
+        onAddRound={walletAddress && isRegistryOwner ? openRoundModal : undefined}
+        headerAction={walletAddress && isRegistryOwner ? (
           <button
             type="button"
             onClick={openRegisterModal}
@@ -310,7 +336,7 @@ const IterationsPage = ({
           >
             Add iteration
           </button>
-        )}
+        ) : undefined}
       />
 
       <Modal

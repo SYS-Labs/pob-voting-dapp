@@ -66,7 +66,7 @@ const IterationSection = ({
                 isActive={isSelected}
                 statusBadge={statusBadge}
                 onSelect={!needsRound ? () => onSelectIteration(iteration.iteration) : undefined}
-                onAddRound={needsRound ? () => onAddRound?.(iteration) : undefined}
+                onAddRound={needsRound && onAddRound ? () => onAddRound(iteration) : undefined}
                 disableLink={needsRound}
               />
             );
