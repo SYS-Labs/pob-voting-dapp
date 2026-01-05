@@ -1,10 +1,27 @@
 import { create, IPFSHTTPClient, CID } from 'ipfs-http-client';
 import { logger } from '../utils/logger.js';
 
+/**
+ * Canonicalize JSON by sorting keys recursively
+ * This ensures deterministic serialization (same object = same CID)
+ */
+function canonicalJSON(obj: any): string {
+  if (obj === null || typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(canonicalJSON).join(',') + ']';
+  }
+
+  const keys = Object.keys(obj).sort();
+  const pairs = keys.map(key => `"${key}":${canonicalJSON(obj[key])}`);
+  return '{' + pairs.join(',') + '}';
+}
+
 export class IPFSService {
   private client: IPFSHTTPClient;
   private fallbackClient: IPFSHTTPClient | null;
-  private useDAG: boolean;
 
   constructor() {
     // Parse primary IPFS API URL
@@ -14,9 +31,6 @@ export class IPFSService {
     // Parse fallback IPFS API URL (optional)
     const fallbackApiUrl = process.env.IPFS_FALLBACK_API_URL;
     this.fallbackClient = fallbackApiUrl ? this.createClient(fallbackApiUrl) : null;
-
-    // Use DAG API for JSON objects (recommended)
-    this.useDAG = process.env.IPFS_USE_DAG !== 'false'; // Default true
   }
 
   /**
@@ -32,46 +46,54 @@ export class IPFSService {
   }
 
   /**
-   * Upload JSON object to IPFS using DAG API
-   * More efficient and semantically correct for structured data
+   * Preview CID without uploading (only-hash mode)
+   * Uses canonical JSON (sorted keys) for deterministic CIDs
+   */
+  async previewCID(data: any): Promise<string> {
+    try {
+      const content = canonicalJSON(data);
+
+      const result = await this.client.add(content, {
+        onlyHash: true,  // Don't upload, just compute CID
+        cidVersion: 1,
+        wrapWithDirectory: false
+      });
+
+      logger.info('Previewed CID (no upload)', {
+        cid: result.cid.toString(),
+        size: result.size
+      });
+
+      return result.cid.toString();
+    } catch (error) {
+      logger.error('Failed to preview CID', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Upload JSON object to IPFS
+   * Uses canonical JSON (sorted keys) for deterministic, verifiable content-addressing
    */
   async uploadJSON(data: any, name?: string): Promise<string> {
     try {
-      if (this.useDAG) {
-        // Use DAG API - stores JSON as IPLD block
-        const cid = await this.client.dag.put(data, {
-          storeCodec: 'dag-cbor', // Binary encoding (more efficient than dag-json)
-          hashAlg: 'sha2-256',
-          pin: true
-        });
+      // Use canonical JSON (sorted keys recursively) for deterministic CIDs
+      // This ensures clients can verify the CID by hashing what they receive
+      const content = canonicalJSON(data);
 
-        const cidString = cid.toString();
+      const result = await this.client.add(content, {
+        pin: true,
+        cidVersion: 1,
+        wrapWithDirectory: false
+      });
 
-        logger.info('Uploaded to IPFS (DAG)', {
-          cid: cidString,
-          name,
-          codec: 'dag-cbor'
-        });
+      logger.info('Uploaded to IPFS (Canonical JSON)', {
+        cid: result.cid.toString(),
+        name,
+        size: result.size
+      });
 
-        return cidString;
-      } else {
-        // Fallback: Use file API (stringify JSON)
-        const content = JSON.stringify(data);
-
-        const result = await this.client.add(content, {
-          pin: true,
-          cidVersion: 1,
-          wrapWithDirectory: false
-        });
-
-        logger.info('Uploaded to IPFS (File)', {
-          cid: result.cid.toString(),
-          name,
-          size: result.size
-        });
-
-        return result.cid.toString();
-      }
+      return result.cid.toString();
     } catch (error) {
       logger.error('Failed to upload to IPFS', { error, name });
       throw error;
@@ -87,13 +109,10 @@ export class IPFSService {
 
     // Try primary IPFS server
     try {
-      const result = this.useDAG
-        ? await this.client.dag.get(parsedCID)
-        : await this.client.cat(parsedCID);
+      const result = await this.client.cat(parsedCID);
+      const data = JSON.parse(Buffer.concat(await this.asyncIteratorToArray(result)).toString());
 
-      const data = this.useDAG ? result.value : JSON.parse(Buffer.concat(await this.asyncIteratorToArray(result)).toString());
-
-      logger.info('Fetched from IPFS (primary)', { cid, useDAG: this.useDAG });
+      logger.info('Fetched from IPFS (primary)', { cid });
       return data;
     } catch (primaryError) {
       logger.warn('Primary IPFS server failed', { cid, error: primaryError });
@@ -101,13 +120,10 @@ export class IPFSService {
       // Try fallback server if configured
       if (this.fallbackClient) {
         try {
-          const result = this.useDAG
-            ? await this.fallbackClient.dag.get(parsedCID)
-            : await this.fallbackClient.cat(parsedCID);
+          const result = await this.fallbackClient.cat(parsedCID);
+          const data = JSON.parse(Buffer.concat(await this.asyncIteratorToArray(result)).toString());
 
-          const data = this.useDAG ? result.value : JSON.parse(Buffer.concat(await this.asyncIteratorToArray(result)).toString());
-
-          logger.info('Fetched from IPFS (fallback)', { cid, useDAG: this.useDAG });
+          logger.info('Fetched from IPFS (fallback)', { cid });
           return data;
         } catch (fallbackError) {
           logger.error('Fallback IPFS server failed', { cid, error: fallbackError });

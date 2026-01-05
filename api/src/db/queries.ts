@@ -99,30 +99,6 @@ export class PostDatabase {
   }
 
   /**
-   * Get the last indexed post ID from metadata
-   */
-  getLastIndexedId(): string | null {
-    const stmt = this.db.prepare(
-      'SELECT value FROM metadata WHERE key = ?'
-    );
-    const result = stmt.get('last_indexed_id') as { value: string } | undefined;
-    return result && result.value !== '0' ? result.value : null;
-  }
-
-  /**
-   * Update the last indexed post ID
-   */
-  setLastIndexedId(postId: string): void {
-    const stmt = this.db.prepare(`
-      UPDATE metadata
-      SET value = ?, updated_at = datetime('now')
-      WHERE key = 'last_indexed_id'
-    `);
-    stmt.run(postId);
-    logger.debug('Updated last indexed ID', { postId });
-  }
-
-  /**
    * Get all posts in a conversation
    */
   getConversationPosts(conversationId: string): PostRecord[] {

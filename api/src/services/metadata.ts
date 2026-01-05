@@ -3,28 +3,40 @@ import { IPFSService } from './ipfs.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 
-// JurySC_01 ABI - only the functions we need for metadata
-const JURY_SC_ABI = [
-  'function iterationMetadataCID() public view returns (string)',
-  'function projectMetadataCID(address) public view returns (string)',
-  'function setIterationMetadataCID(string calldata cid) external',
-  'function setProjectMetadataCID(string calldata cid) external',
-  'function getPrevRoundContracts() public view returns (address[])',
-  'function setPrevRoundContracts(address[] calldata contracts) external',
-  'function isRegisteredProject(address) public view returns (bool)',
-  'function owner() public view returns (address)',
-  'event IterationMetadataSet(string cid)',
-  'event ProjectMetadataSet(address indexed project, string cid)',
-  'event PrevRoundsSet(address[] contracts)'
+// PoBRegistry addresses by network
+const REGISTRY_ADDRESSES: Record<number, string> = {
+  57: '', // Mainnet - TODO: Deploy and update
+  5700: '', // Testnet - TODO: Deploy and update
+  31337: '0xab180957A96821e90C0114292DDAfa9E9B050d65' // Hardhat - Latest deployment
+};
+
+// RPC URLs by network
+const RPC_URLS: Record<number, string> = {
+  57: 'https://rpc.syscoin.org',
+  5700: 'https://rpc.tanenbaum.io',
+  31337: 'http://localhost:8547' // Hardhat local node
+};
+
+// PoBRegistry ABI - only the functions we need for metadata
+const REGISTRY_ABI = [
+  'function getIterationMetadata(uint256 chainId, address jurySC) external view returns (string)',
+  'function getProjectMetadata(uint256 chainId, address jurySC, address project) external view returns (string)',
+  'function setIterationMetadata(uint256 chainId, address jurySC, string calldata cid) external',
+  'function setProjectMetadata(uint256 chainId, address jurySC, address project, string calldata cid) external',
+  'function owner() external view returns (address)',
+  'event IterationMetadataSet(uint256 indexed chainId, address indexed jurySC, string cid)',
+  'event ProjectMetadataSet(uint256 indexed chainId, address indexed jurySC, address indexed project, string cid)'
 ];
+
 
 export interface IterationMetadata {
   iteration: number;
   round: number;
   name: string;
+  description?: string; // Round description/details
   chainId: number;
   votingMode: number;
-  link: string;
+  link?: string; // Optional program brief or social media link
   prev_rounds?: Array<{
     round: number;
     jurySC: string;
@@ -45,54 +57,55 @@ export interface ProjectMetadata {
 
 export class MetadataService {
   private ipfs: IPFSService;
-  private provider: ethers.JsonRpcProvider;
-  private wallet: ethers.Wallet;
+  private privateKey: string;
 
   constructor(ipfs: IPFSService) {
     this.ipfs = ipfs;
-    this.provider = new ethers.JsonRpcProvider(config.blockchain.rpcUrl);
-    this.wallet = new ethers.Wallet(config.blockchain.privateKey, this.provider);
+    this.privateKey = config.blockchain.privateKey;
   }
 
   /**
-   * Get a contract instance for a specific JurySC address
+   * Get provider and wallet for a specific chain
    */
-  private getContract(contractAddress: string): ethers.Contract {
-    return new ethers.Contract(contractAddress, JURY_SC_ABI, this.wallet);
-  }
-
-  /**
-   * Verify that a signature matches the expected address
-   */
-  private verifySignature(message: string, signature: string, expectedAddress: string): boolean {
-    try {
-      const recovered = ethers.verifyMessage(message, signature);
-      return recovered.toLowerCase() === expectedAddress.toLowerCase();
-    } catch (error) {
-      logger.error('Signature verification failed', { error });
-      return false;
+  private getProviderAndWallet(chainId: number): { provider: ethers.JsonRpcProvider; wallet: ethers.Wallet } {
+    const rpcUrl = RPC_URLS[chainId];
+    if (!rpcUrl) {
+      throw new Error(`No RPC URL configured for chain ${chainId}`);
     }
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+    const wallet = new ethers.Wallet(this.privateKey, provider);
+    return { provider, wallet };
   }
 
   /**
-   * Upload iteration metadata to IPFS and set CID on contract
-   * Only contract owner can do this
+   * Get PoBRegistry contract instance
+   */
+  private getRegistryContract(chainId: number): ethers.Contract {
+    const registryAddress = REGISTRY_ADDRESSES[chainId];
+    if (!registryAddress) {
+      throw new Error(`No PoBRegistry address configured for chain ${chainId}`);
+    }
+    const { wallet } = this.getProviderAndWallet(chainId);
+    return new ethers.Contract(registryAddress, REGISTRY_ABI, wallet);
+  }
+
+
+
+  /**
+   * Upload iteration metadata to IPFS and return CID
+   * Caller is responsible for setting CID on-chain
    */
   async setIterationMetadata(
-    contractAddress: string,
     metadata: IterationMetadata,
     signature: string,
     message: string
-  ): Promise<{ cid: string; txHash: string }> {
-    const contract = this.getContract(contractAddress);
-
-    // Get contract owner
-    const owner = await contract.owner();
-
-    // Verify signature is from contract owner
-    if (!this.verifySignature(message, signature, owner)) {
-      throw new Error('Invalid signature - not from contract owner');
-    }
+  ): Promise<{ cid: string }> {
+    // Verify signature matches the message (basic validation)
+    const recovered = ethers.verifyMessage(message, signature);
+    logger.info('Upload iteration metadata request', {
+      signer: recovered,
+      iteration: metadata.iteration
+    });
 
     // Upload metadata to IPFS
     const cid = await this.ipfs.uploadJSON(
@@ -106,41 +119,25 @@ export class MetadataService {
       round: metadata.round
     });
 
-    // Submit transaction to set CID on contract
-    const tx = await contract.setIterationMetadataCID(cid);
-
-    logger.info('Submitted setIterationMetadataCID transaction', {
-      txHash: tx.hash,
-      cid,
-      contractAddress
-    });
-
-    return { cid, txHash: tx.hash };
+    return { cid };
   }
 
   /**
-   * Upload project metadata to IPFS and set CID on contract
-   * Only the project address can do this
+   * Upload project metadata to IPFS and return CID
+   * Caller is responsible for setting CID on-chain
    */
   async setProjectMetadata(
-    contractAddress: string,
     projectAddress: string,
     metadata: ProjectMetadata,
     signature: string,
     message: string
-  ): Promise<{ cid: string; txHash: string }> {
-    const contract = this.getContract(contractAddress);
-
-    // Verify project is registered
-    const isRegistered = await contract.isRegisteredProject(projectAddress);
-    if (!isRegistered) {
-      throw new Error('Project is not registered in this iteration');
-    }
-
-    // Verify signature is from project address
-    if (!this.verifySignature(message, signature, projectAddress)) {
-      throw new Error('Invalid signature - not from project address');
-    }
+  ): Promise<{ cid: string }> {
+    // Verify signature is from project address (no signature validation for now - caller is responsible)
+    const recovered = ethers.verifyMessage(message, signature);
+    logger.info('Upload project metadata request', {
+      signer: recovered,
+      projectAddress
+    });
 
     // Ensure metadata.account matches projectAddress
     if (metadata.account.toLowerCase() !== projectAddress.toLowerCase()) {
@@ -158,102 +155,83 @@ export class MetadataService {
       projectAddress
     });
 
-    // Create a contract instance with the project's signature
-    // The project needs to call the contract themselves
-    // We need to use a different approach - send tx from project's wallet
-
-    // For this implementation, we'll assume the API has permission to call
-    // setProjectMetadataCID on behalf of projects, OR
-    // the project needs to call it themselves after getting the CID
-
-    // Option 1: Return CID for project to use
-    // Option 2: API calls contract if it has permission
-
-    // Let's go with Option 2 for simplicity - API submits the tx
-    const tx = await contract.setProjectMetadataCID(cid);
-
-    logger.info('Submitted setProjectMetadataCID transaction', {
-      txHash: tx.hash,
-      cid,
-      projectAddress,
-      contractAddress
-    });
-
-    return { cid, txHash: tx.hash };
+    return { cid };
   }
 
   /**
-   * Get iteration metadata from IPFS via contract CID
+   * Get iteration metadata from IPFS via PoBRegistry CID
    */
-  async getIterationMetadata(contractAddress: string): Promise<IterationMetadata | null> {
+  async getIterationMetadata(chainId: number, contractAddress: string): Promise<IterationMetadata | null> {
     try {
-      const contract = this.getContract(contractAddress);
-      const cid = await contract.iterationMetadataCID();
+      const registry = this.getRegistryContract(chainId);
+      const cid = await registry.getIterationMetadata(chainId, contractAddress);
 
       if (!cid || cid === '') {
-        logger.debug('No iteration metadata CID set', { contractAddress });
+        logger.debug('No iteration metadata CID set', { chainId, contractAddress });
         return null;
       }
 
       const metadata = await this.ipfs.fetchJSON(cid);
       return metadata as IterationMetadata;
     } catch (error) {
-      logger.error('Failed to get iteration metadata', { error, contractAddress });
+      logger.error('Failed to get iteration metadata', { error, chainId, contractAddress });
       return null;
     }
   }
 
   /**
-   * Get project metadata from IPFS via contract CID
+   * Get project metadata from IPFS via PoBRegistry CID
    */
   async getProjectMetadata(
+    chainId: number,
     contractAddress: string,
     projectAddress: string
   ): Promise<ProjectMetadata | null> {
     try {
-      const contract = this.getContract(contractAddress);
-      const cid = await contract.projectMetadataCID(projectAddress);
+      const registry = this.getRegistryContract(chainId);
+      const cid = await registry.getProjectMetadata(chainId, contractAddress, projectAddress);
 
       if (!cid || cid === '') {
-        logger.debug('No project metadata CID set', { contractAddress, projectAddress });
+        logger.debug('No project metadata CID set', { chainId, contractAddress, projectAddress });
         return null;
       }
 
       const metadata = await this.ipfs.fetchJSON(cid);
       return metadata as ProjectMetadata;
     } catch (error) {
-      logger.error('Failed to get project metadata', { error, contractAddress, projectAddress });
+      logger.error('Failed to get project metadata', { error, chainId, contractAddress, projectAddress });
       return null;
     }
   }
 
   /**
-   * Get metadata CID from contract (without fetching from IPFS)
+   * Get metadata CID from PoBRegistry (without fetching from IPFS)
    */
-  async getIterationMetadataCID(contractAddress: string): Promise<string | null> {
+  async getIterationMetadataCID(chainId: number, contractAddress: string): Promise<string | null> {
     try {
-      const contract = this.getContract(contractAddress);
-      const cid = await contract.iterationMetadataCID();
+      const registry = this.getRegistryContract(chainId);
+      const cid = await registry.getIterationMetadata(chainId, contractAddress);
       return cid || null;
     } catch (error) {
-      logger.error('Failed to get iteration metadata CID', { error, contractAddress });
+      logger.error('Failed to get iteration metadata CID', { error, chainId, contractAddress });
       return null;
     }
   }
 
   /**
-   * Get project metadata CID from contract (without fetching from IPFS)
+   * Get project metadata CID from PoBRegistry (without fetching from IPFS)
    */
   async getProjectMetadataCID(
+    chainId: number,
     contractAddress: string,
     projectAddress: string
   ): Promise<string | null> {
     try {
-      const contract = this.getContract(contractAddress);
-      const cid = await contract.projectMetadataCID(projectAddress);
+      const registry = this.getRegistryContract(chainId);
+      const cid = await registry.getProjectMetadata(chainId, contractAddress, projectAddress);
       return cid || null;
     } catch (error) {
-      logger.error('Failed to get project metadata CID', { error, contractAddress, projectAddress });
+      logger.error('Failed to get project metadata CID', { error, chainId, contractAddress, projectAddress });
       return null;
     }
   }
