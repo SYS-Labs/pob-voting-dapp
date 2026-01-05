@@ -118,7 +118,7 @@ mapping(uint256 => mapping(address => mapping(address => bool))) public authoriz
 
 4. API: Set CID on registry
    └─> const tx = await registry.setProjectMetadata(chainId, jurySC, projectAddress, cid)
-   └─> Record tx in metadata_updates table
+   └─> Record tx in pob_metadata_events table
 
 5. Background worker: Monitor confirmations
    └─> After 10 confirmations: unpin old CID
