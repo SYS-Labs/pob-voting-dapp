@@ -113,17 +113,6 @@ CREATE INDEX IF NOT EXISTS idx_verification_post ON verification_records(post_id
 CREATE INDEX IF NOT EXISTS idx_verification_tx ON verification_records(tx_hash);
 CREATE INDEX IF NOT EXISTS idx_verification_verified ON verification_records(verified);
 
--- Metadata table for tracking indexer state
-CREATE TABLE IF NOT EXISTS metadata (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- Insert initial metadata
-INSERT OR IGNORE INTO metadata (key, value) VALUES ('last_indexed_id', '0');
-INSERT OR IGNORE INTO metadata (key, value) VALUES ('schema_version', '1');
-
 -- Monitored threads - X posts actively being indexed
 CREATE TABLE IF NOT EXISTS monitored_threads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -153,16 +142,15 @@ CREATE TABLE IF NOT EXISTS deployments (
 
 CREATE INDEX IF NOT EXISTS idx_deployments_address ON deployments(contract_address);
 
--- Metadata updates tracking for IPFS migration
--- Tracks CID updates and their on-chain confirmation status
-CREATE TABLE IF NOT EXISTS metadata_updates (
+-- PoB metadata history table (simplified tracking)
+CREATE TABLE IF NOT EXISTS pob_metadata_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   chain_id INTEGER NOT NULL,
-  iteration_number INTEGER NOT NULL,
+  contract_address TEXT,
+  iteration_number INTEGER,
   project_address TEXT,
-  old_cid TEXT,
-  new_cid TEXT NOT NULL,
-  tx_hash TEXT NOT NULL,
+  cid TEXT NOT NULL,
+  tx_hash TEXT NOT NULL UNIQUE,
   tx_sent_height INTEGER,
   confirmations INTEGER DEFAULT 0,
   confirmed BOOLEAN DEFAULT 0,
@@ -170,26 +158,16 @@ CREATE TABLE IF NOT EXISTS metadata_updates (
   updated_at INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_metadata_updates_pending ON metadata_updates(confirmed, tx_hash);
-CREATE INDEX IF NOT EXISTS idx_metadata_updates_project ON metadata_updates(chain_id, project_address);
+CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_confirmed ON pob_metadata_history(confirmed);
+CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_project ON pob_metadata_history(chain_id, project_address, confirmed, created_at);
+CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_iteration ON pob_metadata_history(chain_id, contract_address, confirmed, created_at);
+CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_cid ON pob_metadata_history(cid);
 
--- Unpin queue for safe async unpinning of old CIDs
--- Only unpins after tx has 10+ confirmations
-CREATE TABLE IF NOT EXISTS unpin_queue (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  cid TEXT NOT NULL UNIQUE,
-  reason TEXT,
-  created_at INTEGER NOT NULL
-);
-
--- IPFS content cache
--- Stores immutable IPFS content locally (JSON data)
--- Since IPFS is content-addressed, no need to refresh
-CREATE TABLE IF NOT EXISTS ipfs_cache (
+CREATE TABLE IF NOT EXISTS pob_ipfs_cache (
   cid TEXT PRIMARY KEY,
   content TEXT NOT NULL,
   content_type TEXT NOT NULL,
   fetched_at INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_ipfs_cache_fetched ON ipfs_cache(fetched_at);
+CREATE INDEX IF NOT EXISTS idx_pob_ipfs_cache_fetched ON pob_ipfs_cache(fetched_at);

@@ -21,7 +21,7 @@ export function initDatabase(dbPath: string = config.database.path): Database.Da
   const schemaPath = join(__dirname, 'schema.sql');
   const schema = readFileSync(schemaPath, 'utf-8');
 
-  // Execute schema
+  // Execute schema (creates pob_metadata_history and pob_ipfs_cache tables)
   db.exec(schema);
 
   logger.info('Database initialized successfully');

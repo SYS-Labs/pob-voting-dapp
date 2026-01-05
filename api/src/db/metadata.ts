@@ -3,23 +3,16 @@ import Database from 'better-sqlite3';
 export interface MetadataUpdate {
   id?: number;
   chain_id: number;
-  iteration_number: number;
+  contract_address: string | null;
+  iteration_number: number | null;
   project_address: string | null;
-  old_cid: string | null;
-  new_cid: string;
+  cid: string;
   tx_hash: string;
   tx_sent_height: number | null;
   confirmations: number;
   confirmed: boolean;
   created_at: number;
   updated_at: number;
-}
-
-export interface UnpinQueueItem {
-  id?: number;
-  cid: string;
-  reason: string | null;
-  created_at: number;
 }
 
 export interface IPFSCacheItem {
@@ -35,18 +28,18 @@ export function createMetadataDatabase(db: Database.Database) {
    */
   function createUpdate(params: {
     chainId: number;
-    iterationNumber: number;
+    contractAddress: string | null;
+    iterationNumber: number | null;
     projectAddress: string | null;
-    oldCid: string | null;
-    newCid: string;
+    cid: string;
     txHash: string;
     txSentHeight: number | null;
   }): MetadataUpdate {
     const now = Date.now();
 
     const stmt = db.prepare(`
-      INSERT INTO metadata_updates (
-        chain_id, iteration_number, project_address, old_cid, new_cid,
+      INSERT INTO pob_metadata_history (
+        chain_id, contract_address, iteration_number, project_address, cid,
         tx_hash, tx_sent_height, confirmations, confirmed, created_at, updated_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
@@ -54,10 +47,10 @@ export function createMetadataDatabase(db: Database.Database) {
 
     const result = stmt.run(
       params.chainId,
+      params.contractAddress,
       params.iterationNumber,
       params.projectAddress,
-      params.oldCid,
-      params.newCid,
+      params.cid,
       params.txHash,
       params.txSentHeight,
       now,
@@ -67,10 +60,10 @@ export function createMetadataDatabase(db: Database.Database) {
     return {
       id: Number(result.lastInsertRowid),
       chain_id: params.chainId,
+      contract_address: params.contractAddress,
       iteration_number: params.iterationNumber,
       project_address: params.projectAddress,
-      old_cid: params.oldCid,
-      new_cid: params.newCid,
+      cid: params.cid,
       tx_hash: params.txHash,
       tx_sent_height: params.txSentHeight,
       confirmations: 0,
@@ -85,7 +78,7 @@ export function createMetadataDatabase(db: Database.Database) {
    */
   function getPendingUpdates(limit = 100): MetadataUpdate[] {
     const stmt = db.prepare(`
-      SELECT * FROM metadata_updates
+      SELECT * FROM pob_metadata_history
       WHERE confirmed = 0
       ORDER BY created_at ASC
       LIMIT ?
@@ -101,7 +94,7 @@ export function createMetadataDatabase(db: Database.Database) {
     const now = Date.now();
 
     const stmt = db.prepare(`
-      UPDATE metadata_updates
+      UPDATE pob_metadata_history
       SET confirmations = ?, updated_at = ?
       WHERE tx_hash = ?
     `);
@@ -110,89 +103,190 @@ export function createMetadataDatabase(db: Database.Database) {
   }
 
   /**
-   * Mark a metadata update as confirmed and queue old CID for unpinning
+   * Mark a metadata update as confirmed
    */
   function markConfirmed(txHash: string): MetadataUpdate | null {
     const now = Date.now();
 
     const stmt = db.prepare(`
-      UPDATE metadata_updates
+      UPDATE pob_metadata_history
       SET confirmed = 1, updated_at = ?
       WHERE tx_hash = ?
     `);
 
     stmt.run(now, txHash);
 
-    const update = db.prepare('SELECT * FROM metadata_updates WHERE tx_hash = ?')
-      .get(txHash) as MetadataUpdate | undefined;
-
-    if (!update) return null;
-
-    // Queue old CID for unpinning if it exists
-    if (update.old_cid) {
-      try {
-        queueForUnpin(
-          update.old_cid,
-          update.project_address ? 'project_update' : 'iteration_update'
-        );
-      } catch (error) {
-        // Ignore duplicate errors
-      }
-    }
-
-    return update;
+    return db.prepare('SELECT * FROM pob_metadata_history WHERE tx_hash = ?')
+      .get(txHash) as MetadataUpdate | undefined || null;
   }
 
   /**
    * Get metadata update by transaction hash
    */
   function getUpdateByTxHash(txHash: string): MetadataUpdate | null {
-    const stmt = db.prepare('SELECT * FROM metadata_updates WHERE tx_hash = ?');
+    const stmt = db.prepare('SELECT * FROM pob_metadata_history WHERE tx_hash = ?');
     return (stmt.get(txHash) as MetadataUpdate | undefined) || null;
   }
 
-
   /**
-   * Queue a CID for unpinning
+   * Get pending metadata update for a project
    */
-  function queueForUnpin(cid: string, reason: string | null = null): UnpinQueueItem {
-    const now = Date.now();
-
+  function getPendingUpdateForProject(
+    chainId: number,
+    projectAddress: string
+  ): MetadataUpdate | null {
     const stmt = db.prepare(`
-      INSERT INTO unpin_queue (cid, reason, created_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(cid) DO NOTHING
+      SELECT * FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND project_address = ?
+        AND confirmed = 0
+      ORDER BY created_at DESC
+      LIMIT 1
     `);
 
-    const result = stmt.run(cid, reason, now);
-
-    return {
-      id: Number(result.lastInsertRowid),
-      cid,
-      reason,
-      created_at: now
-    };
+    return (stmt.get(chainId, projectAddress) as MetadataUpdate | undefined) || null;
   }
 
   /**
-   * Get items queued for unpinning
+   * Get latest metadata update for a project by CID
    */
-  function getUnpinQueue(limit = 10): UnpinQueueItem[] {
+  function getLatestProjectUpdateForCID(
+    chainId: number,
+    contractAddress: string,
+    projectAddress: string,
+    cid: string
+  ): MetadataUpdate | null {
     const stmt = db.prepare(`
-      SELECT * FROM unpin_queue
-      ORDER BY created_at ASC
-      LIMIT ?
+      SELECT * FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND contract_address = ?
+        AND project_address = ?
+        AND cid = ?
+      ORDER BY created_at DESC
+      LIMIT 1
     `);
 
-    return stmt.all(limit) as UnpinQueueItem[];
+    const row = stmt.get(chainId, contractAddress, projectAddress, cid) as MetadataUpdate | undefined;
+    if (row) return row;
+
+    // Fallback: check for records without contract_address (legacy)
+    const fallback = db.prepare(`
+      SELECT * FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND contract_address IS NULL
+        AND project_address = ?
+        AND cid = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    return (fallback.get(chainId, projectAddress, cid) as MetadataUpdate | undefined) || null;
   }
 
   /**
-   * Remove item from unpin queue
+   * Get latest confirmed CID for a project
    */
-  function removeFromUnpinQueue(cid: string): void {
-    const stmt = db.prepare('DELETE FROM unpin_queue WHERE cid = ?');
-    stmt.run(cid);
+  function getLatestProjectCID(
+    chainId: number,
+    contractAddress: string,
+    projectAddress: string
+  ): string | null {
+    const stmt = db.prepare(`
+      SELECT cid FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND contract_address = ?
+        AND project_address = ?
+        AND confirmed = 1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(chainId, contractAddress, projectAddress) as { cid: string } | undefined;
+    if (row) return row.cid;
+
+    // Fallback: check for records without contract_address (legacy)
+    const fallback = db.prepare(`
+      SELECT cid FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND contract_address IS NULL
+        AND project_address = ?
+        AND confirmed = 1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const fallbackRow = fallback.get(chainId, projectAddress) as { cid: string } | undefined;
+    return fallbackRow?.cid || null;
+  }
+
+  /**
+   * Get latest metadata update for an iteration by CID
+   */
+  function getLatestIterationUpdateForCID(
+    chainId: number,
+    contractAddress: string,
+    cid: string
+  ): MetadataUpdate | null {
+    const stmt = db.prepare(`
+      SELECT * FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND contract_address = ?
+        AND project_address IS NULL
+        AND cid = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(chainId, contractAddress, cid) as MetadataUpdate | undefined;
+    if (row) return row;
+
+    // Fallback: check for records without contract_address (legacy)
+    const fallback = db.prepare(`
+      SELECT * FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND contract_address IS NULL
+        AND project_address IS NULL
+        AND cid = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    return (fallback.get(chainId, cid) as MetadataUpdate | undefined) || null;
+  }
+
+  /**
+   * Get latest confirmed CID for an iteration
+   */
+  function getLatestIterationCID(
+    chainId: number,
+    contractAddress: string
+  ): string | null {
+    const stmt = db.prepare(`
+      SELECT cid FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND contract_address = ?
+        AND project_address IS NULL
+        AND confirmed = 1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(chainId, contractAddress) as { cid: string } | undefined;
+    if (row) return row.cid;
+
+    // Fallback: check for records without contract_address (legacy)
+    const fallback = db.prepare(`
+      SELECT cid FROM pob_metadata_history
+      WHERE chain_id = ?
+        AND contract_address IS NULL
+        AND project_address IS NULL
+        AND confirmed = 1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const fallbackRow = fallback.get(chainId) as { cid: string } | undefined;
+    return fallbackRow?.cid || null;
   }
 
   /**
@@ -202,7 +296,7 @@ export function createMetadataDatabase(db: Database.Database) {
     const now = Date.now();
 
     const stmt = db.prepare(`
-      INSERT INTO ipfs_cache (cid, content, content_type, fetched_at)
+      INSERT INTO pob_ipfs_cache (cid, content, content_type, fetched_at)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(cid) DO NOTHING
     `);
@@ -221,7 +315,7 @@ export function createMetadataDatabase(db: Database.Database) {
    * Get cached IPFS content
    */
   function getCachedIPFSContent(cid: string): IPFSCacheItem | null {
-    const stmt = db.prepare('SELECT * FROM ipfs_cache WHERE cid = ?');
+    const stmt = db.prepare('SELECT * FROM pob_ipfs_cache WHERE cid = ?');
     return (stmt.get(cid) as IPFSCacheItem | undefined) || null;
   }
 
@@ -234,7 +328,7 @@ export function createMetadataDatabase(db: Database.Database) {
     if (cids.length === 0) return result;
 
     const placeholders = cids.map(() => '?').join(',');
-    const stmt = db.prepare(`SELECT * FROM ipfs_cache WHERE cid IN (${placeholders})`);
+    const stmt = db.prepare(`SELECT * FROM pob_ipfs_cache WHERE cid IN (${placeholders})`);
     const rows = stmt.all(...cids) as IPFSCacheItem[];
 
     for (const row of rows) {
@@ -248,7 +342,7 @@ export function createMetadataDatabase(db: Database.Database) {
    * Delete cached IPFS content (used when unpinning)
    */
   function deleteCachedIPFSContent(cid: string): void {
-    const stmt = db.prepare('DELETE FROM ipfs_cache WHERE cid = ?');
+    const stmt = db.prepare('DELETE FROM pob_ipfs_cache WHERE cid = ?');
     stmt.run(cid);
   }
 
@@ -258,9 +352,11 @@ export function createMetadataDatabase(db: Database.Database) {
     updateConfirmations,
     markConfirmed,
     getUpdateByTxHash,
-    queueForUnpin,
-    getUnpinQueue,
-    removeFromUnpinQueue,
+    getPendingUpdateForProject,
+    getLatestProjectUpdateForCID,
+    getLatestProjectCID,
+    getLatestIterationUpdateForCID,
+    getLatestIterationCID,
     cacheIPFSContent,
     getCachedIPFSContent,
     getBatchCachedIPFSContent,
