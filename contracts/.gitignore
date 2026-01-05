@@ -2,6 +2,11 @@ node_modules
 .env
 cache
 artifacts
+.deployment-state.json
+.openzeppelin
+hardhat-node.log
+deployments/
+deployment-*.json
 
 # Debug scripts
 scripts/debug/
