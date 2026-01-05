@@ -6,7 +6,7 @@ import type { Iteration, IterationStatus } from '~/interfaces';
 import IterationSection from '~/components/IterationSection';
 import Modal from '~/components/Modal';
 import PoBRegistryABI from '~/abis/PoBRegistry.json';
-import JurySCABI from '~/abis/JurySC_01.json';
+import JurySCABI from '~/abis/JurySC_02_v001.json';
 import { REGISTRY_ADDRESSES } from '~/utils/registry';
 
 interface IterationsPageProps {

@@ -6,7 +6,7 @@
 
 import type { ThreadSummary, ThreadPost, MonitoredThread } from '~/interfaces/forum';
 
-const apiBase = import.meta.env.VITE_FORUM_API_BASE_URL || 'http://localhost:4000';
+const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 
 /**
  * Fetch all indexed threads

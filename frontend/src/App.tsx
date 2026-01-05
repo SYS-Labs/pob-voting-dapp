@@ -28,6 +28,8 @@ import IterationsPage from '~/pages/IterationsPage';
 import BadgesPage from '~/pages/BadgesPage';
 import FaqPage from '~/pages/FaqPage';
 import IterationPage from '~/pages/IterationPage';
+import ProjectMetadataPage from '~/pages/ProjectMetadataPage';
+import IterationMetadataPage from '~/pages/IterationMetadataPage';
 import ForumPage from '~/pages/ForumPage';
 import NotFoundPage from '~/pages/NotFoundPage';
 import type { IterationStatus } from '~/interfaces';
@@ -58,14 +60,13 @@ function App() {
     currentIteration,
     iterationStatuses: globalIterationStatuses,
     updateIterationStatus,
-    projectMetadata,
-    projectMetadataLoading,
+    refreshIterations,
     publicProvider,
   } = useAppState();
 
   // Sync URL parameter with selected iteration
   useEffect(() => {
-    const match = location.pathname.match(/^\/iteration\/(\d+)$/);
+    const match = location.pathname.match(/^\/iteration\/(\d+)/);
     if (match) {
       const iterationId = parseInt(match[1], 10);
       if (selectedIterationNumber !== iterationId) {
@@ -125,8 +126,6 @@ function App() {
     correctNetwork,
     publicProvider,
     chainId,
-    projectMetadata,
-    projectMetadataLoading,
     filteredIterations,
     currentPage,
   );
@@ -358,13 +357,18 @@ function App() {
                   setSelectedIteration(iteration);
                   // Navigation will happen via Link in IterationsPage
                 }}
+                walletAddress={walletAddress}
+                chainId={chainId}
+                signer={signer}
+                runTransaction={runTransaction}
+                refreshIterations={refreshIterations}
               />
             }
           />
 
           {/* Iteration detail page */}
           <Route
-            path="/iteration/:id"
+            path="/iteration/:iterationNumber"
             element={
               showIterationPage ? (
                 <IterationPage
@@ -418,6 +422,36 @@ function App() {
               ) : (
                 <NotFoundPage />
               )
+            }
+          />
+
+          {/* Project metadata page */}
+          <Route
+            path="/iteration/:iterationNumber/metadata"
+            element={
+              <ProjectMetadataPage
+                projects={projects}
+                walletAddress={walletAddress}
+                chainId={chainId}
+                contractAddress={currentIteration?.jurySC ?? null}
+                signer={signer}
+                votingActive={statusFlags.isActive && !statusFlags.votingEnded}
+              />
+            }
+          />
+
+          {/* Iteration metadata page */}
+          <Route
+            path="/iteration/:iterationNumber/details"
+            element={
+              <IterationMetadataPage
+                currentIteration={currentIteration}
+                walletAddress={walletAddress}
+                chainId={chainId}
+                signer={signer}
+                votingActive={statusFlags.isActive && !statusFlags.votingEnded}
+                isOwner={isOwner}
+              />
             }
           />
 

@@ -5,14 +5,14 @@
  * The registry is a single source of truth for all iteration and project metadata across all networks.
  */
 
-import { Contract, type Provider } from 'ethers';
+import { Contract, type Provider, ethers } from 'ethers';
 import PoBRegistryABI from '../abis/PoBRegistry.json';
 
 // PoBRegistry addresses by network
 export const REGISTRY_ADDRESSES: Record<number, string> = {
   57: '', // Mainnet - TODO: Deploy and update
-  5700: '', // Testnet - TODO: Deploy and update
-  31337: '' // Hardhat - Set by deployment script
+  5700: '0xA985cE400afea8eEf107c24d879c8c777ece1a8a', // Testnet
+  31337: '0xab180957A96821e90C0114292DDAfa9E9B050d65' // Hardhat - Latest deployment
 };
 
 /**
@@ -168,5 +168,126 @@ export async function isProjectAuthorized(
   } catch (error) {
     console.warn('Failed to check project authorization', { chainId, jurySCAddress, projectAddress, error });
     return false;
+  }
+}
+
+/**
+ * Get all iteration IDs from registry
+ */
+export async function getAllIterationIds(
+  chainId: number,
+  provider: Provider
+): Promise<number[]> {
+  try {
+    const registry = getPoBRegistryContract(chainId, provider);
+    if (!registry) {
+      return [];
+    }
+
+    const ids = await registry.getAllIterationIds();
+    return ids.map((id: bigint) => Number(id));
+  } catch (error) {
+    console.warn('Failed to get iteration IDs from registry', { chainId, error });
+    return [];
+  }
+}
+
+/**
+ * Get iteration info by ID
+ */
+export async function getIterationInfo(
+  iterationId: number,
+  chainId: number,
+  provider: Provider
+): Promise<{
+  iterationId: number;
+  chainId: number;
+  name: string;
+  roundCount: number;
+} | null> {
+  try {
+    const registry = getPoBRegistryContract(chainId, provider);
+    if (!registry) {
+      return null;
+    }
+
+    const info = await registry.getIteration(iterationId);
+    return {
+      iterationId: Number(info.iterationId),
+      chainId: Number(info.chainId),
+      name: info.name,
+      roundCount: Number(info.roundCount),
+    };
+  } catch (error) {
+    console.warn('Failed to get iteration info from registry', { iterationId, chainId, error });
+    return null;
+  }
+}
+
+/**
+ * Get all rounds for an iteration
+ * Note: Returns only data stored in registry (jurySC, deployBlockHint)
+ * Use JurySC contract to query pob() and votingMode() if needed
+ */
+export async function getRounds(
+  iterationId: number,
+  chainId: number,
+  provider: Provider
+): Promise<Array<{
+  iterationId: number;
+  roundId: number;
+  jurySC: string;
+  deployBlockHint: number;
+}>> {
+  try {
+    const registry = getPoBRegistryContract(chainId, provider);
+    if (!registry) {
+      return [];
+    }
+
+    const rounds = await registry.getRounds(iterationId);
+    return rounds.map((r: any) => ({
+      iterationId: Number(r.iterationId),
+      roundId: Number(r.roundId),
+      jurySC: r.jurySC,
+      deployBlockHint: Number(r.deployBlockHint),
+    }));
+  } catch (error) {
+    console.warn('Failed to get rounds from registry', { iterationId, chainId, error });
+    return [];
+  }
+}
+
+/**
+ * Get PoB and votingMode from a JurySC contract
+ */
+export async function getJurySCInfo(
+  jurySCAddress: string,
+  provider: Provider
+): Promise<{ pob: string; votingMode: number } | null> {
+  try {
+    const jurySC = new ethers.Contract(
+      jurySCAddress,
+      ['function pob() external view returns (address)', 'function votingMode() external view returns (uint8)'],
+      provider
+    );
+
+    // pob() is required, votingMode() is optional (older contracts don't have it)
+    const pob = await jurySC.pob();
+
+    let votingMode = 0;
+    try {
+      votingMode = Number(await jurySC.votingMode());
+    } catch {
+      // Older contracts don't have votingMode, default to 0 (Consensus)
+    }
+
+    return {
+      pob,
+      votingMode,
+    };
+  } catch (error) {
+    console.warn('Failed to get JurySC info', { jurySCAddress, error });
+    return null;
   }
 }

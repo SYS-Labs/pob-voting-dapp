@@ -1,8 +1,7 @@
 /**
- * Contract Error Handling Utilities
+ * Error Handling Utilities
  *
- * Provides helpers to decode and display user-friendly error messages
- * from smart contract custom errors.
+ * Provides helpers to decode and display user-friendly error messages.
  */
 
 
@@ -102,3 +101,45 @@ export function formatContractError(error: any): {
   };
 }
 
+export function isUserRejectedError(error: unknown): boolean {
+  if (!error) return false;
+
+  const err = error as {
+    code?: string | number;
+    message?: string;
+    shortMessage?: string;
+    reason?: string;
+    error?: { code?: string | number; message?: string };
+    info?: { error?: { code?: string | number; message?: string } };
+    cause?: { message?: string; shortMessage?: string };
+  };
+
+  const code =
+    err.code ??
+    err.error?.code ??
+    err.info?.error?.code;
+
+  if (code === 4001 || code === '4001' || code === 'ACTION_REJECTED') {
+    return true;
+  }
+
+  const message = [
+    err.message,
+    err.shortMessage,
+    err.reason,
+    err.error?.message,
+    err.info?.error?.message,
+    err.cause?.message,
+    err.cause?.shortMessage,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return (
+    message.includes('user rejected') ||
+    message.includes('user denied') ||
+    message.includes('denied message signature') ||
+    message.includes('rejected the request')
+  );
+}

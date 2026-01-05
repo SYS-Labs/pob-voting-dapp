@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { NETWORKS } from '~/constants/networks';
 
 export function formatAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -120,13 +121,9 @@ export function formatTxHash(hash: string): string {
  * Get block explorer link for transaction
  */
 export function getExplorerTxLink(chainId: number, txHash: string): string {
-  const explorers: Record<number, string> = {
-    57: 'https://explorer.syscoin.org',
-    5700: 'https://tanenbaum.io',
-    31337: '#', // Local network has no explorer
-  };
+  const network = NETWORKS[chainId];
+  const explorerUrl = network?.explorerUrl;
 
-  const explorerUrl = explorers[chainId];
   if (!explorerUrl || explorerUrl === '#') return '#';
   return `${explorerUrl}/tx/${txHash}`;
 }

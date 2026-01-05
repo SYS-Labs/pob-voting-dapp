@@ -18,7 +18,6 @@ export interface SetProjectMetadataRequest {
 export interface SetProjectMetadataResponse {
   success: boolean;
   cid: string;
-  txHash: string;
 }
 
 export interface SetIterationMetadataRequest {
@@ -47,11 +46,23 @@ export interface GetIterationMetadataResponse {
   cid: string | null;
 }
 
+export function getMetadataApiBaseUrl(baseUrl?: string): string {
+  const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
+  return baseUrl || (envBaseUrl ? `${envBaseUrl}/api` : '/api');
+}
+
+export function getMetadataCidUrl(cid: string, baseUrl?: string): string {
+  return `${getMetadataApiBaseUrl(baseUrl)}/metadata/cid/${cid}`;
+}
+
 export class MetadataAPI {
   private baseUrl: string;
 
-  constructor(baseUrl: string = '/api') {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl?: string) {
+    // Use provided baseUrl, or environment variable, or fallback to '/api'
+    const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
+    const defaultBaseUrl = envBaseUrl ? `${envBaseUrl}/api` : '/api';
+    this.baseUrl = baseUrl || defaultBaseUrl;
   }
 
   /**
@@ -135,7 +146,7 @@ export class MetadataAPI {
     metadata: ProjectMetadata,
     signature: string,
     message: string
-  ): Promise<{ cid: string; txHash: string }> {
+  ): Promise<{ cid: string }> {
     const response = await fetch(`${this.baseUrl}/metadata/project`, {
       method: 'POST',
       headers: {
@@ -162,7 +173,7 @@ export class MetadataAPI {
       throw new Error('API returned success=false');
     }
 
-    return { cid: data.cid, txHash: data.txHash };
+    return { cid: data.cid };
   }
 
   /**
@@ -293,7 +304,85 @@ export class MetadataAPI {
       confirmed: data.confirmed,
     };
   }
+
+  /**
+   * Preview metadata CID without uploading to IPFS
+   *
+   * This generates a deterministic CID for the metadata without actually
+   * uploading it to IPFS. Used in the role-gated upload flow.
+   *
+   * @param metadata - Project or iteration metadata
+   * @param kind - Type of metadata ('project' or 'iteration')
+   * @returns CID that will be generated when uploaded
+   * @throws Error if API request fails
+   */
+  async previewMetadata(
+    metadata: ProjectMetadata | IterationMetadata,
+    kind: 'project' | 'iteration'
+  ): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/metadata/preview`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ metadata, kind }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to preview metadata: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error('API returned success=false');
+    }
+
+    return data.cid;
+  }
+
+  /**
+   * Submit metadata with role-gated authorization
+   *
+   * This uploads metadata to IPFS after verifying the raw transaction.
+   * The transaction must be signed but not yet broadcast.
+   *
+   * @param params - Submit parameters
+   * @returns CID and transaction hash
+   * @throws Error if API request fails or authorization is denied
+   */
+  async submitMetadata(params: {
+    cid: string;
+    rawTx: string;
+    chainId: number;
+    contractAddress: string;
+    projectAddress?: string;
+    kind: 'project' | 'iteration';
+    metadata: ProjectMetadata | IterationMetadata;
+  }): Promise<{ cid: string; txHash: string }> {
+    const response = await fetch(`${this.baseUrl}/metadata/submit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to submit metadata: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      throw new Error('API returned success=false');
+    }
+
+    return { cid: data.cid, txHash: data.txHash };
+  }
 }
 
-// Export singleton instance
+// Export singleton instance with API base URL from environment
 export const metadataAPI = new MetadataAPI();

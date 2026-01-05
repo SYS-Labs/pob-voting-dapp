@@ -1,7 +1,5 @@
 import type { ParticipantRole, Project } from '~/interfaces';
-import type { JsonRpcSigner } from 'ethers';
 import MarkdownRenderer from './MarkdownRenderer';
-import ProjectMetadataEditor from './ProjectMetadataEditor';
 import { formatAddress, getYouTubeEmbedUrl } from '~/utils';
 
 interface ProjectCardProps {
@@ -15,13 +13,6 @@ interface ProjectCardProps {
   onVote: (projectAddress: string, tokenId?: string) => void;
   onRemove: (project: Project) => void;
   communityBadges?: Array<{ tokenId: string; hasVoted: boolean }>;
-  // New props for metadata management
-  isProjectOwner?: boolean;
-  votingActive?: boolean;
-  chainId?: number | null;
-  contractAddress?: string | null;
-  signer?: JsonRpcSigner | null;
-  walletAddress?: string | null;
 }
 
 const ProjectCard = ({
@@ -35,12 +26,6 @@ const ProjectCard = ({
   onVote,
   onRemove,
   communityBadges = [],
-  isProjectOwner = false,
-  votingActive = false,
-  chainId = null,
-  contractAddress = null,
-  signer = null,
-  walletAddress = null,
 }: ProjectCardProps) => {
   const projectName = project.metadata?.name ?? `Project #${project.id}`;
   const embedUrl = getYouTubeEmbedUrl(project.metadata?.yt_vid ?? null);
@@ -122,18 +107,6 @@ const ProjectCard = ({
           ) : null}
         </div>
       </div>
-
-      {/* Metadata editor - only visible when isProjectOwner === true */}
-      {isProjectOwner && chainId && contractAddress && (
-        <ProjectMetadataEditor
-          projectAddress={project.address}
-          chainId={chainId}
-          contractAddress={contractAddress}
-          votingActive={votingActive}
-          signer={signer}
-          walletAddress={walletAddress}
-        />
-      )}
     </div>
   );
 };
