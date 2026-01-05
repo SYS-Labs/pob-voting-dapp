@@ -31,6 +31,16 @@
     "type": "error"
   },
   {
+    "inputs": [],
+    "name": "CannotMintAsDaoHic",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "CannotMintAsDevRel",
+    "type": "error"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
@@ -198,6 +208,11 @@
   {
     "inputs": [],
     "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransferDuringVotingNotAllowed",
     "type": "error"
   },
   {
@@ -465,6 +480,25 @@
       }
     ],
     "name": "hasMinted",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "hasMintedBadge",
     "outputs": [
       {
         "internalType": "bool",
