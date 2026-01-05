@@ -57,6 +57,9 @@ if [[ "${READY}" != "true" ]]; then
   exit 1
 fi
 
+echo "Cleaning up any previous deployment state..."
+rm -f .deployment-state.json
+
 echo "Deploying PoBRegistry to ${NETWORK} via scripts/deploy-pob-registry.js..."
 npx hardhat run scripts/deploy-pob-registry.js --network "${NETWORK}"
 

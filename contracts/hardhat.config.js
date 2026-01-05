@@ -55,6 +55,10 @@ const config = {
   networks: {
     hardhat: {
       accounts: { mnemonic: HARDHAT_MNEMONIC },
+      mining: {
+        auto: true,       // Auto-mine transactions immediately
+        interval: 2000    // Also mine empty blocks every 2 seconds
+      }
     },
     localhost: {
       url: "http://127.0.0.1:8547",

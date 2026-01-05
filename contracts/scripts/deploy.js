@@ -1,247 +1,195 @@
+/**
+ * CLEAN FULL DEPLOYMENT - Registry + PoB + JurySC
+ *
+ * Deploys everything fresh for a new iteration
+ * Does NOT register in PoBRegistry (that's done separately later)
+ *
+ * Usage:
+ *   POB_ITERATION=2 npx hardhat run scripts/deploy-clean-iteration.js --network testnet
+ */
+
 import pkg from "hardhat";
 const { ethers, network, upgrades } = pkg;
 import fs from "fs";
-import path from "path";
-import { waitForTxWithPolling } from "./utils/waitForTxWithPolling.js";
-
-/**
- * Deploy contract with custom polling
- */
-async function deployContractWithPolling(factory, args, label) {
-  console.log(`\nDeploying ${label}...`);
-  const contract = await factory.deploy(...args);
-
-  // Get deployment transaction
-  const deployTx = contract.deploymentTransaction();
-  if (deployTx) {
-    await waitForTxWithPolling(deployTx, 1, 20000);
-  }
-
-  const address = await contract.getAddress();
-  console.log(`✓ ${label} deployed to: ${address}`);
-
-  // Save deployment info
-  saveDeploymentState({ [label]: address });
-
-  return contract;
-}
-
-/**
- * Deploy proxy with custom polling
- */
-async function deployProxyWithPolling(factory, args, label) {
-  console.log(`\nDeploying ${label} proxy...`);
-
-  // Deploy implementation
-  const contract = await upgrades.deployProxy(
-    factory,
-    args,
-    {
-      kind: "uups",
-      timeout: 0, // Disable built-in timeout, we'll handle it
-      pollingInterval: 20000
-    }
-  );
-
-  const address = await contract.getAddress();
-  console.log(`✓ ${label} proxy deployed to: ${address}`);
-
-  // Save deployment info
-  saveDeploymentState({ [label]: address });
-
-  return contract;
-}
-
-/**
- * Save deployment state to file for resumption
- */
-function saveDeploymentState(data) {
-  const stateFile = path.join(process.cwd(), '.deployment-state.json');
-  let state = {};
-
-  if (fs.existsSync(stateFile)) {
-    state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  }
-
-  Object.assign(state, data);
-  fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
-  console.log(`  (State saved to .deployment-state.json)`);
-}
-
-/**
- * Load deployment state
- */
-function loadDeploymentState() {
-  const stateFile = path.join(process.cwd(), '.deployment-state.json');
-  if (fs.existsSync(stateFile)) {
-    return JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-  }
-  return {};
-}
-
-/**
- * Clear deployment state
- */
-function clearDeploymentState() {
-  const stateFile = path.join(process.cwd(), '.deployment-state.json');
-  if (fs.existsSync(stateFile)) {
-    fs.unlinkSync(stateFile);
-    console.log('✓ Cleared deployment state');
-  }
-}
 
 async function main() {
   const [deployer] = await ethers.getSigners();
-  const iteration = Number(process.env.POB_ITERATION ?? "1");
-  const pobName = process.env.POB_NAME ?? "Proof of Builders v1";
-  const pobSymbol = process.env.POB_SYMBOL ?? "POB1";
-  const juryOwner = process.env.JURY_OWNER ?? deployer.address;
+  const chainId = Number(network.config.chainId);
 
-  if (!Number.isInteger(iteration) || iteration <= 0) {
-    throw new Error(`Invalid POB_ITERATION value: ${process.env.POB_ITERATION}`);
-  }
+  const iteration = Number(process.env.POB_ITERATION || "1");
+  const pobName = process.env.POB_NAME || `Proof of Builders #${iteration}`;
+  const pobSymbol = process.env.POB_SYMBOL || `POB${iteration}`;
+  const juryOwner = process.env.JURY_OWNER || deployer.address;
 
-  console.log("===========================================");
-  console.log("Deploying Proof-of-Builders v1 contracts");
-  console.log("Network:", network.name);
-  console.log("Deployer:", deployer.address);
-  console.log("Iteration:", iteration);
-  console.log("Desired owner (Jury admin):", juryOwner);
-  console.log(
-    "Deployer balance:",
-    ethers.formatEther(await ethers.provider.getBalance(deployer.address)),
-    "SYS"
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║   CLEAN ITERATION DEPLOYMENT               ║");
+  console.log("╚════════════════════════════════════════════╝");
+  console.log("");
+  console.log("Network:       ", network.name);
+  console.log("Chain ID:      ", chainId);
+  console.log("Deployer:      ", deployer.address);
+  console.log("Iteration:     ", iteration);
+  console.log("NFT Name:      ", pobName);
+  console.log("NFT Symbol:    ", pobSymbol);
+  console.log("Admin Owner:   ", juryOwner);
+  console.log("");
+  console.log("This will deploy:");
+  console.log("  1. PoBRegistry (proxy + implementation)");
+  console.log("  2. PoB_02 (NFT contract)");
+  console.log("  3. JurySC_02 (proxy + implementation)");
+  console.log("  4. Link PoB → JurySC");
+  console.log("");
+  console.log("Press Ctrl+C within 5 seconds to cancel...");
+  await new Promise(resolve => setTimeout(resolve, 5000));
+  console.log("");
+
+  let registryAddress, pobAddress, juryAddress;
+
+  // ═══════════════════════════════════════════════════════════
+  // STEP 1: Deploy PoBRegistry
+  // ═══════════════════════════════════════════════════════════
+  console.log("┌─────────────────────────────────────────┐");
+  console.log("│ STEP 1: Deploying PoBRegistry           │");
+  console.log("└─────────────────────────────────────────┘");
+
+  const PoBRegistry = await ethers.getContractFactory("PoBRegistry");
+  console.log("Deploying proxy...");
+  const registry = await upgrades.deployProxy(
+    PoBRegistry,
+    [deployer.address],
+    { kind: "uups", initializer: "initialize" }
   );
-  console.log("===========================================");
+  await registry.waitForDeployment();
+  registryAddress = await registry.getAddress();
 
-  // Check for existing deployment state
-  const existingState = loadDeploymentState();
-  if (Object.keys(existingState).length > 0) {
-    console.log("\n⚠️  Found existing deployment state:");
-    console.log(JSON.stringify(existingState, null, 2));
-    console.log("\nTo resume from this state, use: node scripts/continue-deploy.js");
-    console.log("To start fresh, delete .deployment-state.json\n");
-    throw new Error("Deployment state exists. Please resume or clear it.");
-  }
+  const registryImpl = await upgrades.erc1967.getImplementationAddress(registryAddress);
+  console.log("✓ Registry Proxy:", registryAddress);
+  console.log("  Implementation:", registryImpl);
+  console.log("");
 
-  let pobAddress, juryAddress;
+  // ═══════════════════════════════════════════════════════════
+  // STEP 2: Deploy PoB_02
+  // ═══════════════════════════════════════════════════════════
+  console.log("┌─────────────────────────────────────────┐");
+  console.log("│ STEP 2: Deploying PoB_02                │");
+  console.log("└─────────────────────────────────────────┘");
 
-  // Step 1: Deploy PoB_01
-  const PoB_01 = await ethers.getContractFactory("PoB_01");
-  const pob = await deployContractWithPolling(
-    PoB_01,
-    [pobName, pobSymbol, iteration, juryOwner],
-    "PoB_01"
-  );
+  const PoB_02 = await ethers.getContractFactory("PoB_02");
+  console.log("Deploying PoB_02...");
+  const pob = await PoB_02.deploy(pobName, pobSymbol, iteration, deployer.address);
+  await pob.waitForDeployment();
   pobAddress = await pob.getAddress();
 
-  // Step 2: Deploy JurySC_01 Proxy
-  const JurySC_01 = await ethers.getContractFactory("JurySC_01");
-  const jurySC = await deployProxyWithPolling(
-    JurySC_01,
+  console.log("✓ PoB_02:", pobAddress);
+  console.log("  Owner:", await pob.owner());
+  console.log("  Iteration:", (await pob.iteration()).toString());
+  console.log("");
+
+  // ═══════════════════════════════════════════════════════════
+  // STEP 3: Deploy JurySC_02
+  // ═══════════════════════════════════════════════════════════
+  console.log("┌─────────────────────────────────────────┐");
+  console.log("│ STEP 3: Deploying JurySC_02             │");
+  console.log("└─────────────────────────────────────────┘");
+
+  const JurySC_02 = await ethers.getContractFactory("JurySC_02");
+  console.log("Deploying proxy...");
+  const jurySC = await upgrades.deployProxy(
+    JurySC_02,
     [pobAddress, iteration, juryOwner],
-    "JurySC_01"
+    { kind: "uups", initializer: "initialize" }
   );
+  await jurySC.waitForDeployment();
   juryAddress = await jurySC.getAddress();
 
-  // Step 3: Transfer PoB_01 ownership to JurySC_01
-  console.log("\nTransferring PoB_01 ownership to JurySC_01...");
-  const pobOwner = await pob.owner();
+  const juryImpl = await upgrades.erc1967.getImplementationAddress(juryAddress);
+  console.log("✓ JurySC_02 Proxy:", juryAddress);
+  console.log("  Implementation:", juryImpl);
+  console.log("  pob():", await jurySC.pob());
+  console.log("  iteration():", (await jurySC.iteration()).toString());
+  console.log("");
 
-  if (pobOwner.toLowerCase() !== deployer.address.toLowerCase()) {
-    console.warn(
-      `⚠️  PoB_01 current owner (${pobOwner}) is not the deployer. ` +
-        "Skipping ownership transfer. Please transfer manually."
-    );
-  } else {
-    const transferTx = await pob.transferOwnership(juryAddress);
-    await waitForTxWithPolling(transferTx, 1, 20000);
-    console.log("✓ Transferred PoB_01 ownership to JurySC_01 proxy");
+  // ═══════════════════════════════════════════════════════════
+  // STEP 4: Transfer PoB ownership to JurySC
+  // ═══════════════════════════════════════════════════════════
+  console.log("┌─────────────────────────────────────────┐");
+  console.log("│ STEP 4: Linking PoB → JurySC            │");
+  console.log("└─────────────────────────────────────────┘");
+
+  console.log("Transferring ownership...");
+  const transferTx = await pob.transferOwnership(juryAddress);
+  await transferTx.wait();
+
+  const newOwner = await pob.owner();
+  if (newOwner.toLowerCase() !== juryAddress.toLowerCase()) {
+    throw new Error(`FAILED! Owner is ${newOwner}, expected ${juryAddress}`);
   }
+  console.log("✓ PoB_02 owner is now JurySC_02");
+  console.log("");
 
-  console.log("\n===========================================");
-  console.log("Deployment Complete!");
-  console.log("===========================================");
-  console.log("PoB_01:", pobAddress);
-  console.log("JurySC_01 proxy:", juryAddress);
-  console.log("Admin account:", juryOwner);
-  console.log("===========================================\n");
+  // ═══════════════════════════════════════════════════════════
+  // DONE
+  // ═══════════════════════════════════════════════════════════
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║          DEPLOYMENT COMPLETE ✓             ║");
+  console.log("╚════════════════════════════════════════════╝");
+  console.log("");
+  console.log("PoBRegistry:  ", registryAddress);
+  console.log("PoB_02:       ", pobAddress);
+  console.log("JurySC_02:    ", juryAddress);
+  console.log("Admin:        ", juryOwner);
+  console.log("");
 
-  // Save final deployment info
+  // Save deployment info
   const deploymentInfo = {
     network: network.name,
-    chainId: network.config.chainId,
+    chainId,
     iteration,
-    pobAddress,
-    juryAddress,
-    juryOwner,
-    deployer: deployer.address,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    contracts: {
+      PoBRegistry: {
+        proxy: registryAddress,
+        implementation: registryImpl
+      },
+      PoB_02: pobAddress,
+      JurySC_02: {
+        proxy: juryAddress,
+        implementation: juryImpl
+      }
+    },
+    owner: juryOwner,
+    deployer: deployer.address
   };
 
-  const infoFile = path.join(
-    process.cwd(),
-    `deployment-${network.name}-iteration-${iteration}.json`
-  );
-  fs.writeFileSync(infoFile, JSON.stringify(deploymentInfo, null, 2));
-  console.log(`✓ Deployment info saved to: ${infoFile}\n`);
+  const filename = `deployment-iteration-${iteration}-${network.name}-${Date.now()}.json`;
+  fs.writeFileSync(filename, JSON.stringify(deploymentInfo, null, 2));
+  console.log("Saved to:", filename);
+  console.log("");
 
-  // Clear deployment state
-  clearDeploymentState();
-
-  // Update frontend config
-  if (network.name === "localhost" || network.name === "hardhat") {
-    console.log("\nUpdating frontend config for local development...");
-    const iterationsPath = path.join(
-      process.cwd(),
-      "../frontend/public/iterations.local.json"
-    );
-    const iterations = [
-      {
-        iteration,
-        name: `PoB Iteration #${iteration}`,
-        jurySC: juryAddress,
-        pob: pobAddress,
-        chainId: 31337,
-        deployBlockHint: 1,
-        link: "https://example.com/iteration",
-      },
-    ];
-
-    fs.writeFileSync(iterationsPath, JSON.stringify(iterations, null, 2));
-    console.log("✓ Updated frontend/public/iterations.local.json");
-
-    // Update frontend ABIs
-    console.log("\nUpdating frontend ABIs...");
-    const { execSync } = await import("child_process");
-    try {
-      execSync("node scripts/update-abis.js", {
-        cwd: process.cwd(),
-        stdio: "inherit"
-      });
-    } catch (error) {
-      console.error("Failed to update ABIs:", error.message);
-      console.warn("You may need to run 'node scripts/update-abis.js' manually");
-    }
-  } else if (network.name === "testnet" || network.name === "mainnet") {
-    console.log("\nRemember to update frontend/public/iterations.json with:");
-    console.log(JSON.stringify({
-      iteration,
-      name: `PoB Iteration #${iteration}`,
-      jurySC: juryAddress,
-      pob: pobAddress,
-      chainId: network.config.chainId,
-      deployBlockHint: 1,
-      link: "https://example.com/iteration"
-    }, null, 2));
-  }
+  console.log("UPDATE THESE FILES WITH REGISTRY ADDRESS:");
+  console.log("  Registry Proxy:", registryAddress);
+  console.log("");
+  console.log("Files to update:");
+  console.log("  - contracts/scripts/deploy.js (line 179)");
+  console.log("  - frontend/src/utils/registry.ts (line 14)");
+  console.log("  - api/src/services/tx-verifier.ts (line 22)");
+  console.log("  - contracts/scripts/migrate-to-registry.js (line 34)");
+  console.log("");
+  console.log("NEXT STEPS:");
+  console.log("  1. Update config files with registry address above");
+  console.log("  2. Register iteration/round in registry separately");
+  console.log("");
 }
 
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error("\n❌ Deployment failed:");
+    console.error("");
+    console.error("╔════════════════════════════════════════════╗");
+    console.error("║           DEPLOYMENT FAILED ✗              ║");
+    console.error("╚════════════════════════════════════════════╝");
+    console.error("");
     console.error(error);
-    console.log("\nTo resume from saved state, run: node scripts/continue-deploy.js");
+    console.error("");
     process.exit(1);
   });

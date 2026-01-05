@@ -19,7 +19,10 @@ const FRONTEND_ABIS_DIR = path.join(__dirname, "../../frontend/src/abis");
 
 const CONTRACTS = [
   { name: "JurySC_01", path: "contracts/JurySC_01.sol" },
-  { name: "PoB_01", path: "contracts/PoB_01.sol" }
+  { name: "PoB_01", path: "contracts/PoB_01.sol" },
+  { name: "JurySC_02", path: "contracts/JurySC_02.sol", outputName: "JurySC_02_v001" },
+  { name: "PoB_02", path: "contracts/PoB_02.sol", outputName: "PoB_02_v001" },
+  { name: "PoBRegistry", path: "contracts/PoBRegistry.sol" }
 ];
 
 function extractABI(contractName, contractPath) {
@@ -74,7 +77,8 @@ function main() {
       const errors = extractErrors(abi);
 
       // Save ABI
-      const abiOutputPath = path.join(FRONTEND_ABIS_DIR, `${contract.name}.json`);
+      const outputName = contract.outputName || contract.name;
+      const abiOutputPath = path.join(FRONTEND_ABIS_DIR, `${outputName}.json`);
       fs.writeFileSync(abiOutputPath, JSON.stringify(abi, null, 2));
       console.log(`  ✓ ABI saved: ${abiOutputPath}`);
       console.log(`    - ${abi.length} entries`);
