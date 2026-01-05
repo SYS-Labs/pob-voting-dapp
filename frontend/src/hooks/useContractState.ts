@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Contract, Interface, JsonRpcProvider, JsonRpcSigner, ethers } from 'ethers';
-import { JurySC_01ABI, PoB_01ABI } from '~/abis';
+import { PoB_01ABI } from '~/abis';
 import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
 import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
+import JurySC_02_v001_ABI from '~/abis/JurySC_02_v001.json';
 import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
+import { batchGetProjectMetadataCIDs } from '~/utils/registry';
+import { metadataAPI } from '~/utils/metadata-api';
 import type {
   Badge,
   Iteration,
@@ -14,9 +17,10 @@ import type {
 
 // Helper to select ABI based on iteration version
 function getJurySCABI(iteration: Iteration | null) {
-  if (!iteration) return JurySC_01ABI; // Default to latest
+  if (!iteration) return JurySC_02_v001_ABI; // Default to latest (v02)
   if (iteration.version === '001') return JurySC_01_v001_ABI;
-  return JurySC_01_v002_ABI; // Default to v002 for "002" and any future versions
+  if (iteration.version === '002') return JurySC_01_v002_ABI;
+  return JurySC_02_v001_ABI; // Default to v02 for "003" and future versions
 }
 
 interface EntityVotes {
@@ -51,8 +55,6 @@ export function useContractState(
   correctNetwork: boolean,
   publicProvider: JsonRpcProvider | null,
   chainId: number | null,
-  projectMetadata: Record<string, ProjectMetadata>,
-  projectMetadataLoading: boolean,
   allIterations: Iteration[],
   currentPage: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum',
 ) {
@@ -133,61 +135,90 @@ export function useContractState(
 
   const loadProjects = useCallback(
     async (contract: Contract) => {
-      console.log('[loadProjects] Starting...');
-      const iterationNum = currentIteration?.iteration;
-      const [countRaw, projectsLockedFlag, contractLockedFlag] = await cachedPromiseAll(publicProvider, selectedChainId, [
-        { key: `iteration:${iterationNum}:projectCount`, promise: contract.projectCount() },
-        { key: `iteration:${iterationNum}:projectsLocked`, promise: contract.projectsLocked().catch(() => false) },
-        { key: `iteration:${iterationNum}:locked`, promise: contract.locked().catch(() => false) },
-      ]);
-      const count = Number(countRaw);
-      console.log('[loadProjects] Project count:', count);
-      setProjectsLocked(Boolean(projectsLockedFlag));
-      setContractLocked(Boolean(contractLockedFlag));
-
-      // Load all project addresses in parallel
-      const projectAddressCalls = [];
-      for (let index = 1; index <= count; index += 1) {
-        projectAddressCalls.push({
-          key: `iteration:${iterationNum}:projectAddress:${index}`,
-          promise: contract.projectAddress(index),
-        });
+      if (!currentIteration || !publicProvider || selectedChainId === null) {
+        setProjects([]);
+        return;
       }
-      const addresses = await cachedPromiseAll(publicProvider, selectedChainId, projectAddressCalls);
 
-      // Build project entries
-      const entries: Project[] = addresses.map((address, idx) => {
-        const index = idx + 1; // project IDs are 1-indexed
-        const metadataKey = selectedChainId !== null ? `${selectedChainId}:${address.toLowerCase()}` : null;
-        return {
-          id: index,
-          address,
-          metadata: metadataKey ? projectMetadata[metadataKey] : undefined,
-        };
-      });
+      console.log('[loadProjects] Starting...');
+      const iterationNum = currentIteration.iteration;
 
-      setProjects(entries);
-      console.log('[loadProjects] Complete. Loaded', entries.length, 'projects', '| projectsLocked:', projectsLockedFlag, '| contractLocked:', contractLockedFlag);
+      try {
+        // Load flags from contract
+        const [projectsLockedFlag, contractLockedFlag] = await cachedPromiseAll(publicProvider, selectedChainId, [
+          { key: `iteration:${iterationNum}:projectsLocked`, promise: contract.projectsLocked().catch(() => false) },
+          { key: `iteration:${iterationNum}:locked`, promise: contract.locked().catch(() => false) },
+        ]);
+
+        setProjectsLocked(Boolean(projectsLockedFlag));
+        setContractLocked(Boolean(contractLockedFlag));
+
+        // Get project addresses from JurySC contract using getProjectAddresses()
+        let addresses: string[] = [];
+        try {
+          addresses = await contract.getProjectAddresses();
+          console.log(`[loadProjects] Found ${addresses.length} projects via getProjectAddresses()`);
+        } catch (err) {
+          console.warn('[loadProjects] getProjectAddresses() not available, falling back to projectAddress(i)');
+          // Fallback for older contracts without getProjectAddresses()
+          const countRaw = await contract.projectCount();
+          const count = Number(countRaw);
+          const projectAddressCalls = [];
+          for (let index = 1; index <= count; index += 1) {
+            projectAddressCalls.push({
+              key: `iteration:${iterationNum}:projectAddress:${index}`,
+              promise: contract.projectAddress(index),
+            });
+          }
+          addresses = await cachedPromiseAll(publicProvider, selectedChainId, projectAddressCalls);
+        }
+
+        if (addresses.length === 0) {
+          setProjects([]);
+          console.log('[loadProjects] No projects found');
+          return;
+        }
+
+        // Get project metadata CIDs from PoBRegistry
+        const cidMap = await batchGetProjectMetadataCIDs(
+          selectedChainId,
+          currentIteration.jurySC,
+          addresses,
+          publicProvider
+        );
+
+        // Fetch metadata from API using batch endpoint
+        const cids = Array.from(cidMap.values()).filter(cid => cid.length > 0);
+        const metadataMap = cids.length > 0
+          ? await metadataAPI.batchGetByCIDs(cids)
+          : {};
+
+        // Build projects array
+        const entries: Project[] = addresses.map((address, index) => {
+          const cid = cidMap.get(address);
+          const metadata = cid ? metadataMap[cid] : undefined;
+
+          return {
+            id: index + 1,
+            address: address,
+            metadata: metadata || {
+              name: `Project #${index + 1}`,
+              account: address,
+              chainId: selectedChainId,
+            } as ProjectMetadata,
+          };
+        });
+
+        setProjects(entries);
+        console.log('[loadProjects] Complete. Loaded', entries.length, 'projects', '| projectsLocked:', projectsLockedFlag, '| contractLocked:', contractLockedFlag);
+      } catch (error) {
+        console.error('[loadProjects] Failed to load projects:', error);
+        setProjects([]);
+      }
     },
-    [publicProvider, selectedChainId, currentIteration, projectMetadata],
+    [publicProvider, selectedChainId, currentIteration],
   );
 
-  useEffect(() => {
-    if (selectedChainId === null) return;
-    setProjects((current) =>
-      current.map((project) => {
-        const key = `${selectedChainId}:${project.address.toLowerCase()}`;
-        const metadata = projectMetadata[key];
-        if (project.metadata === metadata) {
-          return project;
-        }
-        return {
-          ...project,
-          metadata,
-        };
-      }),
-    );
-  }, [projectMetadata, selectedChainId]);
 
   const loadOwnerData = useCallback(
     async (contract: Contract) => {
@@ -229,22 +260,6 @@ export function useContractState(
     try {
       const iterationNum = currentIteration?.iteration;
 
-      // Always load voting mode (regardless of voting status)
-      const forcedVotingMode = currentIteration?.votingMode;
-
-      console.log('[loadEntityVotes] currentIteration:', currentIteration);
-      console.log('[loadEntityVotes] forcedVotingMode:', forcedVotingMode, 'type:', typeof forcedVotingMode);
-
-      if (forcedVotingMode !== undefined) {
-        console.log('[loadEntityVotes] ✅ Using forced voting mode from JSON:', forcedVotingMode);
-        setVotingMode(forcedVotingMode);
-      } else {
-        console.log('[loadEntityVotes] ❌ No forced voting mode, will query contract');
-        // Load from contract
-        const votingModeFromContract = await contract.votingMode().catch(() => 0);
-        setVotingMode(Number(votingModeFromContract));
-      }
-
       // Only load entity votes if contract is active or voting has ended
       if (!isActive && !votingEnded) {
         console.log('[loadEntityVotes] Skipping entity votes - contract not active and voting not ended');
@@ -255,17 +270,50 @@ export function useContractState(
 
       console.log('[loadEntityVotes] Loading entity votes from contract...');
 
-      // Determine which winner function to call based on voting mode
-      const currentMode = forcedVotingMode !== undefined ? forcedVotingMode : await contract.votingMode().catch(() => 0);
-      const winnerPromise = Number(currentMode) === 0
-        ? contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean])
-        : contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]);
+      // Detect voting mode based on contract version
+      // v001: Always CONSENSUS, use getWinner()
+      // v002: Dual mode - detect by checking which winner function returns a result
+      // v003+: Trust votingMode() from contract
+      const version = currentIteration?.version || '003';
+      let detectedMode = 0;
+      let winnerRaw: [string, boolean] = [ethers.ZeroAddress, false];
 
-      const [devRelRaw, daoHicRaw, communityRaw, winnerRaw] = await cachedPromiseAll(publicProvider, selectedChainId, [
+      if (version === '001') {
+        // v001: Always CONSENSUS
+        detectedMode = 0;
+        winnerRaw = await contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+        console.log('[loadEntityVotes] v001 contract - CONSENSUS mode');
+      } else if (version === '002') {
+        // v002: Dual mode - detect by checking which has a winner
+        const [consensusWinner, weightedWinner] = await Promise.all([
+          contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
+          contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
+        ]) as [[string, boolean], [string, boolean]];
+
+        if (weightedWinner[1] && !consensusWinner[1]) {
+          detectedMode = 1;
+          winnerRaw = weightedWinner;
+          console.log('[loadEntityVotes] v002 dual - detected WEIGHTED mode');
+        } else {
+          detectedMode = 0;
+          winnerRaw = consensusWinner;
+          console.log('[loadEntityVotes] v002 dual - detected CONSENSUS mode');
+        }
+      } else {
+        // v003+: Trust votingMode() from contract
+        detectedMode = Number(await contract.votingMode().catch(() => 0));
+        winnerRaw = detectedMode === 0
+          ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
+          : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+        console.log('[loadEntityVotes] v003+ contract - using votingMode():', detectedMode);
+      }
+
+      setVotingMode(detectedMode);
+
+      const [devRelRaw, daoHicRaw, communityRaw] = await cachedPromiseAll(publicProvider, selectedChainId, [
         { key: `iteration:${iterationNum}:getDevRelEntityVote`, promise: contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress) },
         { key: `iteration:${iterationNum}:getDaoHicEntityVote`, promise: contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress) },
         { key: `iteration:${iterationNum}:getCommunityEntityVote`, promise: contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress) },
-        { key: `iteration:${iterationNum}:getWinner:${currentMode}`, promise: winnerPromise },
       ]);
 
       const devRelAddress = normalizeAddress(devRelRaw);
@@ -287,8 +335,7 @@ export function useContractState(
       });
 
       // Load project scores if voting ended and in weighted mode
-      // Note: currentMode was already determined above
-      if (votingEnded && Number(currentMode) === 1) {
+      if (votingEnded && detectedMode === 1) {
         try {
           const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
           setProjectScores({
@@ -312,7 +359,7 @@ export function useContractState(
         'Community:',
         communityAddress ?? 'None',
         'VotingMode:',
-        currentMode === 0 ? 'CONSENSUS' : 'WEIGHTED',
+        detectedMode === 0 ? 'CONSENSUS' : 'WEIGHTED',
       );
     } catch (error) {
       console.error('[loadEntityVotes] Error:', error);
@@ -745,7 +792,7 @@ export function useContractState(
     console.log('  - currentIteration:', currentIteration?.name);
     console.log('  - correctNetwork:', correctNetwork);
     console.log('  - publicProvider:', !!publicProvider);
-    console.log('  - projectMetadataLoading:', projectMetadataLoading);
+    console.log('  - false:', false);
     console.log('  - hasLoadError:', hasLoadError);
 
     // Only require publicProvider and currentIteration for read-only data
@@ -754,7 +801,7 @@ export function useContractState(
       console.log('[loadIterationState] Skipping - missing required conditions');
       return;
     }
-    if (projectMetadataLoading) {
+    if (false) {
       console.log('[loadIterationState] Skipping - project metadata still loading');
       return;
     }
@@ -856,7 +903,7 @@ export function useContractState(
     currentIteration,
     correctNetwork,
     publicProvider,
-    projectMetadataLoading,
+    false,
     hasLoadError,
     chainId,
     allIterations,
@@ -872,16 +919,16 @@ export function useContractState(
       return;
     }
 
-    if (currentIteration && publicProvider && correctNetwork && !hasLoadError && !projectMetadataLoading) {
+    if (currentIteration && publicProvider && correctNetwork && !hasLoadError && !false) {
       console.log('[useEffect] Triggering loadIterationState - iteration selected, publicProvider available, metadata loaded');
       loadIterationState().catch((err) => {
         console.error('[useEffect] loadIterationState failed:', err);
       });
-    } else if (projectMetadataLoading) {
+    } else if (false) {
       console.log('[useEffect] Waiting for project metadata to load...');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIteration?.iteration, currentIteration?.jurySC, walletAddress, publicProvider, correctNetwork, hasLoadError, projectMetadataLoading, currentPage]);
+  }, [currentIteration?.iteration, currentIteration?.jurySC, walletAddress, publicProvider, correctNetwork, hasLoadError, false, currentPage]);
 
   const retryLoadIteration = useCallback(() => {
     setHasLoadError(false);

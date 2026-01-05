@@ -1,8 +1,10 @@
 import { createContext, useContext, useCallback, useEffect, useState, useMemo, type ReactNode } from 'react';
 import { BrowserProvider, JsonRpcProvider, JsonRpcSigner } from 'ethers';
-import { createProviderWithoutENS } from '~/utils/provider';
+import { createProviderWithoutENS, getPublicProvider } from '~/utils/provider';
 import { NETWORKS } from '~/constants/networks';
-import type { Iteration, IterationStatus, ProjectMetadata } from '~/interfaces';
+import type { Iteration, IterationStatus } from '~/interfaces';
+import { getAllIterationIds, getIterationInfo, getRounds, getIterationMetadataCID, getJurySCInfo } from '~/utils/registry';
+import { metadataAPI } from '~/utils/metadata-api';
 
 // ============================================================================
 // Types
@@ -37,10 +39,7 @@ interface AppStateContextValue {
   // Iteration statuses
   iterationStatuses: Record<number, IterationStatus>;
   updateIterationStatus: (iteration: number, status: IterationStatus) => void;
-
-  // Project metadata
-  projectMetadata: Record<string, ProjectMetadata>;
-  projectMetadataLoading: boolean;
+  refreshIterations: () => Promise<void>;
 
   // Public provider for read-only operations
   publicProvider: JsonRpcProvider | null;
@@ -238,105 +237,133 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
   const [iterationsLoading, setIterationsLoading] = useState<boolean>(true);
   const [iterationsError, setIterationsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const isProduction = import.meta.env.PROD;
+  const refreshIterations = useCallback(async () => {
     setIterationsLoading(true);
     setIterationsError(null);
 
-    if (isProduction) {
-      console.log('[Iterations] Loading from iterations.json (production)');
-      fetch('/iterations.json')
-        .then((res) => {
-          if (!res.ok) throw new Error(`Failed to load iterations.json: ${res.status}`);
-          return res.json();
-        })
-        .then((data: Iteration[]) => {
-          setIterations(data);
-          setIterationsLoading(false);
-          console.log('[Iterations] Loaded', data.length, 'iterations');
-        })
-        .catch((err) => {
-          console.error('[Iterations] Failed to load iterations', err);
-          setIterationsError(err.message || 'Failed to load iterations manifest.');
-          setIterationsLoading(false);
-        });
-    } else {
-      fetch('/iterations.local.json')
-        .then((res) => {
-          if (res.ok) {
-            console.log('[Iterations] Loading from iterations.local.json (dev mode)');
-            return res.json();
+    try {
+      // Check if VITE_CHAIN_ID is set to enforce a specific chain
+      const enforceChainId = import.meta.env.VITE_CHAIN_ID ? Number(import.meta.env.VITE_CHAIN_ID) : null;
+      const supportedChainIds = enforceChainId
+        ? [enforceChainId]
+        : Object.keys(NETWORKS).map(Number);
+      const allIterations: Iteration[] = [];
+
+      console.log('[Iterations] Loading from PoBRegistry via RPC', enforceChainId ? `(enforced chainId: ${enforceChainId})` : '(all chains)');
+
+      for (const chainId of supportedChainIds) {
+        const provider = getPublicProvider(chainId);
+        if (!provider) continue;
+
+        // Get all iteration IDs from registry for this chain
+        const iterationIds = await getAllIterationIds(chainId, provider);
+
+        for (const iterationId of iterationIds) {
+          // Get iteration info
+          const info = await getIterationInfo(iterationId, chainId, provider);
+          if (!info) continue;
+
+          // Get all rounds for this iteration
+          const rounds = await getRounds(iterationId, chainId, provider);
+
+          if (rounds.length === 0) {
+            allIterations.push({
+              iteration: iterationId,
+              chainId: chainId,
+              jurySC: '',
+              pob: '',
+              name: info.name || `Iteration #${iterationId}`,
+              version: '002',
+              round: undefined,
+              prev_rounds: [],
+            });
+            continue;
           }
-          throw new Error('Local config not found');
-        })
-        .catch(() => {
-          console.log('[Iterations] Loading from iterations.json (fallback)');
-          return fetch('/iterations.json').then((res) => {
-            if (!res.ok) throw new Error(`Failed to load iterations.json: ${res.status}`);
-            return res.json();
+
+          // Get latest round (highest roundId)
+          const latestRound = rounds.reduce((max, r) =>
+            r.roundId > max.roundId ? r : max
+          );
+
+          // Fetch PoB and votingMode from JurySC contract
+          const jurySCInfo = await getJurySCInfo(latestRound.jurySC, provider);
+          if (!jurySCInfo) {
+            console.warn(`[Iterations] Failed to fetch JurySC info for iteration ${iterationId}, using defaults`);
+          }
+
+          // Get iteration metadata CID
+          const iterCID = await getIterationMetadataCID(
+            chainId,
+            latestRound.jurySC,
+            provider
+          );
+
+          // Fetch metadata from API if CID exists
+          let metadata = null;
+          if (iterCID) {
+            try {
+              const batch = await metadataAPI.batchGetByCIDs([iterCID]);
+              metadata = batch[iterCID];
+            } catch (err) {
+              console.warn(`[Iterations] Failed to fetch metadata for iteration ${iterationId}:`, err);
+            }
+          }
+
+          // Fetch JurySC info for all previous rounds in parallel
+          const prevRoundsWithInfo = await Promise.all(
+            rounds
+              .filter(r => r.roundId < latestRound.roundId)
+              .map(async (r) => {
+                const prevJurySCInfo = await getJurySCInfo(r.jurySC, provider);
+                return {
+                  round: r.roundId,
+                  jurySC: r.jurySC,
+                  pob: prevJurySCInfo?.pob || '',
+                  version: '001', // Historical
+                  deployBlockHint: r.deployBlockHint,
+                  votingMode: prevJurySCInfo?.votingMode ?? 0,
+                };
+              })
+          );
+
+          // Build iteration object
+          allIterations.push({
+            iteration: iterationId,
+            chainId: chainId,
+            jurySC: latestRound.jurySC,
+            pob: jurySCInfo?.pob || '',
+            name: metadata?.name || info.name || `Iteration #${iterationId}`,
+            version: '002',
+            deployBlockHint: latestRound.deployBlockHint,
+            link: metadata?.link,
+            round: latestRound.roundId,
+            votingMode: jurySCInfo?.votingMode ?? 0,
+            prev_rounds: prevRoundsWithInfo,
           });
-        })
-        .then((data: Iteration[]) => {
-          setIterations(data);
-          setIterationsLoading(false);
-          console.log('[Iterations] Loaded', data.length, 'iterations');
-        })
-        .catch((err) => {
-          console.error('[Iterations] Failed to load iterations', err);
-          setIterationsError(err.message || 'Failed to load iterations manifest.');
-          setIterationsLoading(false);
-        });
+        }
+      }
+
+      allIterations.sort((a, b) => b.iteration - a.iteration);
+      setIterations(allIterations);
+      setIterationsLoading(false);
+      console.log('[Iterations] Loaded from registry:', allIterations.length);
+    } catch (err) {
+      console.error('[Iterations] Failed to load from registry', err);
+      setIterationsError(err instanceof Error ? err.message : 'Failed to load');
+      setIterationsLoading(false);
     }
   }, []);
 
+  // Load iterations from PoBRegistry via RPC
+  useEffect(() => {
+    void refreshIterations();
+  }, [refreshIterations]);
+
   // --------------------------------------------------------------------------
   // Project Metadata State
+  // NOTE: Project metadata is now loaded per-iteration in useContractState
+  // This global state is removed as part of the PoBRegistry migration
   // --------------------------------------------------------------------------
-  const [projectMetadata, setProjectMetadata] = useState<Record<string, ProjectMetadata>>({});
-  const [projectMetadataLoading, setProjectMetadataLoading] = useState<boolean>(true);
-
-  useEffect(() => {
-    const isProduction = import.meta.env.PROD;
-
-    const loadProjectMetadata = async (): Promise<ProjectMetadata[]> => {
-      if (isProduction) {
-        console.log('[Projects] Loading metadata from projects.json (production)');
-        const response = await fetch('/projects.json');
-        if (!response.ok) throw new Error(`Failed to load projects.json: ${response.status}`);
-        return (await response.json()) as ProjectMetadata[];
-      } else {
-        try {
-          const localResponse = await fetch('/projects.local.json');
-          if (!localResponse.ok) throw new Error(`projects.local.json responded with ${localResponse.status}`);
-          console.log('[Projects] Loading metadata from projects.local.json (dev mode)');
-          return (await localResponse.json()) as ProjectMetadata[];
-        } catch (localError) {
-          console.log('[Projects] Fallback to projects.json', localError);
-          const response = await fetch('/projects.json');
-          if (!response.ok) throw new Error(`Failed to load projects.json: ${response.status}`);
-          return (await response.json()) as ProjectMetadata[];
-        }
-      }
-    };
-
-    setProjectMetadataLoading(true);
-    loadProjectMetadata()
-      .then((entries) => {
-        const map: Record<string, ProjectMetadata> = {};
-        entries.forEach((entry) => {
-          if (!entry?.account) return;
-          const key = `${entry.chainId}:${entry.account.toLowerCase()}`;
-          map[key] = entry;
-        });
-        setProjectMetadata(map);
-        setProjectMetadataLoading(false);
-        console.log('[Projects] Loaded metadata entries:', Object.keys(map).length);
-      })
-      .catch((metadataError) => {
-        console.error('[Projects] Failed to load metadata', metadataError);
-        setProjectMetadataLoading(false);
-      });
-  }, []);
 
   // --------------------------------------------------------------------------
   // Iteration Selection & Filtering
@@ -362,17 +389,23 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     return iterations;
   }, [iterations]);
 
+  const usableIterations = useMemo(() => {
+    return filteredIterations.filter((iteration) => {
+      return Boolean(iteration.jurySC && iteration.pob && iteration.round);
+    });
+  }, [filteredIterations]);
+
   const currentIteration = useMemo(() => {
-    if (!filteredIterations.length) return null;
-    if (selectedIterationNumber === null) return filteredIterations[0];
+    if (!usableIterations.length) return null;
+    if (selectedIterationNumber === null) return usableIterations[0];
     return (
-      filteredIterations.find((iteration) => iteration.iteration === selectedIterationNumber) ?? filteredIterations[0]
+      usableIterations.find((iteration) => iteration.iteration === selectedIterationNumber) ?? usableIterations[0]
     );
-  }, [filteredIterations, selectedIterationNumber]);
+  }, [usableIterations, selectedIterationNumber]);
 
   // Auto-adjust selection when filtered list changes
   useEffect(() => {
-    if (!filteredIterations.length) {
+    if (!usableIterations.length) {
       if (selectedIterationNumber !== null) {
         setSelectedIteration(null);
       }
@@ -380,11 +413,12 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     }
     if (
       selectedIterationNumber !== null &&
-      !filteredIterations.some((iteration) => iteration.iteration === selectedIterationNumber)
+      !usableIterations.some((iteration) => iteration.iteration === selectedIterationNumber)
     ) {
-      setSelectedIteration(filteredIterations[0].iteration);
+      setSelectedIteration(usableIterations[0].iteration);
     }
-  }, [filteredIterations, selectedIterationNumber, setSelectedIteration]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usableIterations, selectedIterationNumber]);
 
   // --------------------------------------------------------------------------
   // Iteration Statuses
@@ -435,8 +469,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
     currentIteration,
     iterationStatuses,
     updateIterationStatus,
-    projectMetadata,
-    projectMetadataLoading,
+    refreshIterations,
     publicProvider,
     resetContractState,
   };

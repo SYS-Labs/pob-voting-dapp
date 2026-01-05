@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Contract } from 'ethers';
-import type { JsonRpcSigner } from 'ethers';
+import { Transaction, type JsonRpcSigner } from 'ethers';
 import type { ProjectMetadata } from '~/interfaces';
 import { metadataAPI } from '~/utils/metadata-api';
 import { getPublicProvider } from '~/utils/provider';
-import JurySC_01ABI from '~/abis/JurySC_01_v002.json';
+import { getProjectMetadataCID, getPoBRegistryContract, REGISTRY_ADDRESSES } from '~/utils/registry';
 
 export interface ProjectMetadataForm {
   name: string;
@@ -43,22 +42,22 @@ export function useProjectMetadataManager(
   const [metadata, setMetadata] = useState<ProjectMetadata | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load current CID from contract
+  // Load current CID from PoBRegistry
   useEffect(() => {
     if (!projectAddress || !chainId || !contractAddress) return;
 
     const loadCID = async () => {
       try {
         const provider = getPublicProvider(chainId);
-        const contract = new Contract(contractAddress, JurySC_01ABI, provider);
-        const cid = await contract.projectMetadataCID(projectAddress);
+        if (!provider) return;
+        const cid = await getProjectMetadataCID(chainId, contractAddress, projectAddress, provider);
 
         setCurrentCID(cid || null);
         if (cid) {
           setCurrentConfirmations(10); // Already on-chain = settled
         }
       } catch (error) {
-        console.error('Failed to load CID from contract:', error);
+        console.error('Failed to load CID from PoBRegistry:', error);
       }
     };
 
@@ -81,49 +80,79 @@ export function useProjectMetadataManager(
     loadMetadata();
   }, [currentCID, chainId, contractAddress, projectAddress]);
 
-  // Restore pending state from localStorage on mount
+  // Load pending state from localStorage on mount
   useEffect(() => {
-    if (!projectAddress || !chainId) return;
+    if (!projectAddress || !chainId || !contractAddress) return;
 
-    const key = `pob_metadata_pending_${chainId}_${projectAddress}`;
-    const stored = localStorage.getItem(key);
-
-    if (stored) {
-      try {
-        const { cid, txHash, timestamp } = JSON.parse(stored);
-
-        // Only restore if less than 24 hours old
-        if (Date.now() - timestamp < 24 * 60 * 60 * 1000) {
-          setPendingCID(cid);
-          setPendingTxHash(txHash);
-          setPendingConfirmations(0);
-        } else {
-          localStorage.removeItem(key);
-        }
-      } catch (error) {
-        console.error('Failed to restore pending state:', error);
-        localStorage.removeItem(key);
+    const storageKey = `pending-metadata-${chainId}-${contractAddress}-${projectAddress}`;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        const pending = JSON.parse(stored);
+        setPendingCID(pending.cid);
+        setPendingTxHash(pending.txHash);
+        setPendingConfirmations(0); // Will be updated by polling
+        console.log('[useProjectMetadataManager] Loaded pending state from localStorage:', pending);
       }
+    } catch (error) {
+      console.error('Failed to load pending state from localStorage:', error);
     }
-  }, [projectAddress, chainId]);
+  }, [projectAddress, chainId, contractAddress]);
 
   // Poll confirmations for pending tx
   useEffect(() => {
-    if (!pendingTxHash) return;
+    if (!pendingTxHash || !chainId) return;
+
+    // Calculate polling interval based on chain block time
+    // Same ratio as TxPendingModal: blockTime / 5 = max 5 polls per block
+    const BLOCK_TIMES: Record<number, number> = {
+      57: 150,      // NEVM mainnet (150s blocks)
+      5700: 120,    // NEVM testnet (120s blocks)
+      31337: 10,    // Hardhat (10s blocks)
+    };
+    const MIN_POLL_INTERVAL = 2000; // 2 seconds minimum
+    const blockTime = BLOCK_TIMES[chainId] || 120;
+    const pollingInterval = Math.max((blockTime / 5) * 1000, MIN_POLL_INTERVAL);
 
     const pollConfirmations = async () => {
       try {
-        const status = await metadataAPI.getMetadataUpdateStatus(pendingTxHash);
+        const provider = getPublicProvider(chainId);
+        if (!provider) return;
 
-        setPendingConfirmations(status.confirmations);
+        // Get transaction receipt from RPC (same as TxPendingModal)
+        const tx = await provider.getTransaction(pendingTxHash);
 
-        if (status.confirmations >= 10) {
+        if (!tx) {
+          console.warn('Transaction not found:', pendingTxHash);
+          return;
+        }
+
+        if (!tx.blockNumber) {
+          // Transaction is pending
+          setPendingConfirmations(0);
+          return;
+        }
+
+        const currentBlock = await provider.getBlockNumber();
+        const confirmations = currentBlock - tx.blockNumber + 1;
+
+        setPendingConfirmations(confirmations);
+
+        if (confirmations >= 10) {
           // Transaction settled - move to current and clear pending
           if (pendingCID) {
             setCurrentCID(pendingCID);
-            setCurrentConfirmations(status.confirmations);
+            setCurrentConfirmations(confirmations);
           }
-          clearPending();
+          // Clear pending state and localStorage
+          setPendingCID(null);
+          setPendingTxHash(null);
+          setPendingConfirmations(0);
+
+          if (projectAddress && chainId && contractAddress) {
+            const storageKey = `pending-metadata-${chainId}-${contractAddress}-${projectAddress}`;
+            localStorage.removeItem(storageKey);
+          }
         }
       } catch (error) {
         console.error('Failed to poll confirmations:', error);
@@ -133,13 +162,13 @@ export function useProjectMetadataManager(
     // Poll immediately
     pollConfirmations();
 
-    // Then poll every 5 seconds
-    const interval = setInterval(pollConfirmations, 5000);
+    // Then poll at calculated interval
+    const interval = setInterval(pollConfirmations, pollingInterval);
 
     return () => clearInterval(interval);
-  }, [pendingTxHash, pendingCID]);
+  }, [pendingTxHash, pendingCID, chainId, projectAddress, contractAddress]);
 
-  // Submit metadata update
+  // Submit metadata update using role-gated flow
   const submitMetadata = useCallback(async (formData: ProjectMetadataForm) => {
     if (!signer || !projectAddress || !chainId || !contractAddress) {
       throw new Error('Missing required parameters');
@@ -149,62 +178,116 @@ export function useProjectMetadataManager(
       throw new Error('Cannot update metadata while voting is active');
     }
 
-    if (pendingConfirmations > 0 && pendingConfirmations < 1) {
-      throw new Error('Please wait for at least 1 confirmation before submitting again');
+    if (pendingConfirmations > 0 && pendingConfirmations < 10) {
+      throw new Error('Please wait for pending transaction to confirm');
+    }
+
+    const registryAddress = REGISTRY_ADDRESSES[chainId];
+    if (!registryAddress) {
+      throw new Error(`PoBRegistry not deployed on chain ${chainId}`);
     }
 
     setIsSubmitting(true);
     try {
-      // 1. Sign message proving ownership of project address
-      const message = `Update metadata for project ${projectAddress} on chain ${chainId}`;
-      const signature = await signer.signMessage(message);
+      // 1. Prepare metadata object
+      const metadata: ProjectMetadata = {
+        chainId,
+        account: projectAddress,
+        name: formData.name,
+        yt_vid: formData.yt_vid || undefined,
+        proposal: formData.proposal || undefined,
+      };
 
-      // 2. POST to API - API will upload to IPFS and call contract
-      const { cid, txHash } = await metadataAPI.setProjectMetadata(
+      // 2. Preview CID (deterministic, no upload yet)
+      const cid = await metadataAPI.previewMetadata(metadata, 'project');
+      console.log('Previewed CID:', cid);
+
+      // 3. Send transaction to blockchain (signs & broadcasts in one step)
+      // Note: Browser wallets don't support eth_signTransaction, so we sign+broadcast together
+      const provider = signer.provider!;
+      const registry = getPoBRegistryContract(chainId, provider);
+      if (!registry) {
+        throw new Error('Failed to get PoBRegistry contract');
+      }
+
+      const registryWithSigner = registry.connect(signer) as any;
+
+      // 4. Sign and send transaction (ONE wallet prompt)
+      console.log('Sending transaction to set CID on-chain...');
+      const txResponse = await registryWithSigner.setProjectMetadata(
         chainId,
         contractAddress,
         projectAddress,
-        {
-          chainId,
-          account: projectAddress,
-          name: formData.name,
-          yt_vid: formData.yt_vid || undefined,
-          proposal: formData.proposal || undefined,
-        },
-        signature,
-        message
+        cid
       );
+      console.log('Transaction sent:', txResponse.hash);
 
-      // 3. Set pending state
+      // 5. Get the raw signed transaction from the provider
+      // This is needed for the API to verify the signer and authorize IPFS upload
+      const tx = await provider.getTransaction(txResponse.hash);
+      if (!tx) {
+        throw new Error('Failed to retrieve transaction from provider');
+      }
+
+      // Reconstruct and serialize the transaction to get raw tx
+      // Note: Use the chainId we know is correct, as tx.chainId might be 0 on local networks
+      const transaction = Transaction.from({
+        to: tx.to,
+        nonce: tx.nonce,
+        gasLimit: tx.gasLimit,
+        data: tx.data,
+        value: tx.value,
+        chainId: BigInt(chainId), // Use our chainId, not tx.chainId which might be 0
+        maxFeePerGas: tx.maxFeePerGas,
+        maxPriorityFeePerGas: tx.maxPriorityFeePerGas,
+        signature: tx.signature
+      });
+      const rawTx = transaction.serialized;
+      console.log('Reconstructed raw transaction with chainId:', chainId);
+
+      // 6. Submit to API for verification and IPFS upload
+      // API will verify the signer is authorized before uploading to IPFS
+      const result = await metadataAPI.submitMetadata({
+        cid,
+        rawTx,
+        chainId,
+        contractAddress,
+        projectAddress,
+        kind: 'project',
+        metadata,
+      });
+
+      console.log('API verified and uploaded to IPFS:', result);
+
+      // 7. Set pending state and save to localStorage
       setPendingCID(cid);
-      setPendingTxHash(txHash);
+      setPendingTxHash(txResponse.hash);
       setPendingConfirmations(0);
 
-      // 4. Persist to localStorage
-      const key = `pob_metadata_pending_${chainId}_${projectAddress}`;
-      localStorage.setItem(key, JSON.stringify({
+      const storageKey = `pending-metadata-${chainId}-${contractAddress}-${projectAddress}`;
+      localStorage.setItem(storageKey, JSON.stringify({
         cid,
-        txHash,
-        timestamp: Date.now(),
+        txHash: txResponse.hash,
+        timestamp: Date.now()
       }));
 
-      console.log('Metadata submitted:', { cid, txHash });
+      console.log('Metadata submitted:', { cid, txHash: txResponse.hash });
     } finally {
       setIsSubmitting(false);
     }
   }, [signer, projectAddress, chainId, contractAddress, votingActive, pendingConfirmations]);
 
-  // Clear pending state
+  // Clear pending state from memory and localStorage
   const clearPending = useCallback(() => {
     setPendingCID(null);
     setPendingTxHash(null);
     setPendingConfirmations(0);
 
-    if (projectAddress && chainId) {
-      const key = `pob_metadata_pending_${chainId}_${projectAddress}`;
-      localStorage.removeItem(key);
+    if (projectAddress && chainId && contractAddress) {
+      const storageKey = `pending-metadata-${chainId}-${contractAddress}-${projectAddress}`;
+      localStorage.removeItem(storageKey);
     }
-  }, [projectAddress, chainId]);
+  }, [projectAddress, chainId, contractAddress]);
 
   return {
     currentCID,

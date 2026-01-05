@@ -69,6 +69,10 @@ export function useIterationStatuses(
     // Process all iterations
     await Promise.all(
       iterations.map(async (iteration) => {
+        if (!iteration.jurySC || !iteration.round) {
+          newStatuses[iteration.iteration] = 'upcoming';
+          return;
+        }
         // If status is in JSON, use it (no need to query contract)
         if (iteration.status) {
           console.log(`[useIterationStatuses] Using JSON status for iteration ${iteration.iteration}:`, iteration.status);

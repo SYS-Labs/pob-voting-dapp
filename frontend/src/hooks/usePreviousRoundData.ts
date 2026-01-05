@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Contract, ethers } from 'ethers';
-import type { PreviousRound } from '~/interfaces';
+import type { PreviousRound, ProjectMetadata } from '~/interfaces';
 import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
 import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
 import { loadBadgesFromContract, type Badge } from '~/utils/loadBadgesFromContract';
+import { batchGetProjectMetadataCIDs } from '~/utils/registry';
+import { metadataAPI } from '~/utils/metadata-api';
 
 interface RoundData {
   startTime: number | null;
@@ -13,7 +15,7 @@ interface RoundData {
   userBadges: Badge[];
   canMint: boolean; // User is eligible to mint a badge for this round
   votingMode: number;
-  projects: { id: number; address: string }[];
+  projects: { id: number; address: string; metadata?: ProjectMetadata }[];
   projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null;
 }
 
@@ -50,43 +52,51 @@ export function usePreviousRoundData(
           walletAddress,
         });
 
-        // Use version-based detection instead of trying function calls
-        const isV001 = round.version === '001';
-        const isV002OrNewer = round.version >= '002';
-
+        // Detect voting mode based on contract version
+        // v001: Always CONSENSUS, use getWinner()
+        // v002: Dual mode - detect by checking which winner function returns a result
+        // v003+: Trust votingMode() from contract
+        const version = round.version || '003';
         let votingMode = 0;
+        let winnerRaw: [string, boolean] = [ethers.ZeroAddress, false];
 
-        if (isV001) {
-          // Version 001: Old contract, use JSON votingMode if provided or default to 0
-          votingMode = round.votingMode !== undefined ? round.votingMode : 0;
-        } else if (isV002OrNewer) {
-          // Version 002+: New contract, check JSON first then query contract
-          if (round.votingMode !== undefined) {
-            votingMode = round.votingMode;
+        if (version === '001') {
+          // v001: Always CONSENSUS
+          votingMode = 0;
+          winnerRaw = await contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+          console.log(`[usePreviousRoundData] Round #${round.round}: v001 - CONSENSUS mode`);
+        } else if (version === '002') {
+          // v002: Dual mode - detect by checking which has a winner
+          const [consensusWinner, weightedWinner] = await Promise.all([
+            contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
+            contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
+          ]) as [[string, boolean], [string, boolean]];
+
+          if (weightedWinner[1] && !consensusWinner[1]) {
+            votingMode = 1;
+            winnerRaw = weightedWinner;
+            console.log(`[usePreviousRoundData] Round #${round.round}: v002 dual - detected WEIGHTED mode`);
           } else {
-            try {
-              votingMode = Number(await contract.votingMode());
-            } catch {
-              votingMode = 0;
-            }
+            votingMode = 0;
+            winnerRaw = consensusWinner;
+            console.log(`[usePreviousRoundData] Round #${round.round}: v002 dual - detected CONSENSUS mode`);
           }
+        } else {
+          // v003+: Trust votingMode() from contract
+          votingMode = Number(await contract.votingMode().catch(() => 0));
+          winnerRaw = votingMode === 0
+            ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
+            : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+          console.log(`[usePreviousRoundData] Round #${round.round}: v003+ - using votingMode(): ${votingMode}`);
         }
 
-        // Determine which winner function to call based on version
-        // v001: always use getWinner()
-        // v002+: use getWinnerConsensus() or getWinnerWeighted() based on mode
-        const winnerPromise = isV001
-          ? contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean])
-          : (votingMode === 0
-              ? contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean])
-              : contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]));
+        const isV001 = version === '001';
 
         // Load contract data and badges in parallel
-        const [devRelRaw, daoHicRaw, communityRaw, winnerRaw, startTime, endTime, projectCount, userBadges, devRelAccount, daoHicVoters, isRegisteredProject] = await Promise.all([
+        const [devRelRaw, daoHicRaw, communityRaw, startTime, endTime, projectCount, userBadges, devRelAccount, daoHicVoters, isRegisteredProject] = await Promise.all([
           contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress),
           contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress),
           contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress),
-          winnerPromise,
           contract.startTime().catch(() => 0),
           contract.endTime().catch(() => 0),
           contract.projectCount().catch(() => 0),
@@ -108,17 +118,43 @@ export function usePreviousRoundData(
         for (let index = 1; index <= count; index += 1) {
           projectAddressCalls.push(contract.projectAddress(index));
         }
-        const projectAddresses = count > 0 ? await Promise.all(projectAddressCalls) : [];
+        const projectAddresses: string[] = count > 0 ? await Promise.all(projectAddressCalls) : [];
 
-        // Build projects array
+        // Fetch project metadata from PoBRegistry using this round's JurySC
+        let metadataMap: Record<string, ProjectMetadata> = {};
+        if (projectAddresses.length > 0) {
+          try {
+            const cidMap = await batchGetProjectMetadataCIDs(
+              chainId,
+              round.jurySC, // Use THIS round's JurySC, not the current iteration's
+              projectAddresses,
+              publicProvider
+            );
+            const cids = Array.from(cidMap.values()).filter(cid => cid.length > 0);
+            if (cids.length > 0) {
+              const fetchedMetadata = await metadataAPI.batchGetByCIDs(cids);
+              // Build address -> metadata map
+              for (const [address, cid] of cidMap.entries()) {
+                if (cid && fetchedMetadata[cid]) {
+                  metadataMap[address.toLowerCase()] = fetchedMetadata[cid];
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[usePreviousRoundData] Failed to load project metadata for Round #${round.round}:`, err);
+          }
+        }
+
+        // Build projects array with metadata
         const projects = projectAddresses.map((addr, index) => ({
           id: index + 1,
           address: addr as string,
+          metadata: metadataMap[addr.toLowerCase()],
         }));
 
-        // Load project scores if in weighted mode AND v002+
+        // Load project scores if in weighted mode (v002+ contracts have getWinnerWithScores)
         let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
-        if (votingMode === 1 && isV002OrNewer) {
+        if (votingMode === 1 && !isV001) {
           try {
             const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
             projectScores = {
