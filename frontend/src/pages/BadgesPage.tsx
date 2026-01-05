@@ -1,5 +1,6 @@
 import type { Badge } from '~/interfaces';
 import BadgeCard from '~/components/BadgeCard';
+import { ProgressSpinner } from '~/components/ProgressSpinner';
 
 interface BadgesPageProps {
   badges: Badge[];
@@ -19,34 +20,7 @@ const BadgesPage = ({ badges, walletAddress, loading }: BadgesPageProps) => {
           <>
             {showLoader ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <div className="tx-spinner mb-4">
-                  <svg
-                    width="48"
-                    height="48"
-                    viewBox="0 0 48 48"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <circle
-                      cx="24"
-                      cy="24"
-                      r="20"
-                      stroke="rgba(247, 147, 26, 0.2)"
-                      strokeWidth="4"
-                    />
-                    <circle
-                      cx="24"
-                      cy="24"
-                      r="20"
-                      stroke="rgb(247, 147, 26)"
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                      strokeDasharray="125.6"
-                      strokeDashoffset="31.4"
-                      className="tx-spinner__circle"
-                    />
-                  </svg>
-                </div>
+                <ProgressSpinner size={48} className="mb-4" />
                 <p className="text-sm text-[var(--pob-text-muted)]">
                   Loading your badges...
                 </p>
