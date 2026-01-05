@@ -1,0 +1,6 @@
+data/
+logs/
+dist/
+coverage/
+node_modules/
+.env

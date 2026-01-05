@@ -14,6 +14,7 @@
     "dev:workers": "tsx --env-file=.env src/workers/index.ts",
     "db:init": "tsx --env-file=.env src/db/init.ts",
     "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
+    "test:ipfs": "tsx --env-file=.env scripts/test-ipfs-connection.ts",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:stop": "pm2 stop all",
     "pm2:restart": "pm2 restart all",

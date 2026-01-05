@@ -112,14 +112,6 @@ class XIndexer {
         totalScanned += posts.length;
       }
 
-      // Update last indexed ID to the newest post across all threads
-      if (totalNewPosts > 0) {
-        const allPosts = this.postDb.getUnprocessedPosts(1);
-        if (allPosts.length > 0) {
-          this.postDb.setLastIndexedId(allPosts[0].id);
-        }
-      }
-
       logger.info('Poll complete', {
         threadsIndexed: mainPostIds.length,
         totalScanned,

@@ -243,15 +243,25 @@ describe('Metadata Database - IPFS Cache', () => {
       // Cache old content
       metadataDb.cacheIPFSContent(cid1, JSON.stringify({ version: 1 }));
 
-      // Create metadata update
+      // Create metadata updates (simplified - just track CIDs)
       metadataDb.createUpdate({
         chainId: 5700,
+        contractAddress: '0xabcdef0123456789abcdef0123456789abcdef01',
         iterationNumber: 1,
         projectAddress: '0x1234567890123456789012345678901234567890',
-        oldCid: cid1,
-        newCid: cid2,
-        txHash: '0xabcd',
+        cid: cid1,
+        txHash: '0xabcd1',
         txSentHeight: 100
+      });
+
+      metadataDb.createUpdate({
+        chainId: 5700,
+        contractAddress: '0xabcdef0123456789abcdef0123456789abcdef01',
+        iterationNumber: 1,
+        projectAddress: '0x1234567890123456789012345678901234567890',
+        cid: cid2,
+        txHash: '0xabcd2',
+        txSentHeight: 101
       });
 
       // Cache new content
@@ -261,7 +271,7 @@ describe('Metadata Database - IPFS Cache', () => {
       expect(metadataDb.getCachedIPFSContent(cid1)).not.toBeNull();
       expect(metadataDb.getCachedIPFSContent(cid2)).not.toBeNull();
 
-      // Delete old CID (simulating unpinning)
+      // Delete old CID (simulating manual cleanup)
       metadataDb.deleteCachedIPFSContent(cid1);
 
       expect(metadataDb.getCachedIPFSContent(cid1)).toBeNull();
