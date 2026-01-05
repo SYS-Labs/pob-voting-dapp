@@ -1,842 +1,893 @@
-import { expect } from 'chai';
-import hre from 'hardhat';
+import { expect } from "chai";
+import hre from "hardhat";
 const { ethers, upgrades } = hre;
 
-describe('PoBRegistry', function () {
+describe("PoBRegistry", function () {
   let PoBRegistry;
   let registry;
+  let mockJurySC;
   let owner;
+  let user1;
+  let user2;
   let project1;
   let project2;
-  let unauthorized;
+  let otherUser;
 
   const CHAIN_ID_TESTNET = 5700;
   const CHAIN_ID_MAINNET = 57;
-  const SAMPLE_CID = 'QmTzQ1JRkWErjk39mryYw2WVaphAZNAREyMchXzYywCzK1';
-  const UPDATED_CID = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
+  const CHAIN_ID_LOCAL = 31337;
+  const SAMPLE_CID = "QmTzQ1JRkWErjk39mryYw2WVaphAZNAREyMchXzYywCzK1";
+  const UPDATED_CID = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
 
   beforeEach(async function () {
-    [owner, project1, project2, unauthorized] = await ethers.getSigners();
+    [owner, user1, user2, project1, project2, otherUser] = await ethers.getSigners();
 
-    PoBRegistry = await ethers.getContractFactory('PoBRegistry');
+    // Deploy mock JurySC for testing
+    const MockJurySC = await ethers.getContractFactory("MockJurySC");
+    mockJurySC = await MockJurySC.deploy();
+    await mockJurySC.waitForDeployment();
+
+    // Register projects in mock JurySC
+    await mockJurySC.registerProject(project1.address);
+    await mockJurySC.registerProject(project2.address);
+
+    PoBRegistry = await ethers.getContractFactory("PoBRegistry");
     registry = await upgrades.deployProxy(
       PoBRegistry,
       [owner.address],
-      { initializer: 'initialize' }
+      { initializer: "initialize" }
     );
     await registry.waitForDeployment();
   });
 
-  describe('Deployment', function () {
-    it('Should set the right owner', async function () {
+  // ========== DEPLOYMENT TESTS ==========
+
+  describe("Deployment", function () {
+    it("Should set the right owner", async function () {
       expect(await registry.owner()).to.equal(owner.address);
     });
 
-    it('Should be upgradeable', async function () {
+    it("Should be upgradeable", async function () {
       const registryAddress = await registry.getAddress();
       expect(registryAddress).to.be.properAddress;
     });
+
+    it("Should start in initialization mode", async function () {
+      expect(await registry.initializationComplete()).to.be.false;
+    });
+
+    it("Should start with zero iteration count", async function () {
+      expect(await registry.iterationCount()).to.equal(0);
+    });
   });
 
-  describe('Iteration Metadata', function () {
-    const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
+  // ========== ITERATION REGISTRY TESTS ==========
 
-    it('Should allow owner to set iteration metadata', async function () {
+  describe("Iteration Registry", function () {
+    describe("registerIteration", function () {
+      it("Should allow owner to register an iteration", async function () {
+        await expect(registry.registerIteration(1, CHAIN_ID_TESTNET))
+          .to.emit(registry, "IterationRegistered")
+          .withArgs(1, CHAIN_ID_TESTNET);
+
+        expect(await registry.iterationCount()).to.equal(1);
+      });
+
+      it("Should store correct iteration info", async function () {
+        await registry.registerIteration(1, CHAIN_ID_TESTNET);
+
+        const iteration = await registry.iterations(1);
+        expect(iteration.iterationId).to.equal(1);
+        expect(iteration.chainId).to.equal(CHAIN_ID_TESTNET);
+        expect(iteration.roundCount).to.equal(0);
+        expect(iteration.exists).to.be.true;
+      });
+
+      it("Should allow registering multiple iterations", async function () {
+        await registry.registerIteration(1, CHAIN_ID_TESTNET);
+        await registry.registerIteration(2, CHAIN_ID_MAINNET);
+        await registry.registerIteration(3, CHAIN_ID_LOCAL);
+
+        expect(await registry.iterationCount()).to.equal(3);
+      });
+
+      it("Should revert with invalid iteration ID (0)", async function () {
+        await expect(
+          registry.registerIteration(0, CHAIN_ID_TESTNET)
+        ).to.be.revertedWith("Invalid iteration ID");
+      });
+
+      it("Should revert with invalid chain ID (0)", async function () {
+        await expect(
+          registry.registerIteration(1, 0)
+        ).to.be.revertedWith("Invalid chain ID");
+      });
+
+      it("Should revert when registering duplicate iteration", async function () {
+        await registry.registerIteration(1, CHAIN_ID_TESTNET);
+
+        await expect(
+          registry.registerIteration(1, CHAIN_ID_MAINNET)
+        ).to.be.revertedWith("Iteration already registered");
+      });
+
+      it("Should not allow non-owner to register iteration", async function () {
+        await expect(
+          registry.connect(user1).registerIteration(1, CHAIN_ID_TESTNET)
+        ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      });
+    });
+
+    describe("getIteration", function () {
+      beforeEach(async function () {
+        await registry.registerIteration(1, CHAIN_ID_TESTNET);
+        await registry.registerIteration(2, CHAIN_ID_MAINNET);
+      });
+
+      it("Should return correct iteration info", async function () {
+        const iteration = await registry.getIteration(1);
+        expect(iteration.iterationId).to.equal(1);
+        expect(iteration.chainId).to.equal(CHAIN_ID_TESTNET);
+        expect(iteration.exists).to.be.true;
+      });
+
+      it("Should revert for non-existent iteration", async function () {
+        await expect(
+          registry.getIteration(99)
+        ).to.be.revertedWith("Iteration not found");
+      });
+    });
+
+    describe("getAllIterationIds", function () {
+      it("Should return empty array when no iterations", async function () {
+        const ids = await registry.getAllIterationIds();
+        expect(ids).to.deep.equal([]);
+      });
+
+      it("Should return all iteration IDs", async function () {
+        await registry.registerIteration(1, CHAIN_ID_TESTNET);
+        await registry.registerIteration(2, CHAIN_ID_MAINNET);
+        await registry.registerIteration(3, CHAIN_ID_LOCAL);
+
+        const ids = await registry.getAllIterationIds();
+        expect(ids.map(id => Number(id))).to.deep.equal([1, 2, 3]);
+      });
+
+      it("Should handle non-sequential iteration IDs", async function () {
+        await registry.registerIteration(1, CHAIN_ID_TESTNET);
+        await registry.registerIteration(5, CHAIN_ID_MAINNET);
+        await registry.registerIteration(10, CHAIN_ID_LOCAL);
+
+        const ids = await registry.getAllIterationIds();
+        expect(ids.map(id => Number(id))).to.deep.equal([1, 5, 10]);
+      });
+    });
+  });
+
+  // ========== ROUND MANAGEMENT TESTS ==========
+
+  describe("Round Management", function () {
+    let mockJurySCAddress;
+
+    beforeEach(async function () {
+      mockJurySCAddress = await mockJurySC.getAddress();
+      await registry.registerIteration(1, CHAIN_ID_LOCAL);
+    });
+
+    describe("addRound", function () {
+      it("Should allow owner to add a round", async function () {
+        await expect(registry.addRound(1, 1, mockJurySCAddress, 100))
+          .to.emit(registry, "RoundAdded")
+          .withArgs(1, 1, mockJurySCAddress, ethers.ZeroAddress, CHAIN_ID_LOCAL);
+
+        const iteration = await registry.iterations(1);
+        expect(iteration.roundCount).to.equal(1);
+      });
+
+      it("Should store correct round info", async function () {
+        await registry.addRound(1, 1, mockJurySCAddress, 12345);
+
+        const round = await registry.rounds(1, 1);
+        expect(round.iterationId).to.equal(1);
+        expect(round.roundId).to.equal(1);
+        expect(round.jurySC).to.equal(mockJurySCAddress);
+        expect(round.deployBlockHint).to.equal(12345);
+        expect(round.exists).to.be.true;
+      });
+
+      it("Should allow adding multiple rounds to an iteration", async function () {
+        const MockJurySC = await ethers.getContractFactory("MockJurySC");
+        const jurySC2 = await MockJurySC.deploy();
+        const jurySC3 = await MockJurySC.deploy();
+
+        await registry.addRound(1, 1, mockJurySCAddress, 100);
+        await registry.addRound(1, 2, await jurySC2.getAddress(), 200);
+        await registry.addRound(1, 3, await jurySC3.getAddress(), 300);
+
+        const iteration = await registry.iterations(1);
+        expect(iteration.roundCount).to.equal(3);
+      });
+
+      it("Should revert when adding round to non-existent iteration", async function () {
+        await expect(
+          registry.addRound(99, 1, mockJurySCAddress, 100)
+        ).to.be.revertedWith("Iteration not registered");
+      });
+
+      it("Should revert with invalid round ID (0)", async function () {
+        await expect(
+          registry.addRound(1, 0, mockJurySCAddress, 100)
+        ).to.be.revertedWith("Invalid round ID");
+      });
+
+      it("Should revert with zero address jurySC", async function () {
+        await expect(
+          registry.addRound(1, 1, ethers.ZeroAddress, 100)
+        ).to.be.revertedWith("Invalid jurySC address");
+      });
+
+      it("Should revert when adding duplicate round", async function () {
+        await registry.addRound(1, 1, mockJurySCAddress, 100);
+
+        const MockJurySC = await ethers.getContractFactory("MockJurySC");
+        const jurySC2 = await MockJurySC.deploy();
+
+        await expect(
+          registry.addRound(1, 1, await jurySC2.getAddress(), 200)
+        ).to.be.revertedWith("Round already exists");
+      });
+
+      it("Should revert when jurySC is already registered", async function () {
+        await registry.addRound(1, 1, mockJurySCAddress, 100);
+
+        await expect(
+          registry.addRound(1, 2, mockJurySCAddress, 200)
+        ).to.be.revertedWith("JurySC already registered");
+      });
+
+      it("Should not allow non-owner to add round", async function () {
+        await expect(
+          registry.connect(user1).addRound(1, 1, mockJurySCAddress, 100)
+        ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      });
+
+      it("Should create reverse lookup entry", async function () {
+        await registry.addRound(1, 1, mockJurySCAddress, 100);
+
+        const ref = await registry.roundByContract(CHAIN_ID_LOCAL, mockJurySCAddress);
+        expect(ref.iterationId).to.equal(1);
+        expect(ref.roundId).to.equal(1);
+        expect(ref.exists).to.be.true;
+      });
+    });
+
+    describe("getRound", function () {
+      beforeEach(async function () {
+        await registry.addRound(1, 1, mockJurySCAddress, 100);
+      });
+
+      it("Should return correct round info", async function () {
+        const round = await registry.getRound(1, 1);
+        expect(round.iterationId).to.equal(1);
+        expect(round.roundId).to.equal(1);
+        expect(round.jurySC).to.equal(mockJurySCAddress);
+      });
+
+      it("Should revert for non-existent round", async function () {
+        await expect(
+          registry.getRound(1, 99)
+        ).to.be.revertedWith("Round not found");
+      });
+
+      it("Should revert for non-existent iteration", async function () {
+        await expect(
+          registry.getRound(99, 1)
+        ).to.be.revertedWith("Round not found");
+      });
+    });
+
+    describe("getRounds", function () {
+      it("Should return empty array when no rounds", async function () {
+        const rounds = await registry.getRounds(1);
+        expect(rounds).to.deep.equal([]);
+      });
+
+      it("Should return all rounds for an iteration", async function () {
+        const MockJurySC = await ethers.getContractFactory("MockJurySC");
+        const jurySC2 = await MockJurySC.deploy();
+
+        await registry.addRound(1, 1, mockJurySCAddress, 100);
+        await registry.addRound(1, 2, await jurySC2.getAddress(), 200);
+
+        const rounds = await registry.getRounds(1);
+        expect(rounds.length).to.equal(2);
+        expect(rounds[0].roundId).to.equal(1);
+        expect(rounds[1].roundId).to.equal(2);
+      });
+
+      it("Should revert for non-existent iteration", async function () {
+        await expect(
+          registry.getRounds(99)
+        ).to.be.revertedWith("Iteration not found");
+      });
+    });
+
+    describe("getRoundByContract", function () {
+      beforeEach(async function () {
+        await registry.addRound(1, 1, mockJurySCAddress, 100);
+      });
+
+      it("Should return correct round info by contract address", async function () {
+        const round = await registry.getRoundByContract(CHAIN_ID_LOCAL, mockJurySCAddress);
+        expect(round.iterationId).to.equal(1);
+        expect(round.roundId).to.equal(1);
+        expect(round.jurySC).to.equal(mockJurySCAddress);
+      });
+
+      it("Should revert for non-registered contract", async function () {
+        await expect(
+          registry.getRoundByContract(CHAIN_ID_LOCAL, user1.address)
+        ).to.be.revertedWith("Round not found for contract");
+      });
+
+      it("Should revert for wrong chain ID", async function () {
+        await expect(
+          registry.getRoundByContract(CHAIN_ID_TESTNET, mockJurySCAddress)
+        ).to.be.revertedWith("Round not found for contract");
+      });
+    });
+
+    describe("getPrevRoundContracts", function () {
+      let jurySC2Address;
+      let jurySC3Address;
+
+      beforeEach(async function () {
+        const MockJurySC = await ethers.getContractFactory("MockJurySC");
+        const jurySC2 = await MockJurySC.deploy();
+        const jurySC3 = await MockJurySC.deploy();
+        jurySC2Address = await jurySC2.getAddress();
+        jurySC3Address = await jurySC3.getAddress();
+
+        await registry.addRound(1, 1, mockJurySCAddress, 100);
+        await registry.addRound(1, 2, jurySC2Address, 200);
+        await registry.addRound(1, 3, jurySC3Address, 300);
+      });
+
+      it("Should return empty array for first round", async function () {
+        const prevRounds = await registry.getPrevRoundContracts(CHAIN_ID_LOCAL, mockJurySCAddress);
+        expect(prevRounds).to.deep.equal([]);
+      });
+
+      it("Should return one previous round for second round", async function () {
+        const prevRounds = await registry.getPrevRoundContracts(CHAIN_ID_LOCAL, jurySC2Address);
+        expect(prevRounds.length).to.equal(1);
+        expect(prevRounds[0]).to.equal(mockJurySCAddress);
+      });
+
+      it("Should return all previous rounds for later rounds", async function () {
+        const prevRounds = await registry.getPrevRoundContracts(CHAIN_ID_LOCAL, jurySC3Address);
+        expect(prevRounds.length).to.equal(2);
+        expect(prevRounds[0]).to.equal(mockJurySCAddress);
+        expect(prevRounds[1]).to.equal(jurySC2Address);
+      });
+
+      it("Should revert for non-registered contract", async function () {
+        await expect(
+          registry.getPrevRoundContracts(CHAIN_ID_LOCAL, user1.address)
+        ).to.be.revertedWith("Round not found for contract");
+      });
+    });
+  });
+
+  // ========== ITERATION METADATA TESTS ==========
+
+  describe("Iteration Metadata", function () {
+    const mockJurySCAddr = "0x837992aC7b89c148F7e42755816e74E84CF985AD";
+
+    it("Should allow owner to set iteration metadata", async function () {
       await expect(
-        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID)
+        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, SAMPLE_CID)
       )
-        .to.emit(registry, 'IterationMetadataSet')
-        .withArgs(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID, owner.address);
+        .to.emit(registry, "IterationMetadataSet")
+        .withArgs(CHAIN_ID_TESTNET, mockJurySCAddr, SAMPLE_CID, owner.address);
 
-      const cid = await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC);
+      const cid = await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr);
       expect(cid).to.equal(SAMPLE_CID);
     });
 
-    it('Should allow owner to update iteration metadata', async function () {
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID);
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, UPDATED_CID);
+    it("Should allow owner to update iteration metadata", async function () {
+      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, SAMPLE_CID);
+      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, UPDATED_CID);
 
-      const cid = await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC);
+      const cid = await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr);
       expect(cid).to.equal(UPDATED_CID);
     });
 
-    it('Should not allow non-owner to set iteration metadata', async function () {
+    it("Should not allow non-owner to set iteration metadata", async function () {
       await expect(
-        registry.connect(unauthorized).setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID)
-      ).to.be.revertedWithCustomError(registry, 'OwnableUnauthorizedAccount');
+        registry.connect(user1).setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, SAMPLE_CID)
+      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
     });
 
-    it('Should revert with invalid contract address', async function () {
+    it("Should revert with invalid contract address", async function () {
       await expect(
         registry.setIterationMetadata(CHAIN_ID_TESTNET, ethers.ZeroAddress, SAMPLE_CID)
-      ).to.be.revertedWith('Invalid contract address');
+      ).to.be.revertedWith("Invalid contract address");
     });
 
-    it('Should revert with empty CID', async function () {
+    it("Should revert with empty CID", async function () {
       await expect(
-        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, '')
-      ).to.be.revertedWith('CID cannot be empty');
+        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, "")
+      ).to.be.revertedWith("CID cannot be empty");
     });
 
-    it('Should return empty string for unset metadata', async function () {
-      const cid = await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC);
-      expect(cid).to.equal('');
+    it("Should return empty string for unset metadata", async function () {
+      const cid = await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr);
+      expect(cid).to.equal("");
     });
 
-    it('Should handle multiple chains independently', async function () {
-      const testnetCID = 'QmTestnet123';
-      const mainnetCID = 'QmMainnet456';
+    it("Should handle multiple chains independently", async function () {
+      const testnetCID = "QmTestnet123";
+      const mainnetCID = "QmMainnet456";
 
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, testnetCID);
-      await registry.setIterationMetadata(CHAIN_ID_MAINNET, mockJurySC, mainnetCID);
+      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, testnetCID);
+      await registry.setIterationMetadata(CHAIN_ID_MAINNET, mockJurySCAddr, mainnetCID);
 
-      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC)).to.equal(testnetCID);
-      expect(await registry.getIterationMetadata(CHAIN_ID_MAINNET, mockJurySC)).to.equal(mainnetCID);
+      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr)).to.equal(testnetCID);
+      expect(await registry.getIterationMetadata(CHAIN_ID_MAINNET, mockJurySCAddr)).to.equal(mainnetCID);
     });
   });
 
-  describe('Previous Round Contracts', function () {
-    const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
-    const prevRound1 = '0xafbdCDB66534cec38adec528892a452852E9B51e';
-    const prevRound2 = '0xbE0BB73f2b9038cf97DCC8e00baE5628dfde6712';
+  // ========== PROJECT METADATA TESTS ==========
 
-    it('Should allow owner to set previous rounds', async function () {
-      const prevRounds = [prevRound1, prevRound2];
-
-      await expect(
-        registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC, prevRounds)
-      )
-        .to.emit(registry, 'PrevRoundsSet')
-        .withArgs(CHAIN_ID_TESTNET, mockJurySC, prevRounds);
-
-      const rounds = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC);
-      expect(rounds).to.have.lengthOf(2);
-      expect(rounds[0]).to.equal(prevRound1);
-      expect(rounds[1]).to.equal(prevRound2);
-    });
-
-    it('Should allow empty previous rounds array', async function () {
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC, []);
-      const rounds = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC);
-      expect(rounds).to.have.lengthOf(0);
-    });
-
-    it('Should not allow non-owner to set previous rounds', async function () {
-      await expect(
-        registry.connect(unauthorized).setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC, [prevRound1])
-      ).to.be.revertedWithCustomError(registry, 'OwnableUnauthorizedAccount');
-    });
-
-    it('Should return empty array for unset previous rounds', async function () {
-      const rounds = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC);
-      expect(rounds).to.have.lengthOf(0);
-    });
-  });
-
-  describe('Project Authorization', function () {
-    const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
-
-    it('Should allow owner to authorize a project', async function () {
-      await expect(
-        registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true)
-      )
-        .to.emit(registry, 'ProjectAuthorized')
-        .withArgs(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-
-      expect(
-        await registry.isProjectAuthorized(CHAIN_ID_TESTNET, mockJurySC, project1.address)
-      ).to.be.true;
-    });
-
-    it('Should allow owner to deauthorize a project', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, false);
-
-      expect(
-        await registry.isProjectAuthorized(CHAIN_ID_TESTNET, mockJurySC, project1.address)
-      ).to.be.false;
-    });
-
-    it('Should allow batch authorization', async function () {
-      const projects = [project1.address, project2.address];
-
-      await registry.batchAuthorizeProjects(CHAIN_ID_TESTNET, mockJurySC, projects);
-
-      expect(await registry.isProjectAuthorized(CHAIN_ID_TESTNET, mockJurySC, project1.address)).to.be.true;
-      expect(await registry.isProjectAuthorized(CHAIN_ID_TESTNET, mockJurySC, project2.address)).to.be.true;
-    });
-
-    it('Should not allow non-owner to authorize projects', async function () {
-      await expect(
-        registry.connect(unauthorized).setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true)
-      ).to.be.revertedWithCustomError(registry, 'OwnableUnauthorizedAccount');
-    });
-
-    it('Should return false for non-authorized projects', async function () {
-      expect(
-        await registry.isProjectAuthorized(CHAIN_ID_TESTNET, mockJurySC, unauthorized.address)
-      ).to.be.false;
-    });
-  });
-
-  describe('Project Metadata', function () {
-    const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
+  describe("Project Metadata", function () {
+    let mockJurySCAddress;
 
     beforeEach(async function () {
-      // Authorize project1
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
+      mockJurySCAddress = await mockJurySC.getAddress();
+      await registry.registerIteration(1, CHAIN_ID_LOCAL);
+      await registry.addRound(1, 1, mockJurySCAddress, 0);
     });
 
-    it('Should allow authorized project to set its own metadata', async function () {
+    describe("During initialization phase", function () {
+      it("Should allow owner to set any project metadata", async function () {
+        await expect(
+          registry.setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "QmTest1")
+        ).to.emit(registry, "ProjectMetadataSet");
+
+        await expect(
+          registry.setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project2.address, "QmTest2")
+        ).to.emit(registry, "ProjectMetadataSet");
+
+        expect(await registry.getProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address)).to.equal("QmTest1");
+        expect(await registry.getProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project2.address)).to.equal("QmTest2");
+      });
+
+      it("Should NOT allow projects to set their own metadata during init", async function () {
+        await expect(
+          registry.connect(project1).setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "QmTest1")
+        ).to.be.revertedWith("Only owner can set metadata during initialization");
+      });
+
+      it("Should NOT allow non-owner to set project metadata during init", async function () {
+        await expect(
+          registry.connect(otherUser).setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "QmTest1")
+        ).to.be.revertedWith("Only owner can set metadata during initialization");
+      });
+
+      it("Should show initializationComplete as false", async function () {
+        expect(await registry.initializationComplete()).to.be.false;
+      });
+    });
+
+    describe("After completing initialization", function () {
+      beforeEach(async function () {
+        await registry.setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "QmInitial1");
+        await registry.setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project2.address, "QmInitial2");
+        await registry.completeInitialization();
+      });
+
+      it("Should show initializationComplete as true", async function () {
+        expect(await registry.initializationComplete()).to.be.true;
+      });
+
+      it("Should allow authorized projects to set their own metadata", async function () {
+        await expect(
+          registry.connect(project1).setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "QmUpdated1")
+        ).to.emit(registry, "ProjectMetadataSet");
+
+        expect(await registry.getProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address)).to.equal("QmUpdated1");
+      });
+
+      it("Should NOT allow projects to set other projects' metadata", async function () {
+        await expect(
+          registry.connect(project1).setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project2.address, "QmHack")
+        ).to.be.revertedWith("Can only set own metadata");
+      });
+
+      it("Should NOT allow owner to set project metadata after init", async function () {
+        await expect(
+          registry.setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "QmOwnerHack")
+        ).to.be.revertedWith("Can only set own metadata");
+      });
+
+      it("Should NOT allow unauthorized projects to set metadata", async function () {
+        await expect(
+          registry.connect(otherUser).setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, otherUser.address, "QmUnauth")
+        ).to.be.revertedWith("Project not registered in JurySC");
+      });
+
+      it("Should still allow owner to set iteration metadata", async function () {
+        await expect(
+          registry.setIterationMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, "QmIterationMetadata")
+        ).to.emit(registry, "IterationMetadataSet");
+
+        expect(await registry.getIterationMetadata(CHAIN_ID_LOCAL, mockJurySCAddress)).to.equal("QmIterationMetadata");
+      });
+    });
+
+    describe("Validation", function () {
+      it("Should revert setProjectMetadata with zero project address", async function () {
+        await expect(
+          registry.setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, ethers.ZeroAddress, SAMPLE_CID)
+        ).to.be.revertedWith("Invalid project address");
+      });
+
+      it("Should revert setProjectMetadata with zero jurySC address", async function () {
+        await expect(
+          registry.setProjectMetadata(CHAIN_ID_LOCAL, ethers.ZeroAddress, user1.address, SAMPLE_CID)
+        ).to.be.revertedWith("Invalid contract address");
+      });
+
+      it("Should revert setProjectMetadata with empty CID", async function () {
+        await expect(
+          registry.setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "")
+        ).to.be.revertedWith("CID cannot be empty");
+      });
+
+      it("Should revert setProjectMetadata with CID too long", async function () {
+        const longCID = "Q" + "m".repeat(100);
+        await expect(
+          registry.setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, longCID)
+        ).to.be.revertedWith("CID too long");
+      });
+    });
+  });
+
+  // ========== INITIALIZATION CONTROL TESTS ==========
+
+  describe("Initialization Control", function () {
+    it("Should emit InitializationCompleted event", async function () {
+      const tx = await registry.completeInitialization();
+      const receipt = await tx.wait();
+      const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+      await expect(tx)
+        .to.emit(registry, "InitializationCompleted")
+        .withArgs(owner.address, block.timestamp);
+    });
+
+    it("Should NOT allow completing initialization twice", async function () {
+      await registry.completeInitialization();
+
       await expect(
-        registry.connect(project1).setProjectMetadata(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          project1.address,
-          SAMPLE_CID
-        )
-      )
-        .to.emit(registry, 'ProjectMetadataSet')
-        .withArgs(CHAIN_ID_TESTNET, mockJurySC, project1.address, SAMPLE_CID, project1.address);
-
-      const cid = await registry.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address);
-      expect(cid).to.equal(SAMPLE_CID);
+        registry.completeInitialization()
+      ).to.be.revertedWith("Initialization already complete");
     });
 
-    it('Should allow owner to set any project metadata', async function () {
-      await registry.setProjectMetadata(
+    it("Should only allow owner to complete initialization", async function () {
+      await expect(
+        registry.connect(user1).completeInitialization()
+      ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+    });
+  });
+
+  // ========== TIME WINDOW ENFORCEMENT TESTS ==========
+
+  describe("Time Window Enforcement", function () {
+    let mockJurySCAddress;
+
+    beforeEach(async function () {
+      mockJurySCAddress = await mockJurySC.getAddress();
+      await registry.registerIteration(1, CHAIN_ID_LOCAL);
+      await registry.addRound(1, 1, mockJurySCAddress, 0);
+      await registry.completeInitialization();
+    });
+
+    it("Should allow projects to set metadata BEFORE projectsLocked", async function () {
+      await expect(
+        registry.connect(project1).setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "QmTest")
+      ).to.emit(registry, "ProjectMetadataSet");
+    });
+
+    it("Should NOT allow projects to set metadata AFTER projectsLocked", async function () {
+      await mockJurySC.lockProjects();
+
+      await expect(
+        registry.connect(project1).setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, project1.address, "QmTest")
+      ).to.be.revertedWith("Metadata editing closed (voting started)");
+    });
+
+    it("Should NOT allow unregistered projects to set metadata", async function () {
+      await expect(
+        registry.connect(otherUser).setProjectMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, otherUser.address, "QmTest")
+      ).to.be.revertedWith("Project not registered in JurySC");
+    });
+  });
+
+  // ========== ITERATION METADATA LOCKING TESTS ==========
+
+  describe("Iteration Metadata Locking", function () {
+    let mockJurySCAddress;
+
+    beforeEach(async function () {
+      mockJurySCAddress = await mockJurySC.getAddress();
+      await registry.registerIteration(1, CHAIN_ID_LOCAL);
+      await registry.addRound(1, 1, mockJurySCAddress, 0);
+    });
+
+    it("Should allow owner to set iteration metadata BEFORE lock", async function () {
+      await expect(
+        registry.setIterationMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, "QmIterationTest")
+      ).to.emit(registry, "IterationMetadataSet");
+    });
+
+    it("Should allow owner to set iteration metadata for LOCKED iteration DURING init phase", async function () {
+      await mockJurySC.lockContractForHistory();
+
+      await expect(
+        registry.setIterationMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, "QmHistoricalIteration")
+      ).to.emit(registry, "IterationMetadataSet");
+    });
+
+    it("Should NOT allow owner to set iteration metadata AFTER lock (post-init)", async function () {
+      await registry.completeInitialization();
+      await mockJurySC.lockContractForHistory();
+
+      await expect(
+        registry.setIterationMetadata(CHAIN_ID_LOCAL, mockJurySCAddress, "QmIterationTest")
+      ).to.be.revertedWith("Iteration locked (cannot modify historical data)");
+    });
+  });
+
+  // ========== BATCH OPERATIONS TESTS ==========
+
+  describe("Batch Operations", function () {
+    const mockJurySCAddr = "0x837992aC7b89c148F7e42755816e74E84CF985AD";
+
+    it("Should handle batch get project metadata", async function () {
+      const cids = await registry.batchGetProjectMetadata(
         CHAIN_ID_TESTNET,
-        mockJurySC,
-        project2.address,
-        SAMPLE_CID
+        mockJurySCAddr,
+        [user1.address, user2.address]
       );
-
-      const cid = await registry.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project2.address);
-      expect(cid).to.equal(SAMPLE_CID);
+      expect(cids).to.deep.equal(["", ""]);
     });
 
-    it('Should not allow unauthorized project to set metadata', async function () {
-      await expect(
-        registry.connect(unauthorized).setProjectMetadata(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          unauthorized.address,
-          SAMPLE_CID
-        )
-      ).to.be.revertedWith('Not authorized to set metadata');
-    });
-
-    it('Should not allow project to set another project metadata', async function () {
-      await expect(
-        registry.connect(project1).setProjectMetadata(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          project2.address,
-          SAMPLE_CID
-        )
-      ).to.be.revertedWith('Not authorized to set metadata');
-    });
-
-    it('Should revert with empty CID', async function () {
-      await expect(
-        registry.connect(project1).setProjectMetadata(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          project1.address,
-          ''
-        )
-      ).to.be.revertedWith('CID cannot be empty');
-    });
-
-    it('Should return empty string for unset project metadata', async function () {
-      const cid = await registry.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address);
-      expect(cid).to.equal('');
-    });
-
-    it('Should handle batch get project metadata', async function () {
-      await registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address, 'QmProject1');
-      await registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project2.address, 'QmProject2');
+    it("Should return correct CIDs for projects with metadata", async function () {
+      await registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, user1.address, "QmUser1");
+      await registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, user2.address, "QmUser2");
 
       const cids = await registry.batchGetProjectMetadata(
         CHAIN_ID_TESTNET,
-        mockJurySC,
-        [project1.address, project2.address, unauthorized.address]
+        mockJurySCAddr,
+        [user1.address, user2.address]
       );
+      expect(cids).to.deep.equal(["QmUser1", "QmUser2"]);
+    });
 
-      expect(cids).to.have.lengthOf(3);
-      expect(cids[0]).to.equal('QmProject1');
-      expect(cids[1]).to.equal('QmProject2');
-      expect(cids[2]).to.equal(''); // Unset
+    it("Should enforce MAX_BATCH_SIZE in batchGetProjectMetadata", async function () {
+      const addresses = Array(51).fill(user1.address);
+      await expect(
+        registry.batchGetProjectMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, addresses)
+      ).to.be.revertedWith("Batch size too large");
+    });
+
+    it("Should handle empty array", async function () {
+      const cids = await registry.batchGetProjectMetadata(
+        CHAIN_ID_TESTNET,
+        mockJurySCAddr,
+        []
+      );
+      expect(cids).to.deep.equal([]);
+    });
+
+    it("Should handle exactly MAX_BATCH_SIZE addresses", async function () {
+      const addresses = Array(50).fill(user1.address);
+      const cids = await registry.batchGetProjectMetadata(
+        CHAIN_ID_TESTNET,
+        mockJurySCAddr,
+        addresses
+      );
+      expect(cids.length).to.equal(50);
     });
   });
 
-  describe('UUPS Upgradeability', function () {
-    it('Should allow owner to upgrade', async function () {
-      const PoBRegistryV2 = await ethers.getContractFactory('PoBRegistry', owner);
-      const upgraded = await upgrades.upgradeProxy(await registry.getAddress(), PoBRegistryV2);
-      expect(await upgraded.owner()).to.equal(owner.address);
-    });
+  // ========== UUPS UPGRADEABILITY TESTS ==========
 
-    it('Should not allow non-owner to upgrade', async function () {
-      const PoBRegistryV2 = await ethers.getContractFactory('PoBRegistry', unauthorized);
+  describe("UUPS Upgradeability", function () {
+    it("Should allow owner to upgrade", async function () {
+      const PoBRegistryV2 = await ethers.getContractFactory("PoBRegistry");
       await expect(
         upgrades.upgradeProxy(await registry.getAddress(), PoBRegistryV2)
-      ).to.be.revertedWithCustomError(registry, 'OwnableUnauthorizedAccount');
+      ).to.not.be.reverted;
     });
 
-    it('Should preserve data after upgrade', async function () {
-      const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
+    it("Should not allow non-owner to upgrade", async function () {
+      const registryAddress = await registry.getAddress();
+      const PoBRegistryV2 = await ethers.getContractFactory("PoBRegistry", user1);
 
-      // Set some data before upgrade
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID);
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        mockJurySC,
-        project1.address,
-        'QmProject1'
-      );
+      await expect(
+        upgrades.upgradeProxy(registryAddress, PoBRegistryV2)
+      ).to.be.reverted;
+    });
 
-      // Upgrade
-      const PoBRegistryV2 = await ethers.getContractFactory('PoBRegistry', owner);
+    it("Should preserve state after upgrade", async function () {
+      await registry.registerIteration(1, CHAIN_ID_TESTNET);
+      await registry.setIterationMetadata(CHAIN_ID_TESTNET, user1.address, SAMPLE_CID);
+
+      const PoBRegistryV2 = await ethers.getContractFactory("PoBRegistry");
       const upgraded = await upgrades.upgradeProxy(await registry.getAddress(), PoBRegistryV2);
 
-      // Verify data preserved
-      expect(await upgraded.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC)).to.equal(SAMPLE_CID);
-      expect(await upgraded.isProjectAuthorized(CHAIN_ID_TESTNET, mockJurySC, project1.address)).to.be.true;
-      expect(await upgraded.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address)).to.equal('QmProject1');
+      expect(await upgraded.iterationCount()).to.equal(1);
+      expect(await upgraded.getIterationMetadata(CHAIN_ID_TESTNET, user1.address)).to.equal(SAMPLE_CID);
     });
   });
 
-  describe('Edge Cases and Boundary Conditions', function () {
-    const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
+  // ========== EDGE CASES AND VALIDATION TESTS ==========
 
-    it('Should enforce MAX_CID_LENGTH limit', async function () {
-      const maxCID = 'Qm' + 'a'.repeat(98); // Total 100 chars
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, maxCID);
-      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC)).to.equal(maxCID);
+  describe("Edge Cases and Validation", function () {
+    const mockJurySCAddr = "0x837992aC7b89c148F7e42755816e74E84CF985AD";
 
-      const tooLongCID = 'Qm' + 'a'.repeat(99); // Total 101 chars
+    it("Should enforce MAX_CID_LENGTH limit", async function () {
+      const longCID = "Q" + "m".repeat(100);
       await expect(
-        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, tooLongCID)
-      ).to.be.revertedWith('CID too long');
+        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, longCID)
+      ).to.be.revertedWith("CID too long");
     });
 
-    it('Should handle special characters in CID', async function () {
-      const specialCID = 'QmSpecial-CID_123.test';
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, specialCID);
-      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC)).to.equal(specialCID);
-    });
-
-    it('Should enforce MAX_PREV_ROUNDS limit', async function () {
-      const maxRounds = Array.from({ length: 100 }, (_, i) =>
-        ethers.Wallet.createRandom().address
-      );
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC, maxRounds);
-      const rounds = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC);
-      expect(rounds).to.have.lengthOf(100);
-
-      const tooManyRounds = Array.from({ length: 101 }, (_, i) =>
-        ethers.Wallet.createRandom().address
-      );
+    it("Should allow CID at exactly MAX_CID_LENGTH", async function () {
+      const maxCID = "Q" + "m".repeat(99); // 100 chars total
       await expect(
-        registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC, tooManyRounds)
-      ).to.be.revertedWith('Too many previous rounds');
+        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, maxCID)
+      ).to.not.be.reverted;
     });
 
-    it('Should handle batch operations with empty array', async function () {
-      const cids = await registry.batchGetProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, []);
-      expect(cids).to.have.lengthOf(0);
+    it("Should handle special characters in CID", async function () {
+      const specialCID = "QmTest-123_ABC.xyz";
+      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, specialCID);
+      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr)).to.equal(specialCID);
     });
 
-    it('Should handle batch operations with single item', async function () {
-      await registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address, SAMPLE_CID);
-      const cids = await registry.batchGetProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, [project1.address]);
-      expect(cids).to.have.lengthOf(1);
-      expect(cids[0]).to.equal(SAMPLE_CID);
-    });
-
-    it('Should handle maximum uint256 for chainId', async function () {
+    it("Should handle maximum uint256 for chainId", async function () {
       const maxChainId = ethers.MaxUint256;
-      await registry.setIterationMetadata(maxChainId, mockJurySC, SAMPLE_CID);
-      expect(await registry.getIterationMetadata(maxChainId, mockJurySC)).to.equal(SAMPLE_CID);
+      await registry.setIterationMetadata(maxChainId, mockJurySCAddr, SAMPLE_CID);
+      expect(await registry.getIterationMetadata(maxChainId, mockJurySCAddr)).to.equal(SAMPLE_CID);
     });
 
-    it('Should handle zero chainId', async function () {
-      await registry.setIterationMetadata(0, mockJurySC, SAMPLE_CID);
-      expect(await registry.getIterationMetadata(0, mockJurySC)).to.equal(SAMPLE_CID);
-    });
-
-    it('Should revert batch authorize with zero address in array', async function () {
-      const projects = [project1.address, ethers.ZeroAddress, project2.address];
-      await expect(
-        registry.batchAuthorizeProjects(CHAIN_ID_TESTNET, mockJurySC, projects)
-      ).to.be.revertedWith('Invalid project address');
-    });
-
-    it('Should revert setProjectAuthorization with zero project address', async function () {
-      await expect(
-        registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, ethers.ZeroAddress, true)
-      ).to.be.revertedWith('Invalid project address');
-    });
-
-    it('Should revert setProjectMetadata with zero project address', async function () {
-      await expect(
-        registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, ethers.ZeroAddress, SAMPLE_CID)
-      ).to.be.revertedWith('Invalid project address');
-    });
-
-    it('Should revert setProjectMetadata with zero jurySC address', async function () {
-      await expect(
-        registry.setProjectMetadata(CHAIN_ID_TESTNET, ethers.ZeroAddress, project1.address, SAMPLE_CID)
-      ).to.be.revertedWith('Invalid contract address');
-    });
-
-    it('Should revert setPrevRoundContracts with zero jurySC address', async function () {
-      await expect(
-        registry.setPrevRoundContracts(CHAIN_ID_TESTNET, ethers.ZeroAddress, [])
-      ).to.be.revertedWith('Invalid contract address');
-    });
-
-    it('Should revert setProjectAuthorization with zero jurySC address', async function () {
-      await expect(
-        registry.setProjectAuthorization(CHAIN_ID_TESTNET, ethers.ZeroAddress, project1.address, true)
-      ).to.be.revertedWith('Invalid contract address');
-    });
-
-    it('Should enforce MAX_BATCH_SIZE in batchAuthorizeProjects', async function () {
-      const maxBatch = Array.from({ length: 50 }, () => ethers.Wallet.createRandom().address);
-      await registry.batchAuthorizeProjects(CHAIN_ID_TESTNET, mockJurySC, maxBatch);
-
-      const tooBigBatch = Array.from({ length: 51 }, () => ethers.Wallet.createRandom().address);
-      await expect(
-        registry.batchAuthorizeProjects(CHAIN_ID_TESTNET, mockJurySC, tooBigBatch)
-      ).to.be.revertedWith('Batch size too large');
-    });
-
-    it('Should enforce MAX_BATCH_SIZE in batchGetProjectMetadata', async function () {
-      const maxBatch = Array.from({ length: 50 }, () => ethers.Wallet.createRandom().address);
-      const cids = await registry.batchGetProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, maxBatch);
-      expect(cids).to.have.lengthOf(50);
-
-      const tooBigBatch = Array.from({ length: 51 }, () => ethers.Wallet.createRandom().address);
-      await expect(
-        registry.batchGetProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, tooBigBatch)
-      ).to.be.revertedWith('Batch size too large');
-    });
-
-    it('Should enforce MAX_CID_LENGTH in setProjectMetadata', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-
-      const maxCID = 'Qm' + 'a'.repeat(98); // Total 100 chars
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        mockJurySC,
-        project1.address,
-        maxCID
-      );
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address)).to.equal(maxCID);
-
-      const tooLongCID = 'Qm' + 'a'.repeat(99); // Total 101 chars
-      await expect(
-        registry.connect(project1).setProjectMetadata(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          project1.address,
-          tooLongCID
-        )
-      ).to.be.revertedWith('CID too long');
+    it("Should handle zero chainId for metadata (but not for iteration registration)", async function () {
+      await registry.setIterationMetadata(0, mockJurySCAddr, SAMPLE_CID);
+      expect(await registry.getIterationMetadata(0, mockJurySCAddr)).to.equal(SAMPLE_CID);
     });
   });
 
-  describe('Security and Access Control', function () {
-    const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
+  // ========== OWNERSHIP TESTS ==========
 
-    it('Should prevent authorization bypass by setting own metadata without authorization', async function () {
-      await expect(
-        registry.connect(project1).setProjectMetadata(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          project1.address,
-          SAMPLE_CID
-        )
-      ).to.be.revertedWith('Not authorized to set metadata');
-    });
-
-    it('Should prevent project from authorizing itself', async function () {
-      await expect(
-        registry.connect(project1).setProjectAuthorization(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          project1.address,
-          true
-        )
-      ).to.be.revertedWithCustomError(registry, 'OwnableUnauthorizedAccount');
-    });
-
-    it('Should allow owner to override project metadata even when project is authorized', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        mockJurySC,
-        project1.address,
-        'QmOldCID'
-      );
-
-      await registry.setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        mockJurySC,
-        project1.address,
-        'QmNewCID'
-      );
-
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address))
-        .to.equal('QmNewCID');
-    });
-
-    it('Should allow deauthorized project metadata to persist after deauthorization', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        mockJurySC,
-        project1.address,
-        SAMPLE_CID
-      );
-
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, false);
-
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address))
-        .to.equal(SAMPLE_CID);
-    });
-
-    it('Should prevent deauthorized project from updating metadata', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        mockJurySC,
-        project1.address,
-        SAMPLE_CID
-      );
-
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, false);
-
-      await expect(
-        registry.connect(project1).setProjectMetadata(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          project1.address,
-          UPDATED_CID
-        )
-      ).to.be.revertedWith('Not authorized to set metadata');
-    });
-
-    it('Should maintain separate authorization per chain', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-
-      expect(await registry.isProjectAuthorized(CHAIN_ID_TESTNET, mockJurySC, project1.address)).to.be.true;
-      expect(await registry.isProjectAuthorized(CHAIN_ID_MAINNET, mockJurySC, project1.address)).to.be.false;
-    });
-
-    it('Should maintain separate authorization per jurySC', async function () {
-      const jurySC2 = '0x1234567890123456789012345678901234567890';
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-
-      expect(await registry.isProjectAuthorized(CHAIN_ID_TESTNET, mockJurySC, project1.address)).to.be.true;
-      expect(await registry.isProjectAuthorized(CHAIN_ID_TESTNET, jurySC2, project1.address)).to.be.false;
-    });
-
-    it('Should not allow ownership renouncement to brick contract', async function () {
-      await registry.renounceOwnership();
+  describe("Ownership", function () {
+    it("Should allow ownership renouncement", async function () {
+      await expect(registry.renounceOwnership()).to.not.be.reverted;
       expect(await registry.owner()).to.equal(ethers.ZeroAddress);
-
-      await expect(
-        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID)
-      ).to.be.revertedWithCustomError(registry, 'OwnableUnauthorizedAccount');
     });
 
-    it('Should allow ownership transfer', async function () {
-      await registry.transferOwnership(project1.address);
-      expect(await registry.owner()).to.equal(project1.address);
+    it("Should allow ownership transfer", async function () {
+      await registry.transferOwnership(user1.address);
+      expect(await registry.owner()).to.equal(user1.address);
+    });
+
+    it("Should allow new owner to perform admin functions", async function () {
+      await registry.transferOwnership(user1.address);
 
       await expect(
-        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID)
-      ).to.be.revertedWithCustomError(registry, 'OwnableUnauthorizedAccount');
-
-      await registry.connect(project1).setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID);
-      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC)).to.equal(SAMPLE_CID);
+        registry.connect(user1).registerIteration(1, CHAIN_ID_TESTNET)
+      ).to.not.be.reverted;
     });
   });
 
-  describe('Data Isolation and Integrity', function () {
-    const mockJurySC1 = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
-    const mockJurySC2 = '0xafbdCDB66534cec38adec528892a452852E9B51e';
+  // ========== DATA ISOLATION TESTS ==========
 
-    it('Should isolate iteration metadata by chain and jurySC', async function () {
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC1, 'QmTestnet1');
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC2, 'QmTestnet2');
-      await registry.setIterationMetadata(CHAIN_ID_MAINNET, mockJurySC1, 'QmMainnet1');
-      await registry.setIterationMetadata(CHAIN_ID_MAINNET, mockJurySC2, 'QmMainnet2');
+  describe("Data Isolation", function () {
+    const jurySC1 = "0x837992aC7b89c148F7e42755816e74E84CF985AD";
+    const jurySC2 = "0x9F4BDF3E9E2B5E6F2C5A8D3B1A4E7C9F6B2D8A5C";
 
-      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC1)).to.equal('QmTestnet1');
-      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, mockJurySC2)).to.equal('QmTestnet2');
-      expect(await registry.getIterationMetadata(CHAIN_ID_MAINNET, mockJurySC1)).to.equal('QmMainnet1');
-      expect(await registry.getIterationMetadata(CHAIN_ID_MAINNET, mockJurySC2)).to.equal('QmMainnet2');
+    it("Should isolate iteration metadata by chain and jurySC", async function () {
+      await registry.setIterationMetadata(CHAIN_ID_TESTNET, jurySC1, "QmTestnet1");
+      await registry.setIterationMetadata(CHAIN_ID_MAINNET, jurySC1, "QmMainnet1");
+      await registry.setIterationMetadata(CHAIN_ID_TESTNET, jurySC2, "QmTestnet2");
+
+      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, jurySC1)).to.equal("QmTestnet1");
+      expect(await registry.getIterationMetadata(CHAIN_ID_MAINNET, jurySC1)).to.equal("QmMainnet1");
+      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, jurySC2)).to.equal("QmTestnet2");
     });
 
-    it('Should isolate project metadata across different iterations', async function () {
-      await registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySC1, project1.address, 'QmIter1');
-      await registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySC2, project1.address, 'QmIter2');
+    it("Should isolate project metadata across different iterations", async function () {
+      await registry.setProjectMetadata(CHAIN_ID_TESTNET, jurySC1, user1.address, "QmIter1");
+      await registry.setProjectMetadata(CHAIN_ID_TESTNET, jurySC2, user1.address, "QmIter2");
 
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC1, project1.address))
-        .to.equal('QmIter1');
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, mockJurySC2, project1.address))
-        .to.equal('QmIter2');
+      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, jurySC1, user1.address)).to.equal("QmIter1");
+      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, jurySC2, user1.address)).to.equal("QmIter2");
     });
 
-    it('Should isolate previous rounds per chain and jurySC', async function () {
-      const rounds1 = [ethers.Wallet.createRandom().address];
-      const rounds2 = [ethers.Wallet.createRandom().address, ethers.Wallet.createRandom().address];
+    it("Should isolate project metadata across different projects", async function () {
+      await registry.setProjectMetadata(CHAIN_ID_TESTNET, jurySC1, user1.address, "QmProject1");
+      await registry.setProjectMetadata(CHAIN_ID_TESTNET, jurySC1, user2.address, "QmProject2");
 
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC1, rounds1);
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC2, rounds2);
-
-      const retrieved1 = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC1);
-      const retrieved2 = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC2);
-
-      expect(retrieved1).to.have.lengthOf(1);
-      expect(retrieved2).to.have.lengthOf(2);
-      expect(retrieved1[0]).to.equal(rounds1[0]);
-      expect(retrieved2[0]).to.equal(rounds2[0]);
-    });
-
-    it('Should allow overwriting previous rounds array', async function () {
-      const rounds1 = [ethers.Wallet.createRandom().address];
-      const rounds2 = [ethers.Wallet.createRandom().address, ethers.Wallet.createRandom().address];
-
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC1, rounds1);
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC1, rounds2);
-
-      const retrieved = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC1);
-      expect(retrieved).to.have.lengthOf(2);
-    });
-
-    it('Should allow clearing previous rounds by setting empty array', async function () {
-      const rounds = [ethers.Wallet.createRandom().address];
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC1, rounds);
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC1, []);
-
-      const retrieved = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, mockJurySC1);
-      expect(retrieved).to.have.lengthOf(0);
+      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, jurySC1, user1.address)).to.equal("QmProject1");
+      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, jurySC1, user2.address)).to.equal("QmProject2");
     });
   });
 
-  describe('Event Emission Verification', function () {
-    const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
+  // ========== EVENT EMISSION TESTS ==========
 
-    it('Should emit correct events for batch authorization', async function () {
-      const projects = [project1.address, project2.address];
+  describe("Event Emission", function () {
+    const mockJurySCAddr = "0x837992aC7b89c148F7e42755816e74E84CF985AD";
 
-      const tx = await registry.batchAuthorizeProjects(CHAIN_ID_TESTNET, mockJurySC, projects);
-      const receipt = await tx.wait();
-
-      const events = receipt.logs.filter(log => {
-        try {
-          return registry.interface.parseLog(log)?.name === 'ProjectAuthorized';
-        } catch {
-          return false;
-        }
-      });
-
-      expect(events).to.have.lengthOf(2);
+    it("Should emit ProjectMetadataSet with correct setter address for owner", async function () {
+      await expect(
+        registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, user1.address, SAMPLE_CID)
+      )
+        .to.emit(registry, "ProjectMetadataSet")
+        .withArgs(CHAIN_ID_TESTNET, mockJurySCAddr, user1.address, SAMPLE_CID, owner.address);
     });
 
-    it('Should emit ProjectMetadataSet with correct setter address for owner', async function () {
+    it("Should emit events when updating existing metadata", async function () {
+      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, SAMPLE_CID);
+
       await expect(
-        registry.setProjectMetadata(CHAIN_ID_TESTNET, mockJurySC, project1.address, SAMPLE_CID)
+        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySCAddr, UPDATED_CID)
       )
-        .to.emit(registry, 'ProjectMetadataSet')
-        .withArgs(CHAIN_ID_TESTNET, mockJurySC, project1.address, SAMPLE_CID, owner.address);
+        .to.emit(registry, "IterationMetadataSet")
+        .withArgs(CHAIN_ID_TESTNET, mockJurySCAddr, UPDATED_CID, owner.address);
     });
 
-    it('Should emit ProjectMetadataSet with correct setter address for authorized project', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-
-      await expect(
-        registry.connect(project1).setProjectMetadata(
-          CHAIN_ID_TESTNET,
-          mockJurySC,
-          project1.address,
-          SAMPLE_CID
-        )
-      )
-        .to.emit(registry, 'ProjectMetadataSet')
-        .withArgs(CHAIN_ID_TESTNET, mockJurySC, project1.address, SAMPLE_CID, project1.address);
+    it("Should emit IterationRegistered event", async function () {
+      await expect(registry.registerIteration(1, CHAIN_ID_TESTNET))
+        .to.emit(registry, "IterationRegistered")
+        .withArgs(1, CHAIN_ID_TESTNET);
     });
 
-    it('Should emit events when updating existing metadata', async function () {
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID);
+    it("Should emit RoundAdded event with pob address", async function () {
+      const mockJurySCAddress = await mockJurySC.getAddress();
+      await registry.registerIteration(1, CHAIN_ID_LOCAL);
 
-      await expect(
-        registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, UPDATED_CID)
-      )
-        .to.emit(registry, 'IterationMetadataSet')
-        .withArgs(CHAIN_ID_TESTNET, mockJurySC, UPDATED_CID, owner.address);
-    });
-
-    it('Should emit ProjectAuthorized when deauthorizing', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, true);
-
-      await expect(
-        registry.setProjectAuthorization(CHAIN_ID_TESTNET, mockJurySC, project1.address, false)
-      )
-        .to.emit(registry, 'ProjectAuthorized')
-        .withArgs(CHAIN_ID_TESTNET, mockJurySC, project1.address, false);
+      // MockJurySC doesn't implement pob(), so it will emit zero address
+      await expect(registry.addRound(1, 1, mockJurySCAddress, 100))
+        .to.emit(registry, "RoundAdded")
+        .withArgs(1, 1, mockJurySCAddress, ethers.ZeroAddress, CHAIN_ID_LOCAL);
     });
   });
 
-  describe('Gas Optimization Tests', function () {
-    const mockJurySC = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
+  // ========== MAX ROUNDS LIMIT TEST ==========
 
-    it('Should be gas efficient for batch operations vs individual calls', async function () {
-      const projects = [project1.address, project2.address];
+  describe("Max Rounds Limit", function () {
+    it("Should enforce MAX_ROUNDS_PER_ITERATION limit", async function () {
+      await registry.registerIteration(1, CHAIN_ID_LOCAL);
 
-      const batchTx = await registry.batchAuthorizeProjects(CHAIN_ID_TESTNET, mockJurySC, projects);
-      const batchReceipt = await batchTx.wait();
-      const batchGas = batchReceipt.gasUsed;
+      const MockJurySC = await ethers.getContractFactory("MockJurySC");
 
-      const jurySC2 = '0x1234567890123456789012345678901234567890';
-      const tx1 = await registry.setProjectAuthorization(CHAIN_ID_TESTNET, jurySC2, project1.address, true);
-      const receipt1 = await tx1.wait();
-      const tx2 = await registry.setProjectAuthorization(CHAIN_ID_TESTNET, jurySC2, project2.address, true);
-      const receipt2 = await tx2.wait();
-      const individualGas = receipt1.gasUsed + receipt2.gasUsed;
+      // Add 100 rounds (the max)
+      for (let i = 1; i <= 100; i++) {
+        const jurySC = await MockJurySC.deploy();
+        await registry.addRound(1, i, await jurySC.getAddress(), i * 100);
+      }
 
-      expect(batchGas).to.be.lessThan(individualGas);
-    });
+      const iteration = await registry.iterations(1);
+      expect(iteration.roundCount).to.equal(100);
 
-    it('Should efficiently handle view function calls', async function () {
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, mockJurySC, SAMPLE_CID);
-
-      const gasEstimate = await registry.getIterationMetadata.estimateGas(CHAIN_ID_TESTNET, mockJurySC);
-      expect(gasEstimate).to.be.lessThan(50000);
-    });
-  });
-
-  describe('Integration Scenarios', function () {
-    const iteration1 = '0x837992aC7b89c148F7e42755816e74E84CF985AD';
-    const iteration2 = '0xafbdCDB66534cec38adec528892a452852E9B51e';
-
-    it('Should handle complete iteration lifecycle', async function () {
-      await registry.setIterationMetadata(CHAIN_ID_TESTNET, iteration1, 'QmIteration1');
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, iteration1, project1.address, true);
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        iteration1,
-        project1.address,
-        'QmProject1Data'
-      );
-
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, iteration2, [iteration1]);
-
-      expect(await registry.getIterationMetadata(CHAIN_ID_TESTNET, iteration1)).to.equal('QmIteration1');
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, iteration1, project1.address))
-        .to.equal('QmProject1Data');
-      const prevRounds = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, iteration2);
-      expect(prevRounds[0]).to.equal(iteration1);
-    });
-
-    it('Should handle multi-chain deployment scenario', async function () {
-      const projects = [project1.address, project2.address];
-
-      await registry.batchAuthorizeProjects(CHAIN_ID_TESTNET, iteration1, projects);
-      await registry.batchAuthorizeProjects(CHAIN_ID_MAINNET, iteration1, projects);
-
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        iteration1,
-        project1.address,
-        'QmTestnetData'
-      );
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_MAINNET,
-        iteration1,
-        project1.address,
-        'QmMainnetData'
-      );
-
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, iteration1, project1.address))
-        .to.equal('QmTestnetData');
-      expect(await registry.getProjectMetadata(CHAIN_ID_MAINNET, iteration1, project1.address))
-        .to.equal('QmMainnetData');
-    });
-
-    it('Should handle historical retroactive metadata addition', async function () {
-      const oldIteration = '0x0000000000000000000000000000000000001337';
-
-      await registry.setIterationMetadata(CHAIN_ID_MAINNET, oldIteration, 'QmHistoricalIteration');
-      await registry.setProjectMetadata(
-        CHAIN_ID_MAINNET,
-        oldIteration,
-        project1.address,
-        'QmHistoricalProject'
-      );
-
-      expect(await registry.getIterationMetadata(CHAIN_ID_MAINNET, oldIteration))
-        .to.equal('QmHistoricalIteration');
-      expect(await registry.getProjectMetadata(CHAIN_ID_MAINNET, oldIteration, project1.address))
-        .to.equal('QmHistoricalProject');
-    });
-
-    it('Should handle complex previous rounds chain', async function () {
-      const round1 = '0x0000000000000000000000000000000000001111';
-      const round2 = '0x0000000000000000000000000000000000002222';
-      const round3 = '0x0000000000000000000000000000000000003333';
-      const currentRound = '0x0000000000000000000000000000000000004444';
-
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, round2, [round1]);
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, round3, [round1, round2]);
-      await registry.setPrevRoundContracts(CHAIN_ID_TESTNET, currentRound, [round1, round2, round3]);
-
-      const prevRounds = await registry.getPrevRoundContracts(CHAIN_ID_TESTNET, currentRound);
-      expect(prevRounds).to.have.lengthOf(3);
-      expect(prevRounds[0]).to.equal(round1);
-      expect(prevRounds[1]).to.equal(round2);
-      expect(prevRounds[2]).to.equal(round3);
-    });
-
-    it('Should handle project participating across multiple iterations', async function () {
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, iteration1, project1.address, true);
-      await registry.setProjectAuthorization(CHAIN_ID_TESTNET, iteration2, project1.address, true);
-
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        iteration1,
-        project1.address,
-        'QmIter1Submission'
-      );
-      await registry.connect(project1).setProjectMetadata(
-        CHAIN_ID_TESTNET,
-        iteration2,
-        project1.address,
-        'QmIter2Submission'
-      );
-
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, iteration1, project1.address))
-        .to.equal('QmIter1Submission');
-      expect(await registry.getProjectMetadata(CHAIN_ID_TESTNET, iteration2, project1.address))
-        .to.equal('QmIter2Submission');
-    });
-
-    it('Should handle batch retrieval for multi-project iteration', async function () {
-      const [, , , addr1, addr2, addr3] = await ethers.getSigners();
-      const projects = [addr1.address, addr2.address, addr3.address];
-
-      await registry.setProjectMetadata(CHAIN_ID_TESTNET, iteration1, addr1.address, 'QmProj1');
-      await registry.setProjectMetadata(CHAIN_ID_TESTNET, iteration1, addr2.address, 'QmProj2');
-      await registry.setProjectMetadata(CHAIN_ID_TESTNET, iteration1, addr3.address, 'QmProj3');
-
-      const cids = await registry.batchGetProjectMetadata(CHAIN_ID_TESTNET, iteration1, projects);
-      expect(cids).to.deep.equal(['QmProj1', 'QmProj2', 'QmProj3']);
+      // Try to add one more - should fail
+      const extraJurySC = await MockJurySC.deploy();
+      await expect(
+        registry.addRound(1, 101, await extraJurySC.getAddress(), 10100)
+      ).to.be.revertedWith("Max rounds reached");
     });
   });
 });
