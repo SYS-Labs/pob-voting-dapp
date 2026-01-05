@@ -60,10 +60,11 @@ class WorkerOrchestrator {
       interval: config.worker.interval
     });
 
-    // Run immediately
+
+    // Run legacy workers immediately
     this.processAll();
 
-    // Set up interval
+    // Set up interval for legacy workers
     setInterval(() => {
       this.processAll();
     }, config.worker.interval);

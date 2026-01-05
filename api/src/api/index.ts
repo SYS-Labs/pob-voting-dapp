@@ -108,23 +108,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/metadata/project') {
-    await handleSetProjectMetadata(req, res);
-    return;
-  }
-
-  if (req.method === 'POST' && url.pathname === '/api/metadata/iteration') {
-    await handleSetIterationMetadata(req, res);
-    return;
-  }
-
-  if (req.method === 'GET' && url.pathname.startsWith('/api/metadata/status/')) {
-    await handleGetMetadataStatus(req, res, url);
+  if (req.method === 'GET' && url.pathname.startsWith('/api/metadata/cid/')) {
+    await handleGetCIDMetadata(req, res, url);
     return;
   }
 
   if (req.method === 'POST' && url.pathname === '/api/metadata/batch') {
     await handleBatchGetMetadata(req, res);
+    return;
+  }
+
+  // Role-gated metadata endpoints
+  if (req.method === 'POST' && url.pathname === '/api/metadata/preview') {
+    await handlePreviewCID(req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/metadata/submit') {
+    await handleSubmitMetadata(req, res);
     return;
   }
 
@@ -381,19 +382,29 @@ async function handleGetProjectMetadata(
       return;
     }
 
-    const [_chainId, contractAddress, projectAddress] = parts;
+    const [chainIdStr, contractAddress, projectAddress] = parts;
+    const chainId = parseInt(chainIdStr, 10);
+
+    if (isNaN(chainId)) {
+      sendJson(res, 400, { error: 'Invalid chainId format' });
+      return;
+    }
 
     if (!ethers.isAddress(contractAddress) || !ethers.isAddress(projectAddress)) {
       sendJson(res, 400, { error: 'Invalid address format' });
       return;
     }
 
-    const metadata = await metadataService.getProjectMetadata(contractAddress, projectAddress);
-    const cid = await metadataService.getProjectMetadataCID(contractAddress, projectAddress);
+    const metadata = await metadataService.getProjectMetadata(chainId, contractAddress, projectAddress);
+    const cid = await metadataService.getProjectMetadataCID(chainId, contractAddress, projectAddress);
+    const update = cid
+      ? metadataDb.getLatestProjectUpdateForCID(chainId, contractAddress, projectAddress, cid)
+      : null;
+    const txHash = update?.tx_hash || null;
 
     sendJson(res, 200, {
       success: true,
-      metadata,
+      metadata: metadata ? { ...metadata, txHash } : null,
       cid
     });
   } catch (error) {
@@ -416,19 +427,29 @@ async function handleGetIterationMetadata(
       return;
     }
 
-    const [_chainId, contractAddress] = parts;
+    const [chainIdStr, contractAddress] = parts;
+    const chainId = parseInt(chainIdStr, 10);
+
+    if (isNaN(chainId)) {
+      sendJson(res, 400, { error: 'Invalid chainId format' });
+      return;
+    }
 
     if (!ethers.isAddress(contractAddress)) {
       sendJson(res, 400, { error: 'Invalid contract address format' });
       return;
     }
 
-    const metadata = await metadataService.getIterationMetadata(contractAddress);
-    const cid = await metadataService.getIterationMetadataCID(contractAddress);
+    const metadata = await metadataService.getIterationMetadata(chainId, contractAddress);
+    const cid = await metadataService.getIterationMetadataCID(chainId, contractAddress);
+    const update = cid
+      ? metadataDb.getLatestIterationUpdateForCID(chainId, contractAddress, cid)
+      : null;
+    const txHash = update?.tx_hash || null;
 
     sendJson(res, 200, {
       success: true,
-      metadata,
+      metadata: metadata ? { ...metadata, txHash } : null,
       cid
     });
   } catch (error) {
@@ -437,175 +458,45 @@ async function handleGetIterationMetadata(
   }
 }
 
-async function handleSetProjectMetadata(
-  req: IncomingMessage,
-  res: ServerResponse
-): Promise<void> {
-  try {
-    const body = await readJsonBody(req) as {
-      chainId?: number;
-      contractAddress?: string;
-      projectAddress?: string;
-      metadata?: any;
-      signature?: string;
-      message?: string;
-    };
-
-    const { chainId, contractAddress, projectAddress, metadata, signature, message } = body;
-
-    // Validate inputs
-    if (!chainId || !contractAddress || !projectAddress || !metadata || !signature || !message) {
-      sendJson(res, 400, { error: 'Missing required fields: chainId, contractAddress, projectAddress, metadata, signature, message' });
-      return;
-    }
-
-    if (!ethers.isAddress(contractAddress) || !ethers.isAddress(projectAddress)) {
-      sendJson(res, 400, { error: 'Invalid address format' });
-      return;
-    }
-
-    // Validate metadata structure
-    if (!metadata.account || !metadata.name || !metadata.yt_vid || !metadata.proposal) {
-      sendJson(res, 400, { error: 'Invalid metadata structure. Required: account, name, yt_vid, proposal' });
-      return;
-    }
-
-    // Get old CID if exists
-    const oldCid = await metadataService.getProjectMetadataCID(contractAddress, projectAddress);
-
-    // Upload to IPFS and set on contract
-    const result = await metadataService.setProjectMetadata(
-      contractAddress,
-      projectAddress,
-      metadata,
-      signature,
-      message
-    );
-
-    // Record in database for confirmation tracking
-    metadataDb.createUpdate({
-      chainId,
-      iterationNumber: 0, // Will need to extract from metadata or pass separately
-      projectAddress,
-      oldCid,
-      newCid: result.cid,
-      txHash: result.txHash,
-      txSentHeight: null
-    });
-
-    sendJson(res, 200, {
-      success: true,
-      cid: result.cid,
-      txHash: result.txHash
-    });
-  } catch (error) {
-    logger.error('Failed to set project metadata', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to set metadata';
-    sendJson(res, 500, { success: false, error: errorMessage });
-  }
-}
-
-async function handleSetIterationMetadata(
-  req: IncomingMessage,
-  res: ServerResponse
-): Promise<void> {
-  try {
-    const body = await readJsonBody(req) as {
-      chainId?: number;
-      contractAddress?: string;
-      metadata?: any;
-      signature?: string;
-      message?: string;
-    };
-
-    const { chainId, contractAddress, metadata, signature, message } = body;
-
-    // Validate inputs
-    if (!chainId || !contractAddress || !metadata || !signature || !message) {
-      sendJson(res, 400, { error: 'Missing required fields: chainId, contractAddress, metadata, signature, message' });
-      return;
-    }
-
-    if (!ethers.isAddress(contractAddress)) {
-      sendJson(res, 400, { error: 'Invalid contract address format' });
-      return;
-    }
-
-    // Validate metadata structure
-    if (!metadata.iteration || !metadata.round || !metadata.name || !metadata.chainId || typeof metadata.votingMode === 'undefined') {
-      sendJson(res, 400, { error: 'Invalid metadata structure. Required: iteration, round, name, chainId, votingMode' });
-      return;
-    }
-
-    // Get old CID if exists
-    const oldCid = await metadataService.getIterationMetadataCID(contractAddress);
-
-    // Upload to IPFS and set on contract
-    const result = await metadataService.setIterationMetadata(
-      contractAddress,
-      metadata,
-      signature,
-      message
-    );
-
-    // Record in database for confirmation tracking
-    metadataDb.createUpdate({
-      chainId,
-      iterationNumber: metadata.iteration,
-      projectAddress: null,
-      oldCid,
-      newCid: result.cid,
-      txHash: result.txHash,
-      txSentHeight: null
-    });
-
-    sendJson(res, 200, {
-      success: true,
-      cid: result.cid,
-      txHash: result.txHash
-    });
-  } catch (error) {
-    logger.error('Failed to set iteration metadata', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to set metadata';
-    sendJson(res, 500, { success: false, error: errorMessage });
-  }
-}
-
-async function handleGetMetadataStatus(
+async function handleGetCIDMetadata(
   _req: IncomingMessage,
   res: ServerResponse,
   url: URL
 ): Promise<void> {
   try {
-    // Parse URL: /api/metadata/status/:txHash
-    const txHash = url.pathname.replace('/api/metadata/status/', '');
+    const cid = url.pathname.replace('/api/metadata/cid/', '');
 
-    if (!txHash || txHash.length !== 66 || !txHash.startsWith('0x')) {
-      sendJson(res, 400, { error: 'Invalid transaction hash format' });
+    if (!cid || cid.length === 0 || cid.length > 100) {
+      sendJson(res, 400, { error: 'Invalid CID format' });
       return;
     }
 
-    // Get update from database
-    const update = metadataDb.getUpdateByTxHash(txHash);
-
-    if (!update) {
-      sendJson(res, 404, { error: 'Transaction not found' });
-      return;
+    const cachedItem = metadataDb.getCachedIPFSContent(cid);
+    if (cachedItem) {
+      try {
+        const parsed = JSON.parse(cachedItem.content);
+        sendJson(res, 200, {
+          success: true,
+          cid,
+          metadata: parsed
+        });
+        return;
+      } catch (error) {
+        logger.warn('Failed to parse cached content', { cid, error });
+      }
     }
+
+    const metadata = await ipfsService.fetchJSON(cid);
+    metadataDb.cacheIPFSContent(cid, JSON.stringify(metadata));
 
     sendJson(res, 200, {
       success: true,
-      txHash: update.tx_hash,
-      confirmations: update.confirmations,
-      confirmed: Boolean(update.confirmed),
-      oldCid: update.old_cid,
-      newCid: update.new_cid,
-      createdAt: update.created_at,
-      updatedAt: update.updated_at
+      cid,
+      metadata
     });
   } catch (error) {
-    logger.error('Failed to get metadata status', error);
-    sendJson(res, 500, { success: false, error: 'Failed to fetch status' });
+    logger.error('Failed to fetch CID metadata', { error });
+    sendJson(res, 404, { success: false, error: 'CID not found' });
   }
 }
 
@@ -750,5 +641,228 @@ function validateAdminSignature(message: string, signature: string): boolean {
   } catch (error) {
     logger.warn('Failed to validate signature', { error });
     return false;
+  }
+}
+
+// ============================================================================
+// Role-Gated Metadata Upload Endpoints
+// ============================================================================
+
+/**
+ * Preview CID without uploading (only-hash mode)
+ * POST /api/metadata/preview
+ * Body: { metadata: any, kind: 'project' | 'iteration' }
+ * Returns: { success: true, cid: string }
+ */
+async function handlePreviewCID(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const body = await readJsonBody(req) as {
+      metadata?: any;
+      kind?: 'project' | 'iteration';
+    };
+
+    const { metadata, kind } = body;
+
+    // Validate inputs
+    if (!metadata) {
+      sendJson(res, 400, { error: 'Missing required field: metadata' });
+      return;
+    }
+
+    if (!kind || (kind !== 'project' && kind !== 'iteration')) {
+      sendJson(res, 400, { error: 'Invalid kind. Must be "project" or "iteration"' });
+      return;
+    }
+
+    // Preview CID (no upload, no pin)
+    const cid = await ipfsService.previewCID(metadata);
+
+    logger.info('Previewed CID (no upload)', {
+      cid,
+      kind,
+      size: JSON.stringify(metadata).length
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      cid
+    });
+  } catch (error) {
+    logger.error('Failed to preview CID', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to preview CID';
+    sendJson(res, 500, { success: false, error: errorMessage });
+  }
+}
+
+/**
+ * Submit metadata with role-gated authorization
+ * POST /api/metadata/submit
+ * Body: {
+ *   cid: string,
+ *   rawTx: string,
+ *   chainId: number,
+ *   contractAddress: string,
+ *   projectAddress?: string,
+ *   kind: 'project' | 'iteration',
+ *   metadata: any
+ * }
+ * Returns: { success: true, cid: string, txHash: string }
+ */
+async function handleSubmitMetadata(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const body = await readJsonBody(req) as {
+      cid?: string;
+      rawTx?: string;
+      chainId?: number;
+      contractAddress?: string;
+      projectAddress?: string;
+      kind?: 'project' | 'iteration';
+      metadata?: any;
+    };
+
+    const { cid, rawTx, chainId, contractAddress, projectAddress, kind, metadata } = body;
+
+    // Validate required fields
+    if (!cid || !rawTx || !chainId || !contractAddress || !kind || !metadata) {
+      sendJson(res, 400, {
+        error: 'Missing required fields: cid, rawTx, chainId, contractAddress, kind, metadata'
+      });
+      return;
+    }
+
+    if (!ethers.isAddress(contractAddress)) {
+      sendJson(res, 400, { error: 'Invalid contract address format' });
+      return;
+    }
+
+    if (projectAddress && !ethers.isAddress(projectAddress)) {
+      sendJson(res, 400, { error: 'Invalid project address format' });
+      return;
+    }
+
+    if (kind !== 'project' && kind !== 'iteration') {
+      sendJson(res, 400, { error: 'Invalid kind. Must be "project" or "iteration"' });
+      return;
+    }
+
+    // Import tx verifier here to avoid circular deps
+    const { verifyMetadataTx, checkAuthorization } = await import('../services/tx-verifier.js');
+
+    // 1. Verify and decode the raw transaction
+    let decoded;
+    try {
+      decoded = await verifyMetadataTx(rawTx, chainId, cid);
+    } catch (error) {
+      logger.warn('Transaction verification failed', { error, cid, chainId });
+      sendJson(res, 400, {
+        error: error instanceof Error ? error.message : 'Invalid transaction'
+      });
+      return;
+    }
+
+    // 2. Verify the transaction matches the expected parameters
+    if (decoded.jurySC.toLowerCase() !== contractAddress.toLowerCase()) {
+      sendJson(res, 400, {
+        error: `JurySC mismatch: expected ${contractAddress}, got ${decoded.jurySC}`
+      });
+      return;
+    }
+
+    if (decoded.kind !== kind) {
+      sendJson(res, 400, {
+        error: `Kind mismatch: expected ${kind}, got ${decoded.kind}`
+      });
+      return;
+    }
+
+    if (kind === 'project') {
+      if (!projectAddress) {
+        sendJson(res, 400, { error: 'Project address required for project metadata' });
+        return;
+      }
+
+      if (decoded.projectAddress?.toLowerCase() !== projectAddress.toLowerCase()) {
+        sendJson(res, 400, {
+          error: `Project address mismatch: expected ${projectAddress}, got ${decoded.projectAddress}`
+        });
+        return;
+      }
+    }
+
+    // 3. Check authorization (signer must be authorized)
+    let authorized;
+    try {
+      authorized = await checkAuthorization(decoded);
+    } catch (error) {
+      logger.error('Authorization check failed', { error, decoded });
+      sendJson(res, 500, {
+        error: 'Failed to check authorization'
+      });
+      return;
+    }
+
+    if (!authorized) {
+      sendJson(res, 403, {
+        error: 'Unauthorized: signer is not authorized to upload this metadata'
+      });
+      return;
+    }
+
+    // 4. Upload metadata to IPFS
+    const uploadedCID = await ipfsService.uploadJSON(metadata);
+
+    if (uploadedCID !== cid) {
+      logger.error('CID mismatch after upload', {
+        expectedCID: cid,
+        uploadedCID
+      });
+      sendJson(res, 500, {
+        error: 'CID mismatch: uploaded content does not match expected CID'
+      });
+      return;
+    }
+
+    // 5. Record metadata update in history
+    try {
+      metadataDb.createUpdate({
+        chainId,
+        contractAddress,
+        iterationNumber: kind === 'iteration' && typeof metadata.iteration === 'number'
+          ? metadata.iteration
+          : null,
+        projectAddress: kind === 'project' ? projectAddress || null : null,
+        cid: uploadedCID,
+        txHash: decoded.txHash,
+        txSentHeight: null
+      });
+    } catch (error) {
+      logger.warn('Failed to record metadata update', { error, txHash: decoded.txHash });
+    }
+
+    logger.info('Metadata submitted successfully (role-gated)', {
+      cid: uploadedCID,
+      txHash: decoded.txHash,
+      signer: decoded.signer,
+      chainId,
+      contractAddress,
+      projectAddress,
+      kind
+    });
+
+    sendJson(res, 200, {
+      success: true,
+      cid: uploadedCID,
+      txHash: decoded.txHash
+    });
+  } catch (error) {
+    logger.error('Failed to submit metadata', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to submit metadata';
+    sendJson(res, 500, { success: false, error: errorMessage });
   }
 }

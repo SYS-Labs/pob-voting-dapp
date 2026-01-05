@@ -1,11 +1,11 @@
 /**
  * PM2 Ecosystem Configuration
  *
- * Manages backend services for the PoB Forum API
+ * Manages backend services for the PoB API
  *
  * Usage:
  *   pm2 start ecosystem.config.cjs           # Start all services
- *   pm2 start ecosystem.config.cjs --only forum-api  # Start specific service
+ *   pm2 start ecosystem.config.cjs --only pob-api  # Start specific service
  *   pm2 stop all                             # Stop all services
  *   pm2 restart all                          # Restart all services
  *   pm2 logs                                 # View logs
@@ -35,7 +35,7 @@ module.exports = {
       merge_logs: true,
     },
     {
-      name: 'forum-api',
+      name: 'pob-api',
       script: 'dist/api/index.js',
       cwd: '/sandbox/api',
       instances: 1,
