@@ -334,20 +334,27 @@ const IterationsPage = ({
           iterationStatuses={iterationStatuses}
           onSelectIteration={onSelectIteration}
           onAddRound={walletAddress && isRegistryOwner ? openRoundModal : undefined}
-          headerAction={walletAddress && isRegistryOwner ? (
-          <button
-            type="button"
-            onClick={openRegisterModal}
-            className="pob-button pob-button--outline pob-button--compact"
-            disabled={!canSubmit}
-            style={{
-              opacity: !canSubmit ? 0.6 : 1,
-              cursor: !canSubmit ? 'not-allowed' : 'pointer',
-            }}
-          >
-            Add iteration
-          </button>
-        ) : undefined}
+          emptyMessage={
+            walletAddress && isRegistryOwner
+              ? 'No iterations registered yet. Use the "Add iteration" button above to get started.'
+              : undefined
+          }
+          headerAction={
+            walletAddress && isRegistryOwner ? (
+              <button
+                type="button"
+                onClick={openRegisterModal}
+                className="pob-button pob-button--outline pob-button--compact"
+                disabled={!canSubmit}
+                style={{
+                  opacity: !canSubmit ? 0.6 : 1,
+                  cursor: !canSubmit ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Add iteration
+              </button>
+            ) : undefined
+          }
         />
       )}
 

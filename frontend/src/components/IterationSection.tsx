@@ -10,6 +10,7 @@ interface IterationSectionProps {
   onSelectIteration: (iteration: number) => void;
   onAddRound?: (iteration: Iteration) => void;
   headerAction?: ReactNode;
+  emptyMessage?: string;
 }
 
 const IterationSection = ({
@@ -20,6 +21,7 @@ const IterationSection = ({
   onSelectIteration,
   onAddRound,
   headerAction,
+  emptyMessage,
 }: IterationSectionProps) => {
   const getStatusBadge = (status: IterationStatus | undefined) => {
     const effectiveStatus = status ?? 'upcoming';
@@ -48,7 +50,7 @@ const IterationSection = ({
       {iterations.length === 0 ? (
         <div className="pob-info">
           <p className="text-sm text-[var(--pob-text-muted)]">
-            No iterations registered yet. Use the "Add iteration" button above to get started.
+            {emptyMessage ?? 'No iterations registered yet.'}
           </p>
         </div>
       ) : (
