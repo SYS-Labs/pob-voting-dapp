@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import Modal from './Modal';
 import { NETWORKS } from '~/constants/networks';
+import type { PageType } from '~/interfaces';
 
 interface HeaderProps {
   walletAddress: string | null;
@@ -11,8 +12,8 @@ interface HeaderProps {
   pendingAction: string | null;
   onSwitchNetwork: () => void;
   onOpenDisconnect: () => void;
-  currentPage: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum';
-  onNavigate: (page: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum') => void;
+  currentPage: PageType;
+  onNavigate: (page: PageType) => void;
   showIterationTab: boolean;
   showBadgesTab: boolean;
   currentIteration: number | null;

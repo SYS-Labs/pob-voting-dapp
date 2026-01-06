@@ -10,6 +10,7 @@ import { metadataAPI } from '~/utils/metadata-api';
 import type {
   Badge,
   Iteration,
+  PageType,
   ParticipantRole,
   Project,
   ProjectMetadata,
@@ -56,7 +57,7 @@ export function useContractState(
   publicProvider: JsonRpcProvider | null,
   chainId: number | null,
   allIterations: Iteration[],
-  currentPage: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum',
+  currentPage: PageType,
 ) {
   const [roles, setRoles] = useState<RoleStatuses>({
     community: false,

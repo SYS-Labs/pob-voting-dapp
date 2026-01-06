@@ -894,3 +894,45 @@ h3 .pob-pill {
     justify-content: flex-end !important;
   }
 }
+
+/* Project Card Styles */
+.project-card__title-link {
+  text-decoration: none;
+  display: block;
+}
+
+.project-card__title-link:hover .project-card__title {
+  color: var(--pob-primary);
+}
+
+.project-card__title {
+  transition: color var(--pob-transition);
+}
+
+.project-card__read-more {
+  color: var(--pob-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.project-card__read-more:hover {
+  text-decoration: underline;
+}
+
+/* Project Page Styles */
+.project-page__description {
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.project-page__description .pob-markdown {
+  font-size: 0.95rem;
+}
+
+.project-page__description .pob-markdown p {
+  margin-bottom: 0.75rem;
+}
+
+.project-page__description .pob-markdown p:last-child {
+  margin-bottom: 0;
+}

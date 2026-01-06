@@ -1,5 +1,5 @@
+import { Link } from 'react-router-dom';
 import type { ParticipantRole, Project } from '~/interfaces';
-import MarkdownRenderer from './MarkdownRenderer';
 import { formatAddress, getYouTubeEmbedUrl } from '~/utils';
 
 interface ProjectCardProps {
@@ -13,6 +13,23 @@ interface ProjectCardProps {
   onVote: (projectAddress: string, tokenId?: string) => void;
   onRemove: (project: Project) => void;
   communityBadges?: Array<{ tokenId: string; hasVoted: boolean }>;
+  iterationNumber?: number;
+}
+
+// Truncate text to a maximum length, adding ellipsis if truncated
+function truncateText(text: string | undefined, maxLength: number): string {
+  if (!text) return '';
+  // Strip markdown formatting for display
+  const plainText = text
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+    .replace(/\*([^*]+)\*/g, '$1') // italic
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+    .replace(/#{1,6}\s*/g, '') // headers
+    .replace(/`([^`]+)`/g, '$1') // inline code
+    .replace(/\n/g, ' ') // newlines
+    .trim();
+  if (plainText.length <= maxLength) return plainText;
+  return plainText.slice(0, maxLength).trim() + '…';
 }
 
 const ProjectCard = ({
@@ -26,18 +43,39 @@ const ProjectCard = ({
   onVote,
   onRemove,
   communityBadges = [],
+  iterationNumber,
 }: ProjectCardProps) => {
   const projectName = project.metadata?.name ?? `Project #${project.id}`;
   const embedUrl = getYouTubeEmbedUrl(project.metadata?.yt_vid ?? null);
+  const truncatedDescription = truncateText(project.metadata?.description, 50);
+  const projectPageUrl = iterationNumber
+    ? `/iteration/${iterationNumber}/project/${project.address}`
+    : null;
 
   return (
     <div className="pob-fieldset projects-list__item space-y-3">
       <div className="space-y-2">
-        <p className="text-lg font-semibold text-white">{projectName}</p>
+        {projectPageUrl ? (
+          <Link to={projectPageUrl} className="project-card__title-link">
+            <p className="text-lg font-semibold text-white project-card__title">{projectName}</p>
+          </Link>
+        ) : (
+          <p className="text-lg font-semibold text-white">{projectName}</p>
+        )}
         <p className="pob-mono text-xs text-[var(--pob-text-muted)]">
           {formatAddress(project.address)}
         </p>
-        <MarkdownRenderer content={project.metadata?.description} />
+        {/* Truncated description with link to full page */}
+        {truncatedDescription && (
+          <p className="text-sm text-[var(--pob-text-muted)]">
+            {truncatedDescription}
+            {project.metadata?.description && project.metadata.description.length > 50 && projectPageUrl && (
+              <Link to={projectPageUrl} className="project-card__read-more">
+                {' '}Read more
+              </Link>
+            )}
+          </p>
+        )}
         {embedUrl ? (
           <div className="pob-video" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
             <iframe
@@ -50,6 +88,14 @@ const ProjectCard = ({
         ) : null}
         <div className="flex flex-wrap items-center gap-2 justify-between" style={{ marginTop: '1rem' }}>
           <div className="flex flex-wrap items-center gap-2">
+            {projectPageUrl && (
+              <Link
+                to={projectPageUrl}
+                className="pob-button pob-button--outline pob-button--compact"
+              >
+                View details
+              </Link>
+            )}
             {project.metadata?.proposal ? (
               <a
                 href={project.metadata.proposal}

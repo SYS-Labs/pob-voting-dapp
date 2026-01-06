@@ -376,6 +376,7 @@ const IterationPage = ({
                         }
                       }}
                       communityBadges={currentIterationCommunityBadges}
+                      iterationNumber={currentIteration?.iteration}
                     />
                   );
                 })}

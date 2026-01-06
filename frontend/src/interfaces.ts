@@ -1,5 +1,7 @@
 export type IterationStatus = 'upcoming' | 'active' | 'ended';
 
+export type PageType = 'iterations' | 'iteration' | 'project' | 'badges' | 'faq' | 'forum';
+
 export interface PreviousRound {
   round: number;
   jurySC: string;

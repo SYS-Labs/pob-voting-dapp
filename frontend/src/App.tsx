@@ -28,16 +28,15 @@ import IterationsPage from '~/pages/IterationsPage';
 import BadgesPage from '~/pages/BadgesPage';
 import FaqPage from '~/pages/FaqPage';
 import IterationPage from '~/pages/IterationPage';
+import ProjectPage from '~/pages/ProjectPage';
 import ProjectMetadataPage from '~/pages/ProjectMetadataPage';
 import IterationMetadataPage from '~/pages/IterationMetadataPage';
 import ForumPage from '~/pages/ForumPage';
 import NotFoundPage from '~/pages/NotFoundPage';
-import type { IterationStatus } from '~/interfaces';
-
-// Map routes to page types for backward compatibility
-type PageType = 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum';
+import type { IterationStatus, PageType } from '~/interfaces';
 
 function getPageFromPath(pathname: string): PageType {
+  if (pathname.match(/^\/iteration\/\d+\/project\//)) return 'project';
   if (pathname.startsWith('/iteration/')) return 'iteration';
   if (pathname === '/badges') return 'badges';
   if (pathname === '/faq') return 'faq';
@@ -344,7 +343,7 @@ function App() {
       />
 
       {/* Main content with Routes */}
-      <main className={`pob-main relative z-10 ${currentPage === 'iteration' && showIterationPage ? 'pob-main--desktop' : ''}`}>
+      <main className={`pob-main relative z-10 ${(currentPage === 'iteration' || currentPage === 'project') && showIterationPage ? 'pob-main--desktop' : ''}`}>
         <Routes>
           {/* Home page - Iterations list */}
           <Route
@@ -421,6 +420,37 @@ function App() {
                     projectScores={projectScores}
                     setVotingMode={setVotingMode}
                   />
+              ) : (
+                <NotFoundPage />
+              )
+            }
+          />
+
+          {/* Project detail page */}
+          <Route
+            path="/iteration/:iterationNumber/project/:projectAddress"
+            element={
+              showIterationPage ? (
+                <ProjectPage
+                  currentIteration={currentIteration}
+                  projects={projects}
+                  loading={loading}
+                  roles={roles}
+                  isOwner={isOwner}
+                  statusFlags={statusFlags}
+                  communityBadges={communityBadges}
+                  badges={badges}
+                  devRelVote={devRelVote}
+                  daoHicVote={daoHicVote}
+                  pendingAction={pendingAction}
+                  walletAddress={walletAddress}
+                  chainId={chainId}
+                  getProjectLabel={getProjectLabel}
+                  executeMint={executeMint}
+                  executeVote={executeVote}
+                  refreshVotingData={refreshVotingData}
+                  refreshBadges={refreshBadges}
+                />
               ) : (
                 <NotFoundPage />
               )
