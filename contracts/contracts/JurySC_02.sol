@@ -5,7 +5,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "./PoB_01.sol";
+import "./PoB_02.sol";
 
 /**
  * @title JurySC_01 - 3-Entity Voting System
@@ -25,7 +25,7 @@ contract JurySC_02 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     }
 
     // Core
-    PoB_01 public pob;
+    PoB_02 public pob;
     uint256 public iteration;
     uint64 public startTime;
     uint64 public endTime;
@@ -105,7 +105,7 @@ contract JurySC_02 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
 
     /**
      * @notice Initialize the contract
-     * @param pob_ PoB_01 NFT contract address
+     * @param pob_ PoB_02 NFT contract address
      * @param iteration_ Iteration number
      * @param initialOwner Initial owner address
      */
@@ -114,7 +114,7 @@ contract JurySC_02 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
 
-        pob = PoB_01(pob_);
+        pob = PoB_02(pob_);
         iteration = iteration_;
         votingMode = VotingMode.CONSENSUS; // Default to consensus-based voting
     }
@@ -335,7 +335,7 @@ contract JurySC_02 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
             communityVotesCast++;
             communityHasVoted[tokenId] = true;
             // Note: One vote per account is enforced by:
-            // 1. hasMinted mapping in PoB_01 (one NFT per account)
+            // 1. hasMinted mapping in PoB_02 (one NFT per account)
             // 2. Transfer restrictions during voting (cannot acquire more NFTs)
         }
 
@@ -410,7 +410,7 @@ contract JurySC_02 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     }
 
     /**
-     * @notice Alias for votingEnded() - used by PoB_01 minting logic
+     * @notice Alias for votingEnded() - used by PoB_02 minting logic
      */
     function hasVotingEnded() public view returns (bool) {
         return votingEnded();
@@ -418,7 +418,7 @@ contract JurySC_02 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
 
     /**
      * @notice Get registered NFT contract address
-     * @return address PoB_01 address
+     * @return address PoB_02 address
      */
     function registeredNFT() public view returns (address) {
         return address(pob);
