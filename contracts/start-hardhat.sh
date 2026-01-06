@@ -60,10 +60,7 @@ fi
 echo "Cleaning up any previous deployment state..."
 rm -f .deployment-state.json
 
-echo "Deploying PoBRegistry to ${NETWORK} via scripts/deploy-pob-registry.js..."
-npx hardhat run scripts/deploy-pob-registry.js --network "${NETWORK}"
-
-echo "Deploying iteration contracts to ${NETWORK} via scripts/deploy.js..."
+echo "Deploying contracts to ${NETWORK} via scripts/deploy.js..."
 npx hardhat run scripts/deploy.js --network "${NETWORK}"
 
 if [[ "${NETWORK}" == "localhost" || "${NETWORK}" == "hardhat" ]]; then

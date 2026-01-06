@@ -166,6 +166,23 @@ async function main() {
   console.log("Saved to:", filename);
   console.log("");
 
+  // For localhost, update iterations.local.json so frontend can find the contracts
+  if (network.name === "localhost" || network.name === "hardhat") {
+    const iterationsLocalPath = "../frontend/public/iterations.local.json";
+    const iterationsLocal = [{
+      iteration: iteration,
+      name: `PoB Iteration #${iteration}`,
+      jurySC: juryAddress,
+      pob: pobAddress,
+      chainId: chainId,
+      deployBlockHint: 1,
+      link: "https://example.com/iteration"
+    }];
+    fs.writeFileSync(iterationsLocalPath, JSON.stringify(iterationsLocal, null, 2));
+    console.log("Updated:", iterationsLocalPath);
+    console.log("");
+  }
+
   console.log("UPDATE THESE FILES WITH REGISTRY ADDRESS:");
   console.log("  Registry Proxy:", registryAddress);
   console.log("");
