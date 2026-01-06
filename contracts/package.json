@@ -22,9 +22,6 @@
     "node": "hardhat node",
     "hardhat": "bash ./start-hardhat.sh",
     "test": "hardhat test",
-    "migrate:local": "hardhat run scripts/migrate-to-registry.js --network localhost",
-    "migrate:testnet": "hardhat run scripts/migrate-to-registry.js --network testnet",
-    "migrate:mainnet": "hardhat run scripts/migrate-to-registry.js --network mainnet",
     "check:registry:local": "hardhat run scripts/verify-registry.js --network localhost",
     "check:registry:testnet": "hardhat run scripts/verify-registry.js --network testnet",
     "check:registry:mainnet": "hardhat run scripts/verify-registry.js --network mainnet"
@@ -35,7 +32,7 @@
     "@openzeppelin/hardhat-upgrades": "^3.9.1",
     "dotenv": "^16.4.5",
     "ethers": "^6.13.2",
-    "ipfs-http-client": "^60.0.1",
+    "ipfs-http-client": "^60.0.1"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

@@ -4,6 +4,7 @@ dotenvConfig();
 import fs from "fs";
 import path from "path";
 import pkg from "hardhat";
+import { create } from "ipfs-http-client";
 const { ethers, network } = pkg;
 
 const ACCOUNT_FUNDING = ethers.parseEther("50"); // 50 ETH per account (30 for community mint + 20 for gas)
@@ -45,6 +46,51 @@ const manifestByNetwork = {
   localhost: "iterations.local.json",
 };
 
+const DEFAULT_IPFS_ENDPOINT = "http://localhost:5001";
+
+function canonicalJSON(obj) {
+  if (obj === null || typeof obj !== "object") {
+    return JSON.stringify(obj);
+  }
+
+  if (Array.isArray(obj)) {
+    return "[" + obj.map(canonicalJSON).join(",") + "]";
+  }
+
+  const keys = Object.keys(obj).sort();
+  const pairs = keys.map((key) => `"${key}":${canonicalJSON(obj[key])}`);
+  return "{" + pairs.join(",") + "}";
+}
+
+async function uploadToIPFS(ipfsClient, data, name) {
+  const content = canonicalJSON(data);
+  const result = await ipfsClient.add(content, {
+    pin: true,
+    cidVersion: 1,
+    wrapWithDirectory: false,
+  });
+  console.log(`   📦 IPFS: ${result.cid.toString()} (${name})`);
+  return result.cid.toString();
+}
+
+/**
+ * Find the latest deployment file for localhost
+ */
+function getLatestLocalDeployment() {
+  const contractsDir = process.cwd();
+  const files = fs.readdirSync(contractsDir)
+    .filter(f => f.startsWith('deployment-iteration-') && f.includes('localhost') && f.endsWith('.json'))
+    .sort()
+    .reverse();
+
+  if (files.length === 0) {
+    return null;
+  }
+
+  const latestFile = path.join(contractsDir, files[0]);
+  return JSON.parse(fs.readFileSync(latestFile, 'utf8'));
+}
+
 function parseAddressList(raw, fallback) {
   const source =
     raw && raw.trim().length > 0 ? raw.split(",") : fallback;
@@ -64,6 +110,149 @@ function parseAddressList(raw, fallback) {
     }
   }
   return results;
+}
+
+function resolveRegistryAddress(deployment) {
+  const manualRegistry = process.env.POB_REGISTRY;
+  if (manualRegistry) {
+    return ethers.getAddress(manualRegistry);
+  }
+
+  if (deployment?.contracts?.PoBRegistry?.proxy) {
+    return ethers.getAddress(deployment.contracts.PoBRegistry.proxy);
+  }
+
+  if (deployment?.contracts?.PoBRegistry) {
+    return ethers.getAddress(deployment.contracts.PoBRegistry);
+  }
+
+  return null;
+}
+
+function resolveIpfsEndpoint(chainId) {
+  if (Number(chainId) === 31337) {
+    return (
+      process.env.LOCAL_IPFS_API_URL ||
+      process.env.IPFS_API_URL ||
+      DEFAULT_IPFS_ENDPOINT
+    );
+  }
+
+  return (
+    process.env.TESTNET_IPFS_API_URL ||
+    process.env.MAINNET_IPFS_API_URL ||
+    process.env.IPFS_API_URL
+  );
+}
+
+function createIpfsClient(ipfsEndpoint) {
+  const ipfsUrl = new URL(ipfsEndpoint);
+  return create({
+    host: ipfsUrl.hostname,
+    port: parseInt(
+      ipfsUrl.port || (ipfsUrl.protocol === "https:" ? "443" : "5001"),
+      10
+    ),
+    protocol: ipfsUrl.protocol.replace(":", ""),
+  });
+}
+
+function loadIterationManifestEntry(iteration, juryAddress) {
+  const manifestName =
+    manifestByNetwork[network.name] ?? "iterations.local.json";
+  const manifestPath = path.join(
+    process.cwd(),
+    "../frontend/public",
+    manifestName
+  );
+
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+
+  const content = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const juryLower = juryAddress?.toLowerCase();
+  return (
+    content.find((entry) => entry.iteration === iteration) ||
+    content.find((entry) => entry.jurySC?.toLowerCase() === juryLower) ||
+    null
+  );
+}
+
+function loadProjectsFile(chainId) {
+  const candidates = [
+    process.env.POB_PROJECTS_FILE,
+    path.join(process.cwd(), "../frontend/public/projects.local.json"),
+    path.join(process.cwd(), "../frontend/public/projects-i1-r1.json"),
+    path.join(process.cwd(), "../frontend/public/projects.json"),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (!fs.existsSync(candidate)) {
+      continue;
+    }
+
+    const content = JSON.parse(fs.readFileSync(candidate, "utf-8"));
+    const entries = Array.isArray(content) ? content : content?.projects;
+
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+
+    const filtered = entries.filter((entry) => {
+      if (entry?.chainId === undefined) {
+        return true;
+      }
+      return Number(entry.chainId) === Number(chainId);
+    });
+
+    return { entries: filtered, source: candidate };
+  }
+
+  return { entries: [], source: null };
+}
+
+function resolveProjects(chainId, fallbackAddresses) {
+  const { entries: projectEntries, source: projectsSource } =
+    loadProjectsFile(chainId);
+  const projectMap = new Map();
+
+  for (const entry of projectEntries) {
+    const account = entry?.account ?? entry?.address;
+    if (!account) {
+      continue;
+    }
+
+    try {
+      projectMap.set(ethers.getAddress(account), entry);
+    } catch {
+      console.warn(`[warn] Ignoring invalid project address: ${account}`);
+    }
+  }
+
+  let resolvedAddresses = parseAddressList(process.env.POB_PROJECTS ?? "", []);
+  if (resolvedAddresses.length === 0 && projectMap.size > 0) {
+    resolvedAddresses = Array.from(projectMap.keys());
+  }
+  if (resolvedAddresses.length === 0) {
+    resolvedAddresses = fallbackAddresses;
+  }
+
+  const metadata = resolvedAddresses.map((address, index) => {
+    const entry = projectMap.get(address);
+    return {
+      account: address,
+      name: entry?.name || `Local Project #${index + 1}`,
+      yt_vid: entry?.yt_vid || "",
+      proposal: entry?.proposal || "",
+    };
+  });
+
+  return { addresses: resolvedAddresses, metadata, source: projectsSource };
 }
 
 async function ensureDevRel(jurySC, devRelAccount) {
@@ -151,6 +340,22 @@ function resolveIterationAddresses() {
     };
   }
 
+  return null;
+}
+
+function resolveIterationAddressesFromDeployment(deployment) {
+  if (deployment) {
+    const jurySCAddress =
+      deployment.contracts.JurySC_02?.proxy || deployment.contracts.JurySC_02;
+    const pobAddress = deployment.contracts.PoB_02;
+    console.log("Using addresses from deployment file");
+    return {
+      juryAddress: ethers.getAddress(jurySCAddress),
+      pobAddress: ethers.getAddress(pobAddress),
+    };
+  }
+
+  // Fallback to manifest file
   const manifestName =
     manifestByNetwork[network.name] ?? "iterations.local.json";
   const manifestPath = path.join(
@@ -183,6 +388,9 @@ function resolveIterationAddresses() {
 
 async function main() {
   const [deployer] = await ethers.getSigners();
+  const chainId = Number((await ethers.provider.getNetwork()).chainId);
+  const isLocal = network.name === "hardhat" || network.name === "localhost";
+  const deployment = isLocal ? getLatestLocalDeployment() : null;
 
   if (network.name !== "hardhat" && network.name !== "localhost") {
     console.warn(
@@ -197,10 +405,8 @@ async function main() {
     console.log(`  [${i}] ${addr}`);
   });
 
-  const projectAddresses = parseAddressList(
-    process.env.POB_PROJECTS ?? "",
-    DEFAULT_PROJECTS
-  );
+  const { addresses: projectAddresses, metadata: projectMetadata, source: projectsSource } =
+    resolveProjects(chainId, DEFAULT_PROJECTS);
   const daoHicVoters = parseAddressList(
     process.env.POB_DAO_HIC_VOTERS ?? "",
     DEFAULT_DAO_HIC_VOTERS
@@ -216,18 +422,154 @@ async function main() {
     ? ethers.getAddress(devRelAccountRaw)
     : null;
 
-  const { juryAddress, pobAddress } = resolveIterationAddresses();
+  let addresses = resolveIterationAddresses();
+  if (!addresses) {
+    addresses = resolveIterationAddressesFromDeployment(deployment);
+  }
+  if (!addresses) {
+    throw new Error("Unable to determine JurySC/PoB addresses.");
+  }
+
+  const { juryAddress, pobAddress } = addresses;
+  const iteration = Number(
+    process.env.POB_ITERATION ?? process.env.ITERATION ?? deployment?.iteration ?? 1
+  );
+  const registryAddress = resolveRegistryAddress(deployment);
+  const manifestEntry = loadIterationManifestEntry(iteration, juryAddress);
+  const roundId = Number(manifestEntry?.round ?? 1);
+
   console.log("Seeding iteration using:");
-  console.log("- JurySC_01:", juryAddress);
-  console.log("- PoB_01:", pobAddress);
+  console.log("- JurySC_02:", juryAddress);
+  console.log("- PoB_02:", pobAddress);
   console.log("- Network:", network.name);
+  console.log("- Chain ID:", chainId);
+  console.log("- Iteration:", iteration);
+  if (registryAddress) {
+    console.log("- PoBRegistry:", registryAddress);
+  }
+  if (projectsSource) {
+    console.log("- Projects source:", projectsSource);
+  }
   console.log("- Deployer:", deployer.address);
 
-  const jurySC = await ethers.getContractAt("JurySC_01", juryAddress);
+  const jurySC = await ethers.getContractAt("JurySC_02", juryAddress);
 
   await ensureDevRel(jurySC, devRelAccount);
   await ensureDaoHicVoters(jurySC, daoHicVoters);
   await ensureProjects(jurySC, projectAddresses);
+
+  const SKIP_IPFS = process.env.SKIP_IPFS === "true";
+  if (!registryAddress) {
+    console.warn("[warn] PoBRegistry address not available; skipping registry seeding.");
+  } else {
+    const registry = await ethers.getContractAt("PoBRegistry", registryAddress);
+
+    const existingIteration = await registry
+      .iterations(iteration)
+      .catch(() => ({ exists: false }));
+    if (!existingIteration.exists) {
+      console.log(`Registering iteration ${iteration} in registry...`);
+      const registerIterTx = await registry.registerIteration(iteration, chainId);
+      await registerIterTx.wait();
+      console.log(`- Iteration ${iteration} registered`);
+    } else {
+      console.log(`- Iteration ${iteration} already registered`);
+    }
+
+    const existingRound = await registry
+      .rounds(iteration, roundId)
+      .catch(() => ({ exists: false }));
+    if (!existingRound.exists) {
+      const deployBlockHint =
+        Number(manifestEntry?.deployBlockHint ?? 0) ||
+        (await ethers.provider.getBlockNumber());
+      console.log(`Registering round ${roundId} in registry...`);
+      const registerRoundTx = await registry.addRound(
+        iteration,
+        roundId,
+        juryAddress,
+        deployBlockHint
+      );
+      await registerRoundTx.wait();
+      console.log(`- Round ${roundId} registered`);
+    } else {
+      console.log(`- Round ${roundId} already registered`);
+    }
+
+    if (SKIP_IPFS) {
+      console.log("Skipping IPFS metadata seeding (SKIP_IPFS=true).");
+    } else {
+      const ipfsEndpoint = resolveIpfsEndpoint(chainId);
+      if (!ipfsEndpoint) {
+        throw new Error(
+          "No IPFS endpoint configured. Set IPFS_API_URL or LOCAL_IPFS_API_URL."
+        );
+      }
+
+      console.log("Seeding metadata via IPFS:", ipfsEndpoint);
+      const ipfsClient = createIpfsClient(ipfsEndpoint);
+
+      const existingIterationCid = await registry
+        .iterationMetadata(chainId, juryAddress)
+        .catch(() => "");
+
+      if (existingIterationCid) {
+        console.log("- Iteration metadata already set");
+      } else {
+        const iterationMetadata = {
+          iteration,
+          round: roundId,
+          name: manifestEntry?.name || `PoB Iteration #${iteration}`,
+          chainId,
+          votingMode: manifestEntry?.votingMode ?? 0,
+          link: manifestEntry?.link || "",
+          prev_rounds: manifestEntry?.prev_rounds || [],
+        };
+
+        const iterCid = await uploadToIPFS(
+          ipfsClient,
+          iterationMetadata,
+          `Iteration ${iteration}`
+        );
+        const iterTx = await registry.setIterationMetadata(
+          chainId,
+          juryAddress,
+          iterCid
+        );
+        await iterTx.wait();
+        console.log(`- Iteration metadata set (${iterCid})`);
+      }
+
+      if (projectMetadata.length === 0) {
+        console.log("- No projects found for metadata upload");
+      } else {
+        console.log(`Seeding metadata for ${projectMetadata.length} project(s)...`);
+        for (const project of projectMetadata) {
+          const existingProjectCid = await registry
+            .projectMetadata(chainId, juryAddress, project.account)
+            .catch(() => "");
+          if (existingProjectCid) {
+            console.log(`- Project metadata already set: ${project.account}`);
+            continue;
+          }
+
+          const projectCid = await uploadToIPFS(
+            ipfsClient,
+            project,
+            project.name
+          );
+          const projectTx = await registry.setProjectMetadata(
+            chainId,
+            juryAddress,
+            project.account,
+            projectCid
+          );
+          await projectTx.wait();
+          console.log(`- Project metadata set: ${project.account}`);
+        }
+      }
+    }
+  }
 
   const stipendAccounts = [
     ...projectAddresses,
