@@ -121,7 +121,6 @@ async function testIPFSConnection() {
 
     console.log('Configuration used:');
     console.log(`  IPFS_API_URL: ${process.env.IPFS_API_URL || 'http://localhost:5001'}`);
-    console.log(`  IPFS_USE_DAG: ${process.env.IPFS_USE_DAG !== 'false' ? 'true' : 'false'}`);
     if (process.env.IPFS_FALLBACK_API_URL) {
       console.log(`  IPFS_FALLBACK_API_URL: ${process.env.IPFS_FALLBACK_API_URL}`);
     }
