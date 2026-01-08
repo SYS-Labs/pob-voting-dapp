@@ -28,6 +28,7 @@ const ProjectMetadataEditor = ({
     name: '',
     yt_vid: '',
     proposal: '',
+    socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +91,12 @@ const ProjectMetadataEditor = ({
     // Proposal URL format (if provided)
     if (formData.proposal && !isValidUrl(formData.proposal)) return false;
 
+    // Social URLs format (if provided)
+    if (formData.socials.x && !isValidUrl(formData.socials.x)) return false;
+    if (formData.socials.instagram && !isValidUrl(formData.socials.instagram)) return false;
+    if (formData.socials.tiktok && !isValidUrl(formData.socials.tiktok)) return false;
+    if (formData.socials.linkedin && !isValidUrl(formData.socials.linkedin)) return false;
+
     return true;
   }, [formData]);
 
@@ -101,7 +108,7 @@ const ProjectMetadataEditor = ({
     try {
       await submitMetadata(formData);
       setEditMode(false);
-      setFormData({ name: '', yt_vid: '', proposal: '' });
+      setFormData({ name: '', yt_vid: '', proposal: '', socials: { x: '', instagram: '', tiktok: '', linkedin: '' } });
     } catch (err) {
       if (isUserRejectedError(err)) {
         return;
@@ -118,6 +125,12 @@ const ProjectMetadataEditor = ({
         name: metadata.name || '',
         yt_vid: metadata.yt_vid || '',
         proposal: metadata.proposal || '',
+        socials: {
+          x: metadata.socials?.x || '',
+          instagram: metadata.socials?.instagram || '',
+          tiktok: metadata.socials?.tiktok || '',
+          linkedin: metadata.socials?.linkedin || '',
+        },
       });
     }
     setEditMode(true);
@@ -213,59 +226,134 @@ const ProjectMetadataEditor = ({
         </div>
       ) : (
         // EDIT MODE
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[var(--pob-text)]">
-              Project Name *
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="pob-input"
-              placeholder="Enter project name"
-              maxLength={200}
-              required
-            />
-            <p className="text-xs text-[var(--pob-text-muted)]">
-              {formData.name.length}/200 characters
-            </p>
+        <form onSubmit={handleSubmit} className="pob-form">
+          {/* Basic Info Section */}
+          <div className="pob-form__section">
+            <div className="pob-form__field">
+              <label className="pob-form__label">
+                Project Name <span className="pob-form__required">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="pob-input"
+                placeholder="Enter project name"
+                maxLength={200}
+                required
+              />
+              <p className="pob-form__hint">
+                {formData.name.length}/200 characters
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[var(--pob-text)]">
-              YouTube Video URL
-            </label>
-            <input
-              type="text"
-              value={formData.yt_vid}
-              onChange={(e) => setFormData({ ...formData, yt_vid: e.target.value })}
-              className="pob-input"
-              placeholder="https://youtu.be/... or https://youtube.com/watch?v=..."
-            />
-            {formData.yt_vid && !isValidYouTubeUrl(formData.yt_vid) && (
-              <p className="text-xs" style={{ color: 'rgb(239, 68, 68)' }}>
-                Invalid YouTube URL format
-              </p>
-            )}
+          {/* Proposal Section */}
+          <div className="pob-form__section">
+            <h3 className="pob-form__section-title">Proposal</h3>
+
+            <div className="pob-form__field">
+              <label className="pob-form__label">YouTube Video URL</label>
+              <input
+                type="text"
+                value={formData.yt_vid}
+                onChange={(e) => setFormData({ ...formData, yt_vid: e.target.value })}
+                className="pob-input"
+                placeholder="https://youtu.be/... or https://youtube.com/watch?v=..."
+              />
+              {formData.yt_vid && !isValidYouTubeUrl(formData.yt_vid) && (
+                <p className="pob-form__error">Invalid YouTube URL format</p>
+              )}
+            </div>
+
+            <div className="pob-form__field">
+              <label className="pob-form__label">Proposal URL</label>
+              <input
+                type="text"
+                value={formData.proposal}
+                onChange={(e) => setFormData({ ...formData, proposal: e.target.value })}
+                className="pob-input"
+                placeholder="https://..."
+              />
+              {formData.proposal && !isValidUrl(formData.proposal) && (
+                <p className="pob-form__error">Invalid URL format</p>
+              )}
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-[var(--pob-text)]">
-              Proposal Link
-            </label>
-            <input
-              type="text"
-              value={formData.proposal}
-              onChange={(e) => setFormData({ ...formData, proposal: e.target.value })}
-              className="pob-input"
-              placeholder="https://..."
-            />
-            {formData.proposal && !isValidUrl(formData.proposal) && (
-              <p className="text-xs" style={{ color: 'rgb(239, 68, 68)' }}>
-                Invalid URL format
-              </p>
-            )}
+          {/* Socials Section */}
+          <div className="pob-form__section">
+            <h3 className="pob-form__section-title">Socials</h3>
+
+            {/* X (Twitter) - Featured/Primary */}
+            <div className="pob-form__field pob-form__field--featured">
+              <label className="pob-form__label">X (ex Twitter)</label>
+              <input
+                type="text"
+                value={formData.socials.x}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  socials: { ...formData.socials, x: e.target.value }
+                })}
+                className="pob-input pob-input--featured"
+                placeholder="https://x.com/yourproject"
+              />
+              {formData.socials.x && !isValidUrl(formData.socials.x) && (
+                <p className="pob-form__error">Invalid URL format</p>
+              )}
+            </div>
+
+            {/* Other Socials */}
+            <div className="pob-form__field">
+              <label className="pob-form__label">Instagram</label>
+              <input
+                type="text"
+                value={formData.socials.instagram}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  socials: { ...formData.socials, instagram: e.target.value }
+                })}
+                className="pob-input"
+                placeholder="https://instagram.com/..."
+              />
+              {formData.socials.instagram && !isValidUrl(formData.socials.instagram) && (
+                <p className="pob-form__error">Invalid URL format</p>
+              )}
+            </div>
+
+            <div className="pob-form__field">
+              <label className="pob-form__label">TikTok</label>
+              <input
+                type="text"
+                value={formData.socials.tiktok}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  socials: { ...formData.socials, tiktok: e.target.value }
+                })}
+                className="pob-input"
+                placeholder="https://tiktok.com/@..."
+              />
+              {formData.socials.tiktok && !isValidUrl(formData.socials.tiktok) && (
+                <p className="pob-form__error">Invalid URL format</p>
+              )}
+            </div>
+
+            <div className="pob-form__field">
+              <label className="pob-form__label">LinkedIn</label>
+              <input
+                type="text"
+                value={formData.socials.linkedin}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  socials: { ...formData.socials, linkedin: e.target.value }
+                })}
+                className="pob-input"
+                placeholder="https://linkedin.com/company/..."
+              />
+              {formData.socials.linkedin && !isValidUrl(formData.socials.linkedin) && (
+                <p className="pob-form__error">Invalid URL format</p>
+              )}
+            </div>
           </div>
 
           {/* Error display */}
@@ -275,7 +363,8 @@ const ProjectMetadataEditor = ({
             </div>
           )}
 
-          <div className="flex gap-2">
+          {/* Form Actions */}
+          <div className="pob-form__actions">
             <button
               type="button"
               onClick={() => {
@@ -283,14 +372,14 @@ const ProjectMetadataEditor = ({
                 setError(null);
               }}
               disabled={isSubmitting}
-              className="pob-button pob-button--outline flex-1"
+              className="pob-button pob-button--outline"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !isFormValid}
-              className="pob-button flex-1"
+              className="pob-button"
             >
               {isSubmitting ? 'Submitting...' : 'Submit to IPFS'}
             </button>

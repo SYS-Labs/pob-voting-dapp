@@ -5,10 +5,18 @@ import { metadataAPI } from '~/utils/metadata-api';
 import { getPublicProvider } from '~/utils/provider';
 import { getProjectMetadataCID, getPoBRegistryContract, REGISTRY_ADDRESSES } from '~/utils/registry';
 
+export interface ProjectMetadataFormSocials {
+  x: string;
+  instagram: string;
+  tiktok: string;
+  linkedin: string;
+}
+
 export interface ProjectMetadataForm {
   name: string;
   yt_vid: string;
   proposal: string;
+  socials: ProjectMetadataFormSocials;
 }
 
 export interface UseProjectMetadataManagerReturn {
@@ -190,12 +198,23 @@ export function useProjectMetadataManager(
     setIsSubmitting(true);
     try {
       // 1. Prepare metadata object
+      // Only include socials if at least one field has a value
+      const hasSocials = formData.socials.x || formData.socials.instagram ||
+                         formData.socials.tiktok || formData.socials.linkedin;
+      const socials = hasSocials ? {
+        x: formData.socials.x || undefined,
+        instagram: formData.socials.instagram || undefined,
+        tiktok: formData.socials.tiktok || undefined,
+        linkedin: formData.socials.linkedin || undefined,
+      } : undefined;
+
       const metadata: ProjectMetadata = {
         chainId,
         account: projectAddress,
         name: formData.name,
         yt_vid: formData.yt_vid || undefined,
         proposal: formData.proposal || undefined,
+        socials,
       };
 
       // 2. Preview CID (deterministic, no upload yet)

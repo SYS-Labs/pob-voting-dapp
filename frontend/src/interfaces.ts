@@ -28,6 +28,13 @@ export interface Iteration {
 
 export type ParticipantRole = 'community' | 'devrel' | 'dao_hic' | 'project';
 
+export interface ProjectSocials {
+  x?: string; // X (formerly Twitter)
+  instagram?: string;
+  tiktok?: string;
+  linkedin?: string;
+}
+
 export interface ProjectMetadata {
   chainId: number;
   account: string;
@@ -35,6 +42,7 @@ export interface ProjectMetadata {
   description?: string;
   yt_vid?: string;
   proposal?: string;
+  socials?: ProjectSocials;
   txHash?: string; // Transaction hash when this metadata was set on-chain
 }
 
