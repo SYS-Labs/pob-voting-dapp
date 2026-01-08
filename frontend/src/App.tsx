@@ -9,6 +9,7 @@ import ConfirmRemoveModal from '~/components/ConfirmRemoveModal';
 import TxPendingModal from '~/components/TxPendingModal';
 import ErrorModal from '~/components/ErrorModal';
 import Footer from '~/components/Footer';
+import { ProgressSpinner } from '~/components/ProgressSpinner';
 import { JurySC_01ABI } from '~/abis';
 import { SYS_COIN_ID, SYS_TESTNET_ID, HARDHAT_ID, NETWORKS } from '~/constants/networks';
 import { formatAddress } from '~/utils';
@@ -206,6 +207,16 @@ function App() {
   }, [iterationStatus]);
 
   const showIterationPage = Boolean(currentIteration);
+  const showIterationLoader = !showIterationPage && (iterationsLoading || loading);
+
+  const iterationLoader = (
+    <section className="pob-pane">
+      <div className="flex flex-col items-center justify-center py-12 gap-4">
+        <ProgressSpinner size={48} />
+        <p className="text-sm text-[var(--pob-text-muted)]">Loading iteration...</p>
+      </div>
+    </section>
+  );
 
   const getProjectLabel = useCallback(
     (address: string | null) => {
@@ -420,6 +431,8 @@ function App() {
                     projectScores={projectScores}
                     setVotingMode={setVotingMode}
                   />
+              ) : showIterationLoader ? (
+                iterationLoader
               ) : (
                 <NotFoundPage />
               )
@@ -451,6 +464,8 @@ function App() {
                   refreshVotingData={refreshVotingData}
                   refreshBadges={refreshBadges}
                 />
+              ) : showIterationLoader ? (
+                iterationLoader
               ) : (
                 <NotFoundPage />
               )
