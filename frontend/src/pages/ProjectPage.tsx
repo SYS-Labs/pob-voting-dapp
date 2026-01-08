@@ -2,6 +2,7 @@ import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import type { Iteration, ParticipantRole, Project, Badge } from '~/interfaces';
 import MarkdownRenderer from '~/components/MarkdownRenderer';
+import VoteConfirmationModal from '~/components/VoteConfirmationModal';
 import { formatAddress, getYouTubeEmbedUrl } from '~/utils';
 import { NETWORKS } from '~/constants/networks';
 import { ROLE_LABELS, ROLE_COLORS } from '~/constants/roles';
@@ -148,7 +149,24 @@ const ProjectPage = ({
                   statusFlags.isActive &&
                   !statusFlags.votingEnded;
 
-  // Handle vote
+  // Vote modal state
+  const [showVoteModal, setShowVoteModal] = useState(false);
+
+  // Handle vote button click - opens confirmation modal
+  const handleVoteClick = useCallback(() => {
+    if (!votingRole || !project) return;
+    setShowVoteModal(true);
+  }, [votingRole, project]);
+
+  // Handle confirmed vote from modal
+  const handleConfirmVote = useCallback(async () => {
+    if (!votingRole || !project) return;
+    const tokenId = votingRole === 'community' ? currentIterationCommunityBadges[0]?.tokenId : undefined;
+    await executeVote(votingRole, project.address, tokenId, refreshVotingData);
+    setShowVoteModal(false);
+  }, [votingRole, project, currentIterationCommunityBadges, executeVote, refreshVotingData]);
+
+  // Legacy handleVote for DevRel/DAO HIC (they don't need mint flow)
   const handleVote = useCallback(async () => {
     if (!votingRole || !project) return;
     const tokenId = votingRole === 'community' ? currentIterationCommunityBadges[0]?.tokenId : undefined;
@@ -266,7 +284,7 @@ const ProjectPage = ({
           {(hasJuryRole || canBecomeCommunity) && !isOwner && (
             <section className="pob-pane">
               <div className="pob-pane__heading">
-                <h3 className="pob-pane__title">Vote for Project</h3>
+                <h3 className="pob-pane__title">Jury Panel</h3>
                 {headerRoleTag && (
                   <span className={`pob-pill ${headerRoleTag.color}`}>
                     {headerRoleTag.label}
@@ -352,61 +370,32 @@ const ProjectPage = ({
                 {/* Community Role */}
                 {(roles.community || canBecomeCommunity) && (
                   <>
-                    {/* Not minted yet */}
-                    {currentIterationCommunityBadges.length === 0 && (
-                      <>
-                        <p className="text-sm text-[var(--pob-text-muted)]">
-                          Mint your community badge ({mintAmount} {tokenSymbol} deposit) to vote for <span className="font-semibold text-white">{projectName}</span>.
-                        </p>
-                        {statusFlags.isActive && walletAddress && (
-                          <button
-                            type="button"
-                            onClick={() => void executeMint('community', refreshBadges)}
-                            className="pob-button w-full justify-center"
-                            disabled={pendingAction !== null}
-                          >
-                            {pendingAction === 'Mint Community Badge' ? 'Minting…' : `Mint badge (${mintAmount} ${tokenSymbol})`}
-                          </button>
-                        )}
-                        {!statusFlags.isActive && !statusFlags.votingEnded && (
-                          <p className="text-xs text-[var(--pob-text-muted)] italic">
-                            Badge minting available when voting starts
-                          </p>
-                        )}
-                      </>
+                    <p className="text-sm text-[var(--pob-text-muted)]">
+                      {hasVotedAnywhere ? (
+                        <>
+                          Currently voted for{' '}
+                          <span className="italic">
+                            {getProjectLabel(currentIterationCommunityBadges.find(b => b.hasVoted)?.vote ?? null) ?? 'Unknown'}
+                          </span>
+                        </>
+                      ) : (
+                        <>Vote for <span className="font-semibold text-white">{projectName}</span>.</>
+                      )}
+                    </p>
+                    {statusFlags.isActive && !statusFlags.votingEnded && walletAddress && (
+                      <button
+                        type="button"
+                        onClick={handleVoteClick}
+                        disabled={pendingAction !== null}
+                        className="pob-button w-full justify-center"
+                      >
+                        {hasVotedForThisProject ? 'Voted' : hasVotedAnywhere ? 'Change Vote' : 'Vote'}
+                      </button>
                     )}
-
-                    {/* Has badge - can vote */}
-                    {roles.community && currentIterationCommunityBadges.length > 0 && (
-                      <>
-                        <p className="text-sm text-[var(--pob-text-muted)]">
-                          {hasVotedAnywhere ? (
-                            <>
-                              Currently voted for{' '}
-                              <span className="italic">
-                                {getProjectLabel(currentIterationCommunityBadges.find(b => b.hasVoted)?.vote ?? null) ?? 'Unknown'}
-                              </span>
-                            </>
-                          ) : (
-                            <>Vote for <span className="font-semibold text-white">{projectName}</span>.</>
-                          )}
-                        </p>
-                        {canVote && (
-                          <button
-                            type="button"
-                            onClick={handleVote}
-                            disabled={pendingAction !== null}
-                            className="pob-button w-full justify-center"
-                          >
-                            {hasVotedForThisProject ? 'Voted' : hasVotedAnywhere ? 'Change Vote' : 'Vote'}
-                          </button>
-                        )}
-                        {statusFlags.isActive && (
-                          <p className="text-xs text-[var(--pob-text-muted)] italic">
-                            You can change your vote at any time during the voting period.
-                          </p>
-                        )}
-                      </>
+                    {statusFlags.isActive && (
+                      <p className="text-xs text-[var(--pob-text-muted)] italic">
+                        You can change your vote at any time during the voting period.
+                      </p>
                     )}
                   </>
                 )}
@@ -464,6 +453,24 @@ const ProjectPage = ({
         >
           Vote
         </button>
+      )}
+
+      {/* Vote Confirmation Modal */}
+      {project && showVoteModal && (
+        <VoteConfirmationModal
+          isOpen={true}
+          onClose={() => setShowVoteModal(false)}
+          onConfirm={handleConfirmVote}
+          projectName={projectName}
+          projectAddress={project.address}
+          votingRole={votingRole}
+          hasVotedForProject={hasVotedForThisProject}
+          hasBadge={currentIterationBadges.length > 0}
+          executeMint={executeMint}
+          refreshBadges={refreshBadges}
+          isPending={pendingAction !== null}
+          chainId={chainId}
+        />
       )}
     </>
   );
