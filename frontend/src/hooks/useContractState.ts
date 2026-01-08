@@ -615,10 +615,14 @@ export function useContractState(
       const badgeList = Array.from(allBadgesMap.values());
       setBadges(badgeList);
 
-      // Update community role flag
+      // Update community role flag (must match current iteration AND round)
       setRoles((current) => ({
         ...current,
-        community: badgeList.some((badge) => badge.role === 'community' && badge.iteration === currentIteration?.iteration),
+        community: badgeList.some((badge) =>
+          badge.role === 'community' &&
+          badge.iteration === currentIteration?.iteration &&
+          badge.round === currentIteration?.round
+        ),
       }));
 
       console.log('[loadBadgesMinimal] Complete. Total badges across all iterations:', badgeList.length);

@@ -170,7 +170,7 @@ const ProjectPage = ({
     : null;
 
   const hasJuryRole = roles.devrel || roles.dao_hic || roles.community;
-  const canBecomeCommunity = !roles.project && !roles.devrel && !roles.dao_hic && !isOwner;
+  const canBecomeCommunity = !roles.project && !roles.devrel && !roles.dao_hic && !roles.community && !isOwner;
   const hasDevRelBadge = currentIterationBadges?.some(badge => badge.role === 'devrel') ?? false;
   const hasDaoHicBadge = currentIterationBadges?.some(badge => badge.role === 'dao_hic') ?? false;
 

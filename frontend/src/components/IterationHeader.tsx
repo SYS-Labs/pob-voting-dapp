@@ -236,8 +236,8 @@ const IterationHeader = ({
               );
             }
 
-            // Community mint button - anyone without devrel/dao_hic/project role
-            const canBecomeCommunity = !roles?.project && !roles?.devrel && !roles?.dao_hic;
+            // Community mint button - anyone without devrel/dao_hic/project role AND not already community
+            const canBecomeCommunity = !roles?.project && !roles?.devrel && !roles?.dao_hic && !roles?.community;
             if (canBecomeCommunity && !hasCommunityBadge && isActive) {
               return (
                 <button

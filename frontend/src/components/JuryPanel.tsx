@@ -58,7 +58,7 @@ const JuryPanel = ({
   // Show panel if user has any jury role OR if they can become a community member
   // Projects are NOT jurors - they have their own panel
   const hasJuryRole = roles.devrel || roles.dao_hic || roles.community;
-  const canBecomeCommunity = !roles.project && !roles.devrel && !roles.dao_hic;
+  const canBecomeCommunity = !roles.project && !roles.devrel && !roles.dao_hic && !roles.community;
 
   // Check if current user has already minted their badge (for current iteration)
   // Note: badges array only contains badges owned by the connected wallet
