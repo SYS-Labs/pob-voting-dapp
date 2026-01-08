@@ -899,6 +899,7 @@ h3 .pob-pill {
 .project-card__title-link {
   text-decoration: none;
   display: block;
+  color: inherit;
 }
 
 .project-card__title-link:hover .project-card__title {
