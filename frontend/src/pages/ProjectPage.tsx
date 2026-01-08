@@ -469,7 +469,8 @@ const ProjectPage = ({
           executeMint={executeMint}
           refreshBadges={refreshBadges}
           isPending={pendingAction !== null}
-          chainId={chainId}
+          mintAmount={mintAmount}
+          tokenSymbol={tokenSymbol}
         />
       )}
     </>

@@ -864,12 +864,14 @@ export function useContractState(
         walletAddress ? loadRoles(juryContract, walletAddress) : Promise.resolve(),
       ];
 
-      // Lazy load projects - only on iteration page
-      if (currentPage === 'iteration') {
-        console.log('[loadIterationState] Loading projects (iteration page)');
+      const isIterationLikePage = currentPage === 'iteration' || currentPage === 'project';
+
+      // Lazy load projects - only on iteration and project pages
+      if (isIterationLikePage) {
+        console.log('[loadIterationState] Loading projects (iteration/project page)');
         loadTasks.push(loadProjects(juryContract));
       } else {
-        console.log('[loadIterationState] Skipping projects (not on iteration page)');
+        console.log('[loadIterationState] Skipping projects (not on iteration/project page)');
       }
 
       // Lazy load owner data - only on iteration page AND if owner
@@ -880,14 +882,14 @@ export function useContractState(
         console.log('[loadIterationState] Skipping owner data');
       }
 
-      // Lazy load badges - only on badges page OR if on iteration page with wallet
+      // Lazy load badges - only on badges page OR if on iteration/project page with wallet
       if (currentPage === 'badges' && walletAddress) {
         console.log('[loadIterationState] Loading badges (badges page) - minimal data only');
         loadTasks.push(
           loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(() => {})
         );
-      } else if (currentPage === 'iteration' && walletAddress) {
-        console.log('[loadIterationState] Loading badges (iteration page) - with voting data');
+      } else if (isIterationLikePage && walletAddress) {
+        console.log('[loadIterationState] Loading badges (iteration/project page) - with voting data');
         // Load minimal badge data first (uses cache if available)
         const badgesPromise = loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(badgeList => {
           // Then load voting data for community badges in current iteration
