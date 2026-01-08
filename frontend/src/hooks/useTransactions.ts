@@ -1,9 +1,15 @@
 import { useCallback, useState } from 'react';
 import { Contract, JsonRpcSigner, ethers } from 'ethers';
-import { JurySC_01ABI, PoB_01ABI } from '~/abis';
+import { JurySC_01ABI, PoB_01ABI, PoB_02ABI } from '~/abis';
 import type { Iteration, ParticipantRole } from '~/interfaces';
 import { ROLE_LABELS } from '~/constants/roles';
 import { NETWORKS } from '~/constants/networks';
+
+// Helper to select PoB ABI based on version
+function getPoBContractABI(version: string | undefined) {
+  if (version === '001' || version === '002') return PoB_01ABI;
+  return PoB_02ABI; // Default to v02 for "003" and future versions
+}
 
 export function useTransactions(
   signer: JsonRpcSigner | null,
@@ -101,7 +107,8 @@ export function useTransactions(
   const executeMint = useCallback(
     async (role: ParticipantRole, refreshCallback?: () => Promise<void>) => {
       if (!requireWallet() || !signer || !currentIteration) return;
-      const contract = new Contract(currentIteration?.pob, PoB_01ABI, signer);
+      const pobABI = getPoBContractABI(currentIteration.version);
+      const contract = new Contract(currentIteration.pob, pobABI, signer);
 
       let tx: () => Promise<unknown>;
       let label: string;

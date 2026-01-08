@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Contract, Interface, JsonRpcProvider, JsonRpcSigner, ethers } from 'ethers';
-import { PoB_01ABI } from '~/abis';
+import { PoB_01ABI, PoB_02ABI } from '~/abis';
 import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
 import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
 import JurySC_02_v001_ABI from '~/abis/JurySC_02_v001.json';
@@ -22,6 +22,12 @@ function getJurySCABI(iteration: Iteration | null) {
   if (iteration.version === '001') return JurySC_01_v001_ABI;
   if (iteration.version === '002') return JurySC_01_v002_ABI;
   return JurySC_02_v001_ABI; // Default to v02 for "003" and future versions
+}
+
+// Helper to select PoB ABI based on version
+function getPoBContractABI(version: string | undefined) {
+  if (version === '001' || version === '002') return PoB_01ABI;
+  return PoB_02ABI; // Default to v02 for "003" and future versions
 }
 
 interface EntityVotes {
@@ -490,14 +496,10 @@ export function useContractState(
       console.log('[loadBadgesMinimal] Starting for address:', address);
       console.log('[loadBadgesMinimal] Loading badges from', allIterations.length, 'iterations');
 
-      const iface = new Interface(PoB_01ABI);
-      const transferTopic = iface.getEvent('Transfer')?.topicHash;
-      if (!transferTopic) return;
-
       const allBadgesMap = new Map<string, Badge>();
 
       // Build list of all PoB contracts to query (main rounds + previous rounds)
-      const contractsToQuery: Array<{ iteration: number; round?: number; pob: string; chainId: number; deployBlockHint?: number }> = [];
+      const contractsToQuery: Array<{ iteration: number; round?: number; pob: string; chainId: number; deployBlockHint?: number; version?: string }> = [];
 
       for (const iteration of allIterations) {
         // Add current/main round
@@ -507,6 +509,7 @@ export function useContractState(
           pob: iteration.pob,
           chainId: iteration.chainId,
           deployBlockHint: iteration.deployBlockHint,
+          version: iteration.version,
         });
 
         // Add previous rounds if they exist
@@ -518,6 +521,7 @@ export function useContractState(
               pob: prevRound.pob,
               chainId: iteration.chainId,
               deployBlockHint: prevRound.deployBlockHint,
+              version: prevRound.version,
             });
           }
         }
@@ -529,7 +533,13 @@ export function useContractState(
       const contractPromises = contractsToQuery.map(async (contract) => {
         const roundLabel = contract.round ? ` Round #${contract.round}` : '';
         try {
-          const iterationPobContract = new Contract(contract.pob, PoB_01ABI, rpcProvider);
+          // Select ABI based on version (PoB follows same versioning as JurySC)
+          const pobABI = getPoBContractABI(contract.version);
+          const iface = new Interface(pobABI);
+          const transferTopic = iface.getEvent('Transfer')?.topicHash;
+          if (!transferTopic) return [];
+
+          const iterationPobContract = new Contract(contract.pob, pobABI, rpcProvider);
           const fromBlock = contract.deployBlockHint !== undefined ? contract.deployBlockHint : 0;
 
           console.log(`[loadBadgesMinimal] Querying iteration ${contract.iteration}${roundLabel} from block:`, fromBlock);
@@ -551,15 +561,21 @@ export function useContractState(
           for (const log of logs) {
             try {
               const parsed = iface.parseLog(log);
-              if (parsed?.args?.tokenId) {
-                tokenIds.push(parsed.args.tokenId.toString());
+              // Transfer event: Transfer(address from, address to, uint256 tokenId)
+              // Access tokenId by name or by index [2] for compatibility
+              const tokenId = parsed?.args?.tokenId ?? parsed?.args?.[2];
+              if (tokenId !== undefined && tokenId !== null) {
+                tokenIds.push(tokenId.toString());
               }
             } catch (parseError) {
               console.warn('Failed to parse badge log', parseError);
             }
           }
 
-          if (tokenIds.length === 0) return [];
+          if (tokenIds.length === 0) {
+            console.warn('[loadBadgesMinimal] No tokenIds parsed from logs');
+            return [];
+          }
 
           console.log(`[loadBadgesMinimal] Parsed ${tokenIds.length} tokenIds, batching RPC calls...`);
 

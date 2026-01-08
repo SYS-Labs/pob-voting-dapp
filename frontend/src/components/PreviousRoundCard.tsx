@@ -1,11 +1,17 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Contract } from 'ethers';
 import type { PreviousRound, ParticipantRole } from '~/interfaces';
-import { PoB_01ABI } from '~/abis';
+import { PoB_01ABI, PoB_02ABI } from '~/abis';
 import { formatDate } from '~/utils';
 import { usePreviousRoundData } from '~/hooks/usePreviousRoundData';
 import FinalResultsPanel from './FinalResultsPanel';
 import ContractAddress from './ContractAddress';
+
+// Helper to select PoB ABI based on version
+function getPoBContractABI(version: string | undefined) {
+  if (version === '001' || version === '002') return PoB_01ABI;
+  return PoB_02ABI; // Default to v02 for "003" and future versions
+}
 
 interface PreviousRoundCardProps {
   round: PreviousRound;
@@ -80,7 +86,8 @@ const PreviousRoundCard = ({
       return;
     }
 
-    const contract = new Contract(round.pob, PoB_01ABI, signer);
+    const pobABI = getPoBContractABI(round.version);
+    const contract = new Contract(round.pob, pobABI, signer);
     let tx: () => Promise<unknown>;
     let label: string;
 
@@ -106,7 +113,8 @@ const PreviousRoundCard = ({
 
   const handleClaimDeposit = async (tokenId: string) => {
     if (!signer) return;
-    const contract = new Contract(round.pob, PoB_01ABI, signer);
+    const pobABI = getPoBContractABI(round.version);
+    const contract = new Contract(round.pob, pobABI, signer);
     await runTransaction(
       `Claim deposit for token ${tokenId} (Round ${round.round})`,
       () => contract.claim(tokenId),
