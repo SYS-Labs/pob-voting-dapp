@@ -43,7 +43,7 @@ export function useProjectMetadataManager(
   metadataLocked: boolean
 ): UseProjectMetadataManagerReturn {
   const [currentCID, setCurrentCID] = useState<string | null>(null);
-  const [currentConfirmations, setCurrentConfirmations] = useState(10); // Default settled
+  const [currentConfirmations, setCurrentConfirmations] = useState(5); // Default settled
   const [pendingCID, setPendingCID] = useState<string | null>(null);
   const [pendingTxHash, setPendingTxHash] = useState<string | null>(null);
   const [pendingConfirmations, setPendingConfirmations] = useState(0);
@@ -62,7 +62,7 @@ export function useProjectMetadataManager(
 
         setCurrentCID(cid || null);
         if (cid) {
-          setCurrentConfirmations(10); // Already on-chain = settled
+          setCurrentConfirmations(5); // Already on-chain = settled
         }
       } catch (error) {
         console.error('Failed to load CID from PoBRegistry:', error);
@@ -146,7 +146,7 @@ export function useProjectMetadataManager(
 
         setPendingConfirmations(confirmations);
 
-        if (confirmations >= 10) {
+        if (confirmations >= 5) {
           // Transaction settled - move to current and clear pending
           if (pendingCID) {
             setCurrentCID(pendingCID);
@@ -186,7 +186,7 @@ export function useProjectMetadataManager(
       throw new Error('Metadata editing closed (voting started)');
     }
 
-    if (pendingConfirmations > 0 && pendingConfirmations < 10) {
+    if (pendingConfirmations > 0 && pendingConfirmations < 5) {
       throw new Error('Please wait for pending transaction to confirm');
     }
 
