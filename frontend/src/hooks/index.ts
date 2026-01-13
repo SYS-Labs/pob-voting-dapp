@@ -5,6 +5,7 @@ export * from './useIterationStatuses';
 export * from './useModals';
 export * from './useProjectMetadata';
 export * from './useProjectMetadataManager';
+export * from './useRegistryStatus';
 export * from './usePublicProvider';
 export * from './useTransactions';
 export * from './useWallet';

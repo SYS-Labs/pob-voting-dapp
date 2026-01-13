@@ -6,6 +6,7 @@ import VoteConfirmationModal from '~/components/VoteConfirmationModal';
 import { formatAddress, getYouTubeEmbedUrl } from '~/utils';
 import { NETWORKS } from '~/constants/networks';
 import { ROLE_LABELS, ROLE_COLORS } from '~/constants/roles';
+import { useRegistryStatus } from '~/hooks/useRegistryStatus';
 
 interface CommunityBadge {
   tokenId: string;
@@ -34,6 +35,7 @@ interface ProjectPageProps {
   loading: boolean;
   roles: RoleStatuses;
   isOwner: boolean;
+  projectsLocked: boolean;
   statusFlags: StatusFlags;
   communityBadges: CommunityBadge[];
   badges: Badge[];
@@ -55,6 +57,7 @@ const ProjectPage = ({
   loading,
   roles,
   isOwner,
+  projectsLocked,
   statusFlags,
   communityBadges,
   badges,
@@ -78,6 +81,8 @@ const ProjectPage = ({
     if (!projectAddress) return null;
     return projects.find(p => p.address.toLowerCase() === projectAddress.toLowerCase()) ?? null;
   }, [projects, projectAddress]);
+
+  const { registryAvailable, initializationComplete, registryOwner } = useRegistryStatus(chainId);
 
   // Auto-hide sidebar below 1024px breakpoint
   useEffect(() => {
@@ -191,6 +196,18 @@ const ProjectPage = ({
   const canBecomeCommunity = !roles.project && !roles.devrel && !roles.dao_hic && !roles.community && !isOwner;
   const hasDevRelBadge = currentIterationBadges?.some(badge => badge.role === 'devrel') ?? false;
   const hasDaoHicBadge = currentIterationBadges?.some(badge => badge.role === 'dao_hic') ?? false;
+  const canEditMetadata = useMemo(() => {
+    if (!project || !walletAddress) return false;
+    if (!registryAvailable || initializationComplete === null) return false;
+
+    const walletLower = walletAddress.toLowerCase();
+    if (!initializationComplete) {
+      return Boolean(registryOwner && walletLower === registryOwner.toLowerCase());
+    }
+
+    if (projectsLocked) return false;
+    return walletLower === project.address.toLowerCase();
+  }, [project, walletAddress, registryAvailable, initializationComplete, registryOwner, projectsLocked]);
 
   if (loading) {
     return (
@@ -236,11 +253,21 @@ const ProjectPage = ({
         {/* Project card without vote button */}
         <section className="pob-pane">
           <div className="space-y-4">
-            <div>
-              <h1 className="text-2xl font-bold text-white" style={{ marginBottom: '0.5rem' }}>{projectName}</h1>
-              <p className="pob-mono text-xs text-[var(--pob-text-muted)]">
-                {formatAddress(project.address)}
-              </p>
+            <div className="pob-pane__heading project-page__heading">
+              <div>
+                <h1 className="project-page__title">{projectName}</h1>
+                <p className="pob-mono text-xs text-[var(--pob-text-muted)]">
+                  {formatAddress(project.address)}
+                </p>
+              </div>
+              {canEditMetadata && (
+                <Link
+                  to={`/iteration/${currentIteration?.iteration}/project/${project.address}/edit`}
+                  className="pob-button pob-button--outline pob-button--compact project-page__edit"
+                >
+                  Edit
+                </Link>
+              )}
             </div>
 
             {/* Full description */}
@@ -273,6 +300,62 @@ const ProjectPage = ({
                 </a>
               </div>
             ) : null}
+
+            {/* Social links */}
+            {project.metadata?.socials && (
+              project.metadata.socials.x ||
+              project.metadata.socials.instagram ||
+              project.metadata.socials.tiktok ||
+              project.metadata.socials.linkedin
+            ) && (
+              <div className="pob-socials" style={{ marginTop: '1.5rem' }}>
+                {project.metadata.socials.x && (
+                  <a
+                    href={project.metadata.socials.x}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pob-socials__link pob-socials__link--x"
+                    title="X (Twitter)"
+                  >
+                    X
+                  </a>
+                )}
+                {project.metadata.socials.instagram && (
+                  <a
+                    href={project.metadata.socials.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pob-socials__link"
+                    title="Instagram"
+                  >
+                    Instagram
+                  </a>
+                )}
+                {project.metadata.socials.tiktok && (
+                  <a
+                    href={project.metadata.socials.tiktok}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pob-socials__link"
+                    title="TikTok"
+                  >
+                    TikTok
+                  </a>
+                )}
+                {project.metadata.socials.linkedin && (
+                  <a
+                    href={project.metadata.socials.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pob-socials__link"
+                    title="LinkedIn"
+                  >
+                    LinkedIn
+                  </a>
+                )}
+              </div>
+            )}
+
           </div>
         </section>
       </div>

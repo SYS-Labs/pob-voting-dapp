@@ -40,7 +40,7 @@ export function useProjectMetadataManager(
   chainId: number | null,
   contractAddress: string | null,
   signer: JsonRpcSigner | null,
-  votingActive: boolean
+  metadataLocked: boolean
 ): UseProjectMetadataManagerReturn {
   const [currentCID, setCurrentCID] = useState<string | null>(null);
   const [currentConfirmations, setCurrentConfirmations] = useState(10); // Default settled
@@ -182,8 +182,8 @@ export function useProjectMetadataManager(
       throw new Error('Missing required parameters');
     }
 
-    if (votingActive) {
-      throw new Error('Cannot update metadata while voting is active');
+    if (metadataLocked) {
+      throw new Error('Metadata editing closed (voting started)');
     }
 
     if (pendingConfirmations > 0 && pendingConfirmations < 10) {
@@ -294,7 +294,7 @@ export function useProjectMetadataManager(
     } finally {
       setIsSubmitting(false);
     }
-  }, [signer, projectAddress, chainId, contractAddress, votingActive, pendingConfirmations]);
+  }, [signer, projectAddress, chainId, contractAddress, metadataLocked, pendingConfirmations]);
 
   // Clear pending state from memory and localStorage
   const clearPending = useCallback(() => {

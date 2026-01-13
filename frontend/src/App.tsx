@@ -30,7 +30,7 @@ import BadgesPage from '~/pages/BadgesPage';
 import FaqPage from '~/pages/FaqPage';
 import IterationPage from '~/pages/IterationPage';
 import ProjectPage from '~/pages/ProjectPage';
-import ProjectMetadataPage from '~/pages/ProjectMetadataPage';
+import ProjectEditPage from '~/pages/ProjectEditPage';
 import IterationMetadataPage from '~/pages/IterationMetadataPage';
 import ForumPage from '~/pages/ForumPage';
 import NotFoundPage from '~/pages/NotFoundPage';
@@ -450,6 +450,7 @@ function App() {
                   loading={loading}
                   roles={roles}
                   isOwner={isOwner}
+                  projectsLocked={projectsLocked}
                   statusFlags={statusFlags}
                   communityBadges={communityBadges}
                   badges={badges}
@@ -472,17 +473,17 @@ function App() {
             }
           />
 
-          {/* Project metadata page */}
+          {/* Project edit page */}
           <Route
-            path="/iteration/:iterationNumber/metadata"
+            path="/iteration/:iterationNumber/project/:projectAddress/edit"
             element={
-              <ProjectMetadataPage
+              <ProjectEditPage
                 projects={projects}
                 walletAddress={walletAddress}
                 chainId={chainId}
                 contractAddress={currentIteration?.jurySC ?? null}
                 signer={signer}
-                votingActive={statusFlags.isActive && !statusFlags.votingEnded}
+                projectsLocked={projectsLocked}
               />
             }
           />

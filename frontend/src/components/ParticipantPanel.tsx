@@ -48,13 +48,15 @@ const ParticipantPanel = ({
             You are registered as a project participant in this iteration. Your project will be evaluated by the jury.
           </p>
 
-          {/* Manage Metadata button */}
-          <Link
-            to={`/iteration/${iterationNumber}/metadata`}
-            className="pob-button pob-button--outline w-full justify-center text-xs"
-          >
-            Manage my project
-          </Link>
+          {/* View Project button */}
+          {walletAddress && (
+            <Link
+              to={`/iteration/${iterationNumber}/project/${walletAddress}`}
+              className="pob-button pob-button--outline w-full justify-center text-xs"
+            >
+              Manage my project
+            </Link>
+          )}
 
           {/* Mint button - only show if projects locked and no badge yet */}
           {!projectBadge && projectsLocked && (
