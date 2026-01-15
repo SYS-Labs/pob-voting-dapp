@@ -2,20 +2,7 @@ import { ethers } from 'ethers';
 import { IPFSService } from './ipfs.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
-
-// PoBRegistry addresses by network
-const REGISTRY_ADDRESSES: Record<number, string> = {
-  57: '', // Mainnet - TODO: Deploy and update
-  5700: '', // Testnet - TODO: Deploy and update
-  31337: '0xab180957A96821e90C0114292DDAfa9E9B050d65' // Hardhat - Latest deployment
-};
-
-// RPC URLs by network
-const RPC_URLS: Record<number, string> = {
-  57: 'https://rpc.syscoin.org',
-  5700: 'https://rpc.tanenbaum.io',
-  31337: 'http://localhost:8547' // Hardhat local node
-};
+import { NETWORKS, getRpcUrl } from '../constants/networks.js';
 
 // PoBRegistry ABI - only the functions we need for metadata
 const REGISTRY_ABI = [
@@ -68,7 +55,7 @@ export class MetadataService {
    * Get provider and wallet for a specific chain
    */
   private getProviderAndWallet(chainId: number): { provider: ethers.JsonRpcProvider; wallet: ethers.Wallet } {
-    const rpcUrl = RPC_URLS[chainId];
+    const rpcUrl = getRpcUrl(chainId);
     if (!rpcUrl) {
       throw new Error(`No RPC URL configured for chain ${chainId}`);
     }
@@ -81,7 +68,7 @@ export class MetadataService {
    * Get PoBRegistry contract instance
    */
   private getRegistryContract(chainId: number): ethers.Contract {
-    const registryAddress = REGISTRY_ADDRESSES[chainId];
+    const registryAddress = NETWORKS[chainId]?.registryAddress;
     if (!registryAddress) {
       throw new Error(`No PoBRegistry address configured for chain ${chainId}`);
     }

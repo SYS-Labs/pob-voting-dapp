@@ -171,3 +171,39 @@ CREATE TABLE IF NOT EXISTS pob_ipfs_cache (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pob_ipfs_cache_fetched ON pob_ipfs_cache(fetched_at);
+
+-- Iteration snapshots - cached contract state for frontend
+CREATE TABLE IF NOT EXISTS iteration_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  iteration_id INTEGER NOT NULL,
+  chain_id INTEGER NOT NULL,
+  round INTEGER NOT NULL,
+  registry_address TEXT NOT NULL,
+  pob_address TEXT NOT NULL,
+  jury_address TEXT NOT NULL,
+  deploy_block_hint INTEGER NOT NULL DEFAULT 0,  -- Block number hint for event queries (optimization)
+  jury_state TEXT NOT NULL,  -- 'deployed' | 'activated' | 'active' | 'ended' | 'locked'
+  start_time INTEGER,
+  end_time INTEGER,
+  voting_mode INTEGER NOT NULL DEFAULT 0,
+  projects_locked INTEGER NOT NULL DEFAULT 0,
+  contract_locked INTEGER NOT NULL DEFAULT 0,
+  winner_address TEXT,
+  has_winner INTEGER NOT NULL DEFAULT 0,
+  devrel_vote TEXT,
+  daohic_vote TEXT,
+  community_vote TEXT,
+  project_scores TEXT,  -- JSON: { addresses: [], scores: [], totalPossible: "" }
+  devrel_count INTEGER NOT NULL DEFAULT 0,
+  daohic_count INTEGER NOT NULL DEFAULT 0,
+  community_count INTEGER NOT NULL DEFAULT 0,
+  devrel_account TEXT,
+  daohic_voters TEXT,  -- JSON array of addresses
+  projects TEXT,  -- JSON array of project objects
+  last_block INTEGER NOT NULL,
+  last_updated_at INTEGER NOT NULL,
+  UNIQUE(chain_id, iteration_id, round)
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshots_chain_iter ON iteration_snapshots(chain_id, iteration_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_updated ON iteration_snapshots(last_updated_at);

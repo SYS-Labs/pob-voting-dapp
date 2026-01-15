@@ -15,6 +15,7 @@ import { createPostDatabase } from '../db/queries.js';
 import { createDeploymentDatabase } from '../db/deployments.js';
 import { createMonitoredThreadsDatabase } from '../db/monitored-threads.js';
 import { createMetadataDatabase } from '../db/metadata.js';
+import { createIterationsDatabase } from '../db/iterations.js';
 import { IPFSService } from '../services/ipfs.js';
 import { MetadataService } from '../services/metadata.js';
 import { logger } from '../utils/logger.js';
@@ -27,6 +28,7 @@ const postDb = createPostDatabase(db);
 const deploymentDb = createDeploymentDatabase(db);
 const threadsDb = createMonitoredThreadsDatabase(db);
 const metadataDb = createMetadataDatabase(db);
+const iterationsDb = createIterationsDatabase(db);
 
 // Initialize IPFS and metadata services
 const ipfsService = new IPFSService();
@@ -57,6 +59,11 @@ const routes: Record<string, Handler> = {
   'GET:/api/admin/threads/stats': async (_req, res) => {
     const stats = threadsDb.getStats();
     sendJson(res, 200, { stats });
+  },
+
+  'GET:/api/iterations': async (_req, res) => {
+    const iterations = iterationsDb.getAllSnapshotsAPI();
+    sendJson(res, 200, { iterations });
   }
 };
 
@@ -74,6 +81,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/threads/')) {
     await handleThreadDetail(req, res, url);
+    return;
+  }
+
+  // Iteration endpoints (dynamic routes)
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/iterations\/\d+\/\d+$/)) {
+    await handleGetIteration(req, res, url);
     return;
   }
 
@@ -170,6 +183,38 @@ async function handleThreadDetail(
 
   const posts = postDb.getThread(conversationId).map(serializePost);
   sendJson(res, 200, { conversationId, posts });
+}
+
+async function handleGetIteration(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // Parse URL: /api/iterations/:chainId/:iterationId
+  const parts = url.pathname.replace('/api/iterations/', '').split('/');
+
+  if (parts.length !== 2) {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/iterations/:chainId/:iterationId' });
+    return;
+  }
+
+  const [chainIdStr, iterationIdStr] = parts;
+  const chainId = parseInt(chainIdStr, 10);
+  const iterationId = parseInt(iterationIdStr, 10);
+
+  if (isNaN(chainId) || isNaN(iterationId)) {
+    sendJson(res, 400, { error: 'Invalid chainId or iterationId format' });
+    return;
+  }
+
+  const iteration = iterationsDb.getSnapshotAPI(chainId, iterationId);
+
+  if (!iteration) {
+    sendJson(res, 404, { error: 'Iteration not found' });
+    return;
+  }
+
+  sendJson(res, 200, { iteration });
 }
 
 async function handleDeployment(req: IncomingMessage, res: ServerResponse): Promise<void> {

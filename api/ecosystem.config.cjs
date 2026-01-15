@@ -78,5 +78,25 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
     },
+    {
+      name: 'iteration-indexer',
+      script: 'dist/indexer/iteration-indexer.js',
+      cwd: '/sandbox/api',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      node_args: '--env-file=/sandbox/api/.env',
+      env: {
+        NODE_ENV: 'production',
+      },
+      env_development: {
+        NODE_ENV: 'development',
+      },
+      error_file: './logs/iteration-indexer-error.log',
+      out_file: './logs/iteration-indexer-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      merge_logs: true,
+    },
   ],
 };

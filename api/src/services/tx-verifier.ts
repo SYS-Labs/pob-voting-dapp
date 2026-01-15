@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { logger } from '../utils/logger.js';
+import { NETWORKS, getRpcUrl } from '../constants/networks.js';
 
 // PoBRegistry ABI for authorization checks
 const REGISTRY_ABI = [
@@ -15,20 +16,6 @@ const JURYSC_ABI = [
   'function projectsLocked() external view returns (bool)',
   'function locked() external view returns (bool)'
 ];
-
-// PoBRegistry addresses by network
-const REGISTRY_ADDRESSES: Record<number, string> = {
-  57: '', // Mainnet - TODO: Deploy and update
-  5700: '0xA985cE400afea8eEf107c24d879c8c777ece1a8a', // Testnet
-  31337: '0xab180957A96821e90C0114292DDAfa9E9B050d65' // Hardhat - Latest deployment
-};
-
-// RPC URLs by network
-const RPC_URLS: Record<number, string> = {
-  57: 'https://rpc.syscoin.org',
-  5700: 'https://rpc.tanenbaum.io',
-  31337: 'http://localhost:8547' // Hardhat local node
-};
 
 export interface DecodedMetadataTx {
   signer: string;
@@ -71,7 +58,7 @@ export async function verifyMetadataTx(
     }
 
     // Verify transaction is to the correct registry
-    const registryAddress = REGISTRY_ADDRESSES[expectedChainId];
+    const registryAddress = NETWORKS[expectedChainId]?.registryAddress;
     if (!registryAddress || registryAddress === '') {
       throw new Error(`No PoBRegistry address configured for chain ${expectedChainId}`);
     }
@@ -164,12 +151,12 @@ export async function checkAuthorization(
 ): Promise<boolean> {
   const { signer, chainId, jurySC, projectAddress, kind } = decoded;
 
-  const rpcUrl = RPC_URLS[chainId];
+  const rpcUrl = getRpcUrl(chainId);
   if (!rpcUrl) {
     throw new Error(`No RPC URL configured for chain ${chainId}`);
   }
 
-  const registryAddress = REGISTRY_ADDRESSES[chainId];
+  const registryAddress = NETWORKS[chainId]?.registryAddress;
   if (!registryAddress || registryAddress === '') {
     throw new Error(`No PoBRegistry address configured for chain ${chainId}`);
   }

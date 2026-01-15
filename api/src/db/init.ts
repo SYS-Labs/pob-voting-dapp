@@ -6,12 +6,13 @@ import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export function initDatabase(dbPath: string = config.database.path): Database.Database {
+const DEFAULT_DB_PATH = process.env.DB_PATH || './data/index.db';
+
+export function initDatabase(dbPath: string = DEFAULT_DB_PATH): Database.Database {
   logger.info('Initializing database', { path: dbPath });
 
   // Create database
