@@ -144,7 +144,7 @@ function App() {
     executeVote,
     executeClaim,
     setVotingMode,
-  } = useTransactions(signer, currentIteration, walletAddress, correctNetwork, chainId);
+  } = useTransactions(signer, currentIteration, walletAddress, correctNetwork, chainId, publicProvider);
 
   // Modals
   const {

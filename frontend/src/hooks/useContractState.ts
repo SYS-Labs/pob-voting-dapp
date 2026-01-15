@@ -7,6 +7,7 @@ import JurySC_02_v001_ABI from '~/abis/JurySC_02_v001.json';
 import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
 import { batchGetProjectMetadataCIDs } from '~/utils/registry';
 import { metadataAPI } from '~/utils/metadata-api';
+import { iterationsAPI, type IterationSnapshot } from '~/utils/iterations-api';
 import type {
   Badge,
   Iteration,
@@ -139,6 +140,104 @@ export function useContractState(
     setContractLocked(false);
     setVoteCounts({ devRel: 0, daoHic: 0, community: 0 });
   }, []);
+
+  /**
+   * Load iteration data from the API indexer.
+   * This provides a faster alternative to direct RPC calls for display data.
+   * Returns the snapshot if successful, null if API unavailable (fallback to RPC).
+   */
+  const loadFromAPI = useCallback(
+    async (): Promise<IterationSnapshot | null> => {
+      if (!currentIteration) return null;
+
+      console.log('[loadFromAPI] Fetching iteration data from API...');
+      try {
+        const snapshot = await iterationsAPI.getIteration(
+          currentIteration.chainId,
+          currentIteration.iteration
+        );
+
+        if (!snapshot) {
+          console.log('[loadFromAPI] No snapshot found in API (iteration may not be indexed yet)');
+          return null;
+        }
+
+        console.log('[loadFromAPI] Received snapshot, applying to state...');
+
+        // Apply API data to state
+
+        // Projects
+        if (snapshot.projects && snapshot.projects.length > 0) {
+          const apiProjects: Project[] = snapshot.projects.map((p, index) => ({
+            id: index + 1,
+            address: p.address,
+            metadata: (p.metadata as unknown as ProjectMetadata) || {
+              name: `Project #${index + 1}`,
+              account: p.address,
+              chainId: snapshot.chainId,
+            },
+          }));
+          setProjects(apiProjects);
+          console.log(`[loadFromAPI] Loaded ${apiProjects.length} projects from API`);
+        }
+
+        // Flags
+        setProjectsLocked(snapshot.projectsLocked);
+        setContractLocked(snapshot.contractLocked);
+
+        // Entity votes
+        setEntityVotes({
+          devRel: snapshot.entityVotes.devRel,
+          daoHic: snapshot.entityVotes.daoHic,
+          community: snapshot.entityVotes.community,
+        });
+
+        // Winner
+        setWinner({
+          projectAddress: snapshot.winner.projectAddress,
+          hasWinner: snapshot.winner.hasWinner,
+        });
+
+        // Voting mode and scores
+        setVotingMode(snapshot.votingMode);
+        setProjectScores(snapshot.projectScores);
+
+        // Times - derive status flags from juryState
+        if (snapshot.startTime !== null && snapshot.endTime !== null) {
+          setIterationTimes({
+            startTime: snapshot.startTime,
+            endTime: snapshot.endTime,
+          });
+        }
+
+        // Derive status flags from juryState
+        const isActive = snapshot.juryState === 'active';
+        const votingEnded = snapshot.juryState === 'ended' || snapshot.juryState === 'locked';
+        setStatusFlags({ isActive, votingEnded });
+
+        // Vote counts
+        setVoteCounts({
+          devRel: snapshot.totals.devRel,
+          daoHic: snapshot.totals.daoHic,
+          community: snapshot.totals.community,
+        });
+
+        // Owner data
+        setDevRelAccount(snapshot.devRelAccount);
+        setDaoHicVoters(snapshot.daoHicVoters);
+
+        // Community voting is unlimited
+        setTotalCommunityVoters(0);
+
+        console.log('[loadFromAPI] Complete. State updated from API.');
+        return snapshot;
+      } catch (error) {
+        console.warn('[loadFromAPI] API call failed, will fall back to RPC:', error);
+        return null;
+      }
+    },
+    [currentIteration]
+  );
 
   const loadProjects = useCallback(
     async (contract: Contract) => {
@@ -401,6 +500,37 @@ export function useContractState(
     [publicProvider, selectedChainId, currentIteration],
   );
 
+  /**
+   * Load user-specific vote data only (for DevRel/DAO HIC individual votes)
+   * Used when API data is available (status flags already set)
+   */
+  const loadUserVotes = useCallback(
+    async (contract: Contract, address: string | null) => {
+      console.log('[loadUserVotes] Starting for address:', address);
+      const iterationNum = currentIteration?.iteration;
+      const [devRelVoted, devRelVoteValue, daoVote, daoVoted] =
+        await cachedPromiseAll(publicProvider, selectedChainId, [
+          { key: `iteration:${iterationNum}:devRelHasVoted`, promise: contract.devRelHasVoted() },
+          { key: `iteration:${iterationNum}:devRelVote`, promise: contract.devRelVote() },
+          { key: `iteration:${iterationNum}:daoHicVoteOf:${address}`, promise: address ? contract.daoHicVoteOf(address) : Promise.resolve(null) },
+          { key: `iteration:${iterationNum}:daoHicHasVoted:${address}`, promise: address ? contract.daoHicHasVoted(address) : Promise.resolve(false) },
+        ]);
+
+      const normalizedDevRelVote = Boolean(devRelVoted) ? normalizeAddress(devRelVoteValue) : null;
+      const normalizedDaoVote = Boolean(daoVoted) ? normalizeAddress(daoVote) : null;
+
+      setDevRelVote(normalizedDevRelVote);
+      setDaoHicVote(normalizedDaoVote);
+
+      console.log('[loadUserVotes] Complete. DevRel vote:', normalizedDevRelVote ?? 'Not cast');
+      console.log('[loadUserVotes] DAO HIC vote:', normalizedDaoVote ?? 'Not cast');
+    },
+    [publicProvider, selectedChainId, currentIteration],
+  );
+
+  /**
+   * Load full voting status including state flags (for RPC fallback path)
+   */
   const loadVotingStatus = useCallback(
     async (contract: Contract, address: string | null) => {
       console.log('[loadVotingStatus] Starting for address:', address);
@@ -849,65 +979,95 @@ export function useContractState(
       // Use publicProvider for read-only operations, signer for write operations (if available)
       const juryContract = new Contract(currentIteration.jurySC, getJurySCABI(currentIteration), publicProvider);
 
-      console.log('[loadIterationState] Phase 1: Loading voting status...');
-      // First, load voting status to get state flags
-      const statusFlags = await loadVotingStatus(juryContract, walletAddress);
-
-      console.log('[loadIterationState] Phase 2: Loading data based on current page...');
-      console.log('[loadIterationState] Current page:', currentPage);
-
-      // Build conditional loading array based on current page
-      const loadTasks = [
-        // Always load entity votes (needed for iteration header)
-        loadEntityVotes(juryContract, statusFlags.isActive, statusFlags.votingEnded),
-        // Always load roles if wallet connected (needed to determine panels)
-        walletAddress ? loadRoles(juryContract, walletAddress) : Promise.resolve(),
-      ];
-
       const isIterationLikePage = currentPage === 'iteration' || currentPage === 'project';
 
-      // Lazy load projects - only on iteration and project pages
-      if (isIterationLikePage) {
-        console.log('[loadIterationState] Loading projects (iteration/project page)');
-        loadTasks.push(loadProjects(juryContract));
-      } else {
-        console.log('[loadIterationState] Skipping projects (not on iteration/project page)');
+      // Phase 1: Try to load display data from API (faster, cached)
+      console.log('[loadIterationState] Phase 1: Trying API for display data...');
+      const apiSnapshot = await loadFromAPI();
+
+      // Phase 2: Load user-specific data via RPC (always needed for wallet interactions)
+      console.log('[loadIterationState] Phase 2: Loading user-specific data via RPC...');
+      console.log('[loadIterationState] Current page:', currentPage);
+
+      // Build loading tasks for user-specific data
+      const loadTasks: Promise<unknown>[] = [];
+
+      // Always load roles if wallet connected (needed to determine panels)
+      if (walletAddress) {
+        loadTasks.push(loadRoles(juryContract, walletAddress));
       }
 
-      // Lazy load owner data - only on iteration page AND if owner
-      if (currentPage === 'iteration' && walletAddress && isOwner) {
-        console.log('[loadIterationState] Loading owner data (owner on iteration page)');
-        loadTasks.push(loadOwnerData(juryContract));
-      } else {
-        console.log('[loadIterationState] Skipping owner data');
-      }
+      // If API succeeded, we only need user-specific data
+      // If API failed, we need to load everything via RPC
+      if (apiSnapshot) {
+        console.log('[loadIterationState] API data loaded - only loading user-specific data via RPC');
 
-      // Lazy load badges - only on badges page OR if on iteration/project page with wallet
-      if (currentPage === 'badges' && walletAddress) {
-        console.log('[loadIterationState] Loading badges (badges page) - minimal data only');
+        // Load user's vote data only (status flags already set from API)
+        if (walletAddress) {
+          loadTasks.push(loadUserVotes(juryContract, walletAddress));
+        }
+
+        // Load badges - only on badges page OR if on iteration/project page with wallet
+        if (currentPage === 'badges' && walletAddress) {
+          console.log('[loadIterationState] Loading badges (badges page) - minimal data only');
+          loadTasks.push(
+            loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(() => {})
+          );
+        } else if (isIterationLikePage && walletAddress) {
+          console.log('[loadIterationState] Loading badges (iteration/project page) - with voting data');
+          const badgesPromise = loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(badgeList => {
+            if (badgeList && badgeList.length > 0) {
+              return loadBadgesVotingData(publicProvider, badgeList);
+            }
+          });
+          loadTasks.push(badgesPromise);
+        }
+      } else {
+        // API failed - fall back to full RPC loading
+        console.log('[loadIterationState] API unavailable - falling back to full RPC loading');
+
+        // First, load voting status to get state flags
+        const statusResult = await loadVotingStatus(juryContract, walletAddress);
+
+        // Add remaining RPC tasks
         loadTasks.push(
-          loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(() => {})
+          // Load entity votes
+          loadEntityVotes(juryContract, statusResult.isActive, statusResult.votingEnded)
         );
-      } else if (isIterationLikePage && walletAddress) {
-        console.log('[loadIterationState] Loading badges (iteration/project page) - with voting data');
-        // Load minimal badge data first (uses cache if available)
-        const badgesPromise = loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(badgeList => {
-          // Then load voting data for community badges in current iteration
-          if (badgeList && badgeList.length > 0) {
-            return loadBadgesVotingData(publicProvider, badgeList);
-          }
-        });
-        loadTasks.push(badgesPromise);
-      } else {
-        console.log('[loadIterationState] Skipping badges');
-      }
 
-      // Lazy load vote counts - only on iteration page AND if active/ended
-      if (currentPage === 'iteration' && (statusFlags.isActive || statusFlags.votingEnded)) {
-        console.log('[loadIterationState] Loading vote counts (active/ended on iteration page)');
-        loadTasks.push(loadVoteCounts(juryContract));
-      } else {
-        console.log('[loadIterationState] Skipping vote counts');
+        // Lazy load projects - only on iteration and project pages
+        if (isIterationLikePage) {
+          console.log('[loadIterationState] Loading projects (iteration/project page)');
+          loadTasks.push(loadProjects(juryContract));
+        }
+
+        // Lazy load owner data - only on iteration page AND if owner
+        if (currentPage === 'iteration' && walletAddress && isOwner) {
+          console.log('[loadIterationState] Loading owner data (owner on iteration page)');
+          loadTasks.push(loadOwnerData(juryContract));
+        }
+
+        // Lazy load badges
+        if (currentPage === 'badges' && walletAddress) {
+          console.log('[loadIterationState] Loading badges (badges page) - minimal data only');
+          loadTasks.push(
+            loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(() => {})
+          );
+        } else if (isIterationLikePage && walletAddress) {
+          console.log('[loadIterationState] Loading badges (iteration/project page) - with voting data');
+          const badgesPromise = loadBadgesMinimal(walletAddress, publicProvider, allIterations).then(badgeList => {
+            if (badgeList && badgeList.length > 0) {
+              return loadBadgesVotingData(publicProvider, badgeList);
+            }
+          });
+          loadTasks.push(badgesPromise);
+        }
+
+        // Lazy load vote counts - only on iteration page AND if active/ended
+        if (currentPage === 'iteration' && (statusResult.isActive || statusResult.votingEnded)) {
+          console.log('[loadIterationState] Loading vote counts (active/ended on iteration page)');
+          loadTasks.push(loadVoteCounts(juryContract));
+        }
       }
 
       await Promise.all(loadTasks);

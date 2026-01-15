@@ -5,6 +5,7 @@ import { NETWORKS } from '~/constants/networks';
 import type { Iteration, IterationStatus } from '~/interfaces';
 import { getAllIterationIds, getIterationInfo, getRounds, getIterationMetadataCID, getJurySCInfo } from '~/utils/registry';
 import { metadataAPI } from '~/utils/metadata-api';
+import { iterationsAPI, type IterationSnapshot } from '~/utils/iterations-api';
 
 // ============================================================================
 // Types
@@ -237,13 +238,72 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
   const [iterationsLoading, setIterationsLoading] = useState<boolean>(true);
   const [iterationsError, setIterationsError] = useState<string | null>(null);
 
+  /**
+   * Transform API snapshot to Iteration object
+   */
+  const transformSnapshotToIteration = useCallback((snapshot: IterationSnapshot): Iteration => {
+    // Extract name from first project's metadata if available, or use default
+    const name = `Iteration #${snapshot.iterationId}`;
+
+    // Map juryState to IterationStatus
+    let status: IterationStatus;
+    if (snapshot.juryState === 'active') {
+      status = 'active';
+    } else if (snapshot.juryState === 'ended' || snapshot.juryState === 'locked') {
+      status = 'ended';
+    } else {
+      status = 'upcoming';
+    }
+
+    return {
+      iteration: snapshot.iterationId,
+      chainId: snapshot.chainId,
+      jurySC: snapshot.juryAddress,
+      pob: snapshot.pobAddress,
+      name,
+      version: '002',
+      deployBlockHint: snapshot.deployBlockHint,
+      round: snapshot.round,
+      votingMode: snapshot.votingMode,
+      status, // Include status from API juryState
+      prev_rounds: [], // API doesn't include previous rounds yet
+    };
+  }, []);
+
+  /**
+   * Load iterations from API, falling back to RPC on failure
+   */
   const refreshIterations = useCallback(async () => {
     setIterationsLoading(true);
     setIterationsError(null);
 
+    const enforceChainId = import.meta.env.VITE_CHAIN_ID ? Number(import.meta.env.VITE_CHAIN_ID) : null;
+
+    // Try API first
+    console.log('[Iterations] Trying API...');
     try {
-      // Check if VITE_CHAIN_ID is set to enforce a specific chain
-      const enforceChainId = import.meta.env.VITE_CHAIN_ID ? Number(import.meta.env.VITE_CHAIN_ID) : null;
+      const snapshots = await iterationsAPI.getAllIterations();
+
+      if (snapshots && snapshots.length > 0) {
+        // Filter by enforced chain if set
+        const filteredSnapshots = enforceChainId
+          ? snapshots.filter(s => s.chainId === enforceChainId)
+          : snapshots;
+
+        const apiIterations = filteredSnapshots.map(transformSnapshotToIteration);
+        apiIterations.sort((a, b) => b.iteration - a.iteration);
+        setIterations(apiIterations);
+        setIterationsLoading(false);
+        console.log('[Iterations] Loaded from API:', apiIterations.length);
+        return;
+      }
+      console.log('[Iterations] No snapshots from API, falling back to RPC');
+    } catch (apiErr) {
+      console.warn('[Iterations] API failed, falling back to RPC:', apiErr);
+    }
+
+    // Fall back to RPC
+    try {
       const supportedChainIds = enforceChainId
         ? [enforceChainId]
         : Object.keys(NETWORKS).map(Number);
@@ -352,7 +412,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       setIterationsError(err instanceof Error ? err.message : 'Failed to load');
       setIterationsLoading(false);
     }
-  }, []);
+  }, [transformSnapshotToIteration]);
 
   // Load iterations from PoBRegistry via RPC
   useEffect(() => {

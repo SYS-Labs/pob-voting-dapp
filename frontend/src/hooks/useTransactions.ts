@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Contract, JsonRpcSigner, ethers } from 'ethers';
+import { Contract, JsonRpcProvider, JsonRpcSigner, ethers } from 'ethers';
 import { JurySC_01ABI, PoB_01ABI, PoB_02ABI } from '~/abis';
 import type { Iteration, ParticipantRole } from '~/interfaces';
 import { ROLE_LABELS } from '~/constants/roles';
@@ -17,6 +17,7 @@ export function useTransactions(
   walletAddress: string | null,
   correctNetwork: boolean,
   chainId: number | null,
+  publicProvider: JsonRpcProvider | null,
 ) {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [txPendingHash, setTxPendingHash] = useState<string | null>(null);
@@ -32,6 +33,34 @@ export function useTransactions(
     }
     return true;
   }, [walletAddress, correctNetwork]);
+
+  /**
+   * Validate voting state via RPC before executing a vote or mint action.
+   * This ensures the action will succeed even if API data is stale.
+   */
+  const validateVotingState = useCallback(
+    async (requireActive = true) => {
+      if (!currentIteration || !publicProvider) {
+        throw new Error('Cannot validate: missing iteration or provider');
+      }
+
+      const jurySC = new Contract(currentIteration.jurySC, JurySC_01ABI, publicProvider);
+      const [isActive, votingEnded] = await Promise.all([
+        jurySC.isActive(),
+        jurySC.votingEnded()
+      ]);
+
+      if (requireActive && !isActive) {
+        throw new Error('Voting is not active. Please refresh the page.');
+      }
+      if (requireActive && votingEnded) {
+        throw new Error('Voting has ended. Please refresh the page.');
+      }
+
+      return { isActive, votingEnded };
+    },
+    [currentIteration, publicProvider]
+  );
 
   const runTransaction = useCallback(
     async (
@@ -107,6 +136,20 @@ export function useTransactions(
   const executeMint = useCallback(
     async (role: ParticipantRole, refreshCallback?: () => Promise<void>) => {
       if (!requireWallet() || !signer || !currentIteration) return;
+
+      // Pre-action RPC validation
+      // Community mint requires voting to be active
+      // Other roles can mint after voting ends
+      if (role === 'community') {
+        await validateVotingState(true); // Requires isActive
+      } else {
+        // DevRel, DAO HIC, Project can mint after voting ends
+        const { votingEnded } = await validateVotingState(false);
+        if (!votingEnded) {
+          throw new Error('You can only mint this badge after voting has ended.');
+        }
+      }
+
       const pobABI = getPoBContractABI(currentIteration.version);
       const contract = new Contract(currentIteration.pob, pobABI, signer);
 
@@ -140,12 +183,16 @@ export function useTransactions(
 
       await runTransaction(label, tx, refreshCallback);
     },
-    [requireWallet, signer, currentIteration, chainId, runTransaction],
+    [requireWallet, signer, currentIteration, chainId, runTransaction, validateVotingState],
   );
 
   const executeVote = useCallback(
     async (role: ParticipantRole, projectAddress: string, tokenId?: string, refreshCallback?: () => Promise<void>) => {
       if (!requireWallet() || !signer || !currentIteration) return;
+
+      // Pre-action RPC validation: voting must be active
+      await validateVotingState(true);
+
       const contract = new Contract(currentIteration?.jurySC, JurySC_01ABI, signer);
       const label = `Vote as ${ROLE_LABELS[role]}`;
 
@@ -169,7 +216,7 @@ export function useTransactions(
 
       await runTransaction(label, tx, refreshCallback);
     },
-    [requireWallet, signer, currentIteration, runTransaction],
+    [requireWallet, signer, currentIteration, runTransaction, validateVotingState],
   );
 
   const executeClaim = useCallback(

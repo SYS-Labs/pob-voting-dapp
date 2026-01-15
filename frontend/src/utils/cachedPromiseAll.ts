@@ -12,38 +12,22 @@ interface CachedCall {
   skipCache?: boolean; // For mutations or non-cacheable calls
 }
 
-const BLOCK_HEIGHT_STORAGE_KEY = 'pob_block_heights';
-
+/**
+ * Simplified RPC Cache
+ *
+ * - In-memory only (no localStorage persistence)
+ * - Block-height-based cache invalidation
+ * - In-flight request deduplication
+ *
+ * Note: localStorage persistence removed as part of API migration.
+ * Display data now comes from API indexer; this cache is only used
+ * for user-specific RPC calls (badges, roles, votes).
+ */
 class RPCCache {
   private cache = new Map<string, CacheEntry>();
   private currentBlock: { [chainId: number]: number } = {};
   private readonly maxAge = 60000; // 60 seconds max age
   private inFlight = new Map<string, Promise<any>>(); // Track in-flight requests
-
-  constructor() {
-    // Load block heights from localStorage on init
-    this.loadBlockHeights();
-  }
-
-  private loadBlockHeights(): void {
-    try {
-      const stored = localStorage.getItem(BLOCK_HEIGHT_STORAGE_KEY);
-      if (stored) {
-        this.currentBlock = JSON.parse(stored);
-        console.log('[RPCCache] Loaded block heights from localStorage:', this.currentBlock);
-      }
-    } catch (error) {
-      console.warn('[RPCCache] Failed to load block heights from localStorage:', error);
-    }
-  }
-
-  private saveBlockHeights(): void {
-    try {
-      localStorage.setItem(BLOCK_HEIGHT_STORAGE_KEY, JSON.stringify(this.currentBlock));
-    } catch (error) {
-      console.warn('[RPCCache] Failed to save block heights to localStorage:', error);
-    }
-  }
 
   get(chainId: number, key: string): any | null {
     const cacheKey = `${chainId}:${key}`;
@@ -92,9 +76,6 @@ class RPCCache {
       console.log(`[RPCCache] Block updated for chain ${chainId}: ${current} → ${blockNumber}`);
       this.currentBlock[chainId] = blockNumber;
 
-      // Persist to localStorage
-      this.saveBlockHeights();
-
       // Clean old entries for this chain
       const prefix = `${chainId}:`;
       for (const [key, entry] of this.cache.entries()) {
@@ -122,8 +103,6 @@ class RPCCache {
       this.cache.clear();
       this.currentBlock = {};
     }
-    // Update localStorage
-    this.saveBlockHeights();
   }
 }
 
