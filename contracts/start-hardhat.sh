@@ -63,6 +63,9 @@ rm -f .deployment-state.json
 echo "Deploying contracts to ${NETWORK} via scripts/deploy.js..."
 npx hardhat run scripts/deploy.js --network "${NETWORK}"
 
+echo "Deploying ForumOracle via scripts/deploy-forum.js..."
+npx hardhat run scripts/deploy-forum.js --network "${NETWORK}"
+
 if [[ "${NETWORK}" == "localhost" || "${NETWORK}" == "hardhat" ]]; then
   echo "Seeding local iteration data via scripts/seed-local.js..."
   npx hardhat run scripts/seed-local.js --network "${NETWORK}"
