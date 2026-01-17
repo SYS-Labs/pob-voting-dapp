@@ -59,7 +59,7 @@ const IterationSection = ({
             const isSelected = iteration.iteration === selectedIteration;
             const status = iterationStatuses[iteration.iteration];
             const statusBadge = getStatusBadge(status);
-            const needsRound = !iteration.round || !iteration.jurySC || !iteration.pob;
+            const needsFirstRound = !iteration.round || !iteration.jurySC || !iteration.pob;
 
             return (
               <IterationCard
@@ -67,9 +67,9 @@ const IterationSection = ({
                 iteration={iteration}
                 isActive={isSelected}
                 statusBadge={statusBadge}
-                onSelect={!needsRound ? () => onSelectIteration(iteration.iteration) : undefined}
-                onAddRound={needsRound && onAddRound ? () => onAddRound(iteration) : undefined}
-                disableLink={needsRound}
+                onSelect={!needsFirstRound ? () => onSelectIteration(iteration.iteration) : undefined}
+                onAddRound={onAddRound ? () => onAddRound(iteration) : undefined}
+                disableLink={needsFirstRound}
               />
             );
           })}
