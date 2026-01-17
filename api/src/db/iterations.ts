@@ -33,6 +33,15 @@ export interface IterationSnapshot {
   last_updated_at: number;
 }
 
+export interface PreviousRoundAPI {
+  round: number;
+  jurySC: string;
+  pob: string;
+  version: string;
+  deployBlockHint: number;
+  votingMode: number;
+}
+
 export interface IterationSnapshotAPI {
   iterationId: number;
   chainId: number;
@@ -56,6 +65,7 @@ export interface IterationSnapshotAPI {
   projects: ProjectSnapshot[];
   lastBlock: number;
   lastUpdatedAt: number;
+  prevRounds?: PreviousRoundAPI[];
 }
 
 export interface ProjectSnapshot {
@@ -280,10 +290,33 @@ export function createIterationsDatabase(db: Database.Database) {
   }
 
   /**
-   * Get all snapshots in API format
+   * Get all snapshots in API format (with previous rounds)
    */
   function getAllSnapshotsAPI(): IterationSnapshotAPI[] {
-    return getAllSnapshots().map(toAPIFormat);
+    const latestSnapshots = getAllSnapshots();
+
+    return latestSnapshots.map(snapshot => {
+      const apiSnapshot = toAPIFormat(snapshot);
+
+      // Get all rounds for this iteration and build prev_rounds
+      const allRounds = getAllRounds(snapshot.chain_id, snapshot.iteration_id);
+      const prevRounds: PreviousRoundAPI[] = allRounds
+        .filter(r => r.round < snapshot.round)
+        .map(r => ({
+          round: r.round,
+          jurySC: r.jury_address,
+          pob: r.pob_address,
+          version: '001', // Historical rounds
+          deployBlockHint: r.deploy_block_hint,
+          votingMode: r.voting_mode
+        }));
+
+      if (prevRounds.length > 0) {
+        apiSnapshot.prevRounds = prevRounds;
+      }
+
+      return apiSnapshot;
+    });
   }
 
   return {

@@ -13,6 +13,15 @@ export interface ProjectSnapshot {
   metadata: Record<string, unknown> | null;
 }
 
+export interface PreviousRoundSnapshot {
+  round: number;
+  jurySC: string;
+  pob: string;
+  version: string;
+  deployBlockHint: number;
+  votingMode: number;
+}
+
 export interface IterationSnapshot {
   iterationId: number;
   chainId: number;
@@ -36,6 +45,7 @@ export interface IterationSnapshot {
   projects: ProjectSnapshot[];
   lastBlock: number;
   lastUpdatedAt: number;
+  prevRounds?: PreviousRoundSnapshot[];
 }
 
 function getApiBaseUrl(): string {

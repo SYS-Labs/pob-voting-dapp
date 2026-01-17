@@ -255,6 +255,16 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       status = 'upcoming';
     }
 
+    // Map previous rounds from API
+    const prev_rounds = snapshot.prevRounds?.map(r => ({
+      round: r.round,
+      jurySC: r.jurySC,
+      pob: r.pob,
+      version: r.version,
+      deployBlockHint: r.deployBlockHint,
+      votingMode: r.votingMode,
+    })) || [];
+
     return {
       iteration: snapshot.iterationId,
       chainId: snapshot.chainId,
@@ -266,7 +276,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       round: snapshot.round,
       votingMode: snapshot.votingMode,
       status, // Include status from API juryState
-      prev_rounds: [], // API doesn't include previous rounds yet
+      prev_rounds,
     };
   }, []);
 
