@@ -42,6 +42,7 @@ export interface IterationSnapshot {
   totals: { devRel: number; daoHic: number; community: number };
   devRelAccount: string | null;
   daoHicVoters: string[];
+  daoHicIndividualVotes: Record<string, string>;  // voterAddress -> projectAddress
   projects: ProjectSnapshot[];
   lastBlock: number;
   lastUpdatedAt: number;

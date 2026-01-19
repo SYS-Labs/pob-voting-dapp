@@ -1,6 +1,7 @@
 interface FinalResultsPanelProps {
   winner: { projectAddress: string | null; hasWinner: boolean };
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
+  daoHicIndividualVotes?: Record<string, string>;
   votingMode: number;
   projects: { id: number; address: string; metadata?: any }[];
   projectScores?: { addresses: string[]; scores: string[]; totalPossible: string } | null;
@@ -11,6 +12,7 @@ interface FinalResultsPanelProps {
 const FinalResultsPanel = ({
   winner,
   entityVotes,
+  daoHicIndividualVotes = {},
   votingMode,
   projects,
   projectScores,
@@ -181,24 +183,58 @@ const FinalResultsPanel = ({
             <p className="font-semibold text-white">Participation:</p>
             {isOwner ? (
               // Owner: Show which entity voted for which project
-              [
-                { label: 'Community', address: entityVotes.community },
-                { label: 'DAO HIC', address: entityVotes.daoHic },
-                { label: 'DevRel', address: entityVotes.devRel },
-              ]
-                .sort((a, b) => a.label.localeCompare(b.label))
-                .map(({ label, address }) => (
-                  <p key={label}>
-                    • {label}:{' '}
-                    {address ? (
-                      <span className="italic">
-                        {getProjectLabel ? getProjectLabel(address) ?? address : address}
-                      </span>
-                    ) : (
-                      'Did not vote'
-                    )}
+              <>
+                {/* Community */}
+                <p>
+                  • Community:{' '}
+                  {entityVotes.community ? (
+                    <span className="italic">
+                      {getProjectLabel ? getProjectLabel(entityVotes.community) ?? entityVotes.community : entityVotes.community}
+                    </span>
+                  ) : (
+                    'Did not vote'
+                  )}
+                </p>
+                {/* DAO HIC - show individual votes if no consensus */}
+                {entityVotes.daoHic ? (
+                  <p>
+                    • DAO HIC:{' '}
+                    <span className="italic">
+                      {getProjectLabel ? getProjectLabel(entityVotes.daoHic) ?? entityVotes.daoHic : entityVotes.daoHic}
+                    </span>
                   </p>
-                ))
+                ) : Object.keys(daoHicIndividualVotes).length > 0 ? (
+                  <div>
+                    <p>• DAO HIC: <span className="text-yellow-400">No consensus</span></p>
+                    <div className="ml-4 mt-1 space-y-0.5">
+                      {(() => {
+                        // Get unique project addresses that received votes
+                        const uniqueProjects = [...new Set(Object.values(daoHicIndividualVotes).map(p => p.toLowerCase()))];
+                        return uniqueProjects.map(projectAddr => (
+                          <p key={projectAddr} className="text-[var(--pob-text-muted)]">
+                            → <span className="italic">
+                              {getProjectLabel ? getProjectLabel(projectAddr) ?? projectAddr : projectAddr}
+                            </span>
+                          </p>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                ) : (
+                  <p>• DAO HIC: Did not vote</p>
+                )}
+                {/* DevRel */}
+                <p>
+                  • DevRel:{' '}
+                  {entityVotes.devRel ? (
+                    <span className="italic">
+                      {getProjectLabel ? getProjectLabel(entityVotes.devRel) ?? entityVotes.devRel : entityVotes.devRel}
+                    </span>
+                  ) : (
+                    'Did not vote'
+                  )}
+                </p>
+              </>
             ) : (
               // Non-owner: Just list projects that received votes (without revealing which entity)
               Array.from(new Set([entityVotes.community, entityVotes.daoHic, entityVotes.devRel].filter(Boolean)))

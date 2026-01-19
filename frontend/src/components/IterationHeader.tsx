@@ -31,6 +31,7 @@ interface IterationHeaderProps {
   projectsLocked?: boolean;
   winner?: { projectAddress: string | null; hasWinner: boolean };
   entityVotes?: { devRel: string | null; daoHic: string | null; community: string | null };
+  daoHicIndividualVotes?: Record<string, string>;
   getProjectLabel?: (address: string | null) => string | null;
   isOwner?: boolean;
   walletAddress?: string | null;
@@ -55,6 +56,7 @@ const IterationHeader = ({
   projectsLocked,
   winner,
   entityVotes,
+  daoHicIndividualVotes,
   getProjectLabel,
   isOwner = false,
   walletAddress,
@@ -261,6 +263,7 @@ const IterationHeader = ({
         <FinalResultsPanel
           winner={winner}
           entityVotes={entityVotes}
+          daoHicIndividualVotes={daoHicIndividualVotes}
           votingMode={votingMode}
           projects={projects}
           projectScores={projectScores}

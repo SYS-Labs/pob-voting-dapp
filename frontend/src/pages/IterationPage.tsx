@@ -77,6 +77,7 @@ interface IterationPageProps {
   contractLocked: boolean;
   devRelAccount: string | null;
   daoHicVoters: string[];
+  daoHicIndividualVotes: Record<string, string>;
   winner: Winner;
   voteCounts: VoteCounts;
   totalCommunityVoters: number;
@@ -126,6 +127,7 @@ const IterationPage = ({
   contractLocked,
   devRelAccount,
   daoHicVoters,
+  daoHicIndividualVotes,
   winner,
   voteCounts,
   totalCommunityVoters,
@@ -272,6 +274,7 @@ const IterationPage = ({
           projectsLocked={projectsLocked}
           winner={winner}
           entityVotes={entityVotes}
+          daoHicIndividualVotes={daoHicIndividualVotes}
           getProjectLabel={getProjectLabel}
           isOwner={isOwner}
           walletAddress={walletAddress}

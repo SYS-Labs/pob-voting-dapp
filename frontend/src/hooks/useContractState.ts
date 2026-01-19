@@ -76,6 +76,7 @@ export function useContractState(
   const [projects, setProjects] = useState<Project[]>([]);
   const [devRelAccount, setDevRelAccount] = useState<string | null>(null);
   const [daoHicVoters, setDaoHicVoters] = useState<string[]>([]);
+  const [daoHicIndividualVotes, setDaoHicIndividualVotes] = useState<Record<string, string>>({});
   const [projectsLocked, setProjectsLocked] = useState<boolean>(false);
   const [contractLocked, setContractLocked] = useState<boolean>(false);
   const [voteCounts, setVoteCounts] = useState<{ devRel: number; daoHic: number; community: number }>({
@@ -136,6 +137,7 @@ export function useContractState(
     setHasLoadError(false);
     setDevRelAccount(null);
     setDaoHicVoters([]);
+    setDaoHicIndividualVotes({});
     setProjectsLocked(false);
     setContractLocked(false);
     setVoteCounts({ devRel: 0, daoHic: 0, community: 0 });
@@ -225,6 +227,7 @@ export function useContractState(
         // Owner data
         setDevRelAccount(snapshot.devRelAccount);
         setDaoHicVoters(snapshot.daoHicVoters);
+        setDaoHicIndividualVotes(snapshot.daoHicIndividualVotes || {});
 
         // Community voting is unlimited
         setTotalCommunityVoters(0);
@@ -355,6 +358,7 @@ export function useContractState(
         console.error('[loadOwnerData] Error:', error);
         setDevRelAccount(null);
         setDaoHicVoters([]);
+        setDaoHicIndividualVotes({});
       }
     },
     [publicProvider, selectedChainId, currentIteration],
@@ -607,6 +611,7 @@ export function useContractState(
         console.error('[loadVoteCounts] Error:', error);
         setVoteCounts({ devRel: 0, daoHic: 0, community: 0 });
         setDaoHicVoters([]);
+        setDaoHicIndividualVotes({});
         setTotalCommunityVoters(0);
       }
     },
@@ -1127,6 +1132,7 @@ export function useContractState(
     setProjects,
     devRelAccount,
     daoHicVoters,
+    daoHicIndividualVotes,
     projectsLocked,
     contractLocked,
     voteCounts,

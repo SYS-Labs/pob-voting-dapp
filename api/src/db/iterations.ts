@@ -28,6 +28,7 @@ export interface IterationSnapshot {
   community_count: number;
   devrel_account: string | null;
   daohic_voters: string | null;  // JSON array
+  daohic_individual_votes: string | null;  // JSON object: { voterAddress: projectAddress }
   projects: string | null;  // JSON array
   last_block: number;
   last_updated_at: number;
@@ -62,6 +63,7 @@ export interface IterationSnapshotAPI {
   totals: { devRel: number; daoHic: number; community: number };
   devRelAccount: string | null;
   daoHicVoters: string[];
+  daoHicIndividualVotes: Record<string, string>;  // voterAddress -> projectAddress
   projects: ProjectSnapshot[];
   lastBlock: number;
   lastUpdatedAt: number;
@@ -106,6 +108,7 @@ function toAPIFormat(row: IterationSnapshot): IterationSnapshotAPI {
     },
     devRelAccount: row.devrel_account,
     daoHicVoters: row.daohic_voters ? JSON.parse(row.daohic_voters) : [],
+    daoHicIndividualVotes: row.daohic_individual_votes ? JSON.parse(row.daohic_individual_votes) : {},
     projects: row.projects ? JSON.parse(row.projects) : [],
     lastBlock: row.last_block,
     lastUpdatedAt: row.last_updated_at
@@ -123,9 +126,9 @@ export function createIterationsDatabase(db: Database.Database) {
         deploy_block_hint, jury_state, start_time, end_time, voting_mode, projects_locked, contract_locked,
         winner_address, has_winner, devrel_vote, daohic_vote, community_vote,
         project_scores, devrel_count, daohic_count, community_count,
-        devrel_account, daohic_voters, projects, last_block, last_updated_at
+        devrel_account, daohic_voters, daohic_individual_votes, projects, last_block, last_updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(chain_id, iteration_id, round) DO UPDATE SET
         registry_address = excluded.registry_address,
         pob_address = excluded.pob_address,
@@ -148,6 +151,7 @@ export function createIterationsDatabase(db: Database.Database) {
         community_count = excluded.community_count,
         devrel_account = excluded.devrel_account,
         daohic_voters = excluded.daohic_voters,
+        daohic_individual_votes = excluded.daohic_individual_votes,
         projects = excluded.projects,
         last_block = excluded.last_block,
         last_updated_at = excluded.last_updated_at
@@ -178,6 +182,7 @@ export function createIterationsDatabase(db: Database.Database) {
       snapshot.community_count,
       snapshot.devrel_account,
       snapshot.daohic_voters,
+      snapshot.daohic_individual_votes,
       snapshot.projects,
       snapshot.last_block,
       snapshot.last_updated_at

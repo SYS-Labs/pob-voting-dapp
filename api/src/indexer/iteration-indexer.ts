@@ -33,6 +33,7 @@ const JURY_ABI = [
   'function locked() external view returns (bool)',
   'function devRelAccount() external view returns (address)',
   'function getDaoHicVoters() external view returns (address[])',
+  'function daoHicVoteOf(address voter) external view returns (address)',
   'function getDevRelEntityVote() external view returns (address)',
   'function getDaoHicEntityVote() external view returns (address)',
   'function getCommunityEntityVote() external view returns (address)',
@@ -208,6 +209,22 @@ class IterationIndexer {
         }
       }
 
+      // Fetch individual DAO HIC votes (which project each voter voted for)
+      const daoHicIndividualVotes: Record<string, string> = {};
+      if (daoHicVoters && daoHicVoters.length > 0) {
+        const votePromises = daoHicVoters.map(async (voter: string) => {
+          try {
+            const vote = await jurySC.daoHicVoteOf(voter);
+            if (vote && vote !== ethers.ZeroAddress) {
+              daoHicIndividualVotes[voter] = vote;
+            }
+          } catch {
+            // Voter may not have voted yet
+          }
+        });
+        await Promise.all(votePromises);
+      }
+
       // Get project addresses and metadata
       const projectAddresses = await this.getProjectAddresses(jurySC);
       const metadataCIDs = await this.getProjectMetadataCIDs(registry, chainId, round.jurySC, projectAddresses);
@@ -266,6 +283,7 @@ class IterationIndexer {
         community_count: Number(voteCounts[2]),
         devrel_account: devRelAccount && devRelAccount !== ethers.ZeroAddress ? devRelAccount : null,
         daohic_voters: JSON.stringify(daoHicVoters),
+        daohic_individual_votes: JSON.stringify(daoHicIndividualVotes),
         projects: JSON.stringify(projects),
         last_block: currentBlock,
         last_updated_at: Date.now()

@@ -99,6 +99,7 @@ function App() {
     projects,
     devRelAccount,
     daoHicVoters,
+    daoHicIndividualVotes,
     projectsLocked,
     contractLocked,
     voteCounts,
@@ -405,6 +406,7 @@ function App() {
                     contractLocked={contractLocked}
                     devRelAccount={devRelAccount}
                     daoHicVoters={daoHicVoters}
+                    daoHicIndividualVotes={daoHicIndividualVotes}
                     winner={winner}
                     voteCounts={voteCounts}
                     totalCommunityVoters={totalCommunityVoters}
