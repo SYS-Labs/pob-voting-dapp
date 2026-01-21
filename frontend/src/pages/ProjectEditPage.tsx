@@ -11,6 +11,7 @@ interface ProjectEditPageProps {
   projects: Project[];
   walletAddress: string | null;
   chainId: number | null;
+  iterationChainId: number | null;
   contractAddress: string | null;
   signer: JsonRpcSigner | null;
   projectsLocked: boolean;
@@ -20,6 +21,7 @@ const ProjectEditPage = ({
   projects,
   walletAddress,
   chainId,
+  iterationChainId,
   contractAddress,
   signer,
   projectsLocked,
@@ -57,7 +59,8 @@ const ProjectEditPage = ({
     projectsLocked
   );
 
-  const { registryAvailable, initializationComplete, registryOwner } = useRegistryStatus(chainId);
+  // Use iteration's chainId for registry status (not wallet's chainId)
+  const { registryAvailable, initializationComplete, registryOwner } = useRegistryStatus(iterationChainId);
 
   // Initialize form data when metadata loads
   useMemo(() => {
@@ -101,11 +104,19 @@ const ProjectEditPage = ({
     }
 
     const walletLower = walletAddress?.toLowerCase();
+    const isRegistryOwner = Boolean(registryOwner && walletLower === registryOwner?.toLowerCase());
+
+    // Owner bypass: when VITE_OWNER_METADATA_BYPASS is enabled, registry owner can edit any project
+    const ownerBypassEnabled = import.meta.env.VITE_OWNER_METADATA_BYPASS === 'true';
+    if (ownerBypassEnabled && isRegistryOwner) {
+      return { allowed: true };
+    }
+
     if (!initializationComplete) {
       if (!registryOwner) {
         return { allowed: false, reason: 'Loading registry owner' };
       }
-      if (walletLower !== registryOwner.toLowerCase()) {
+      if (!isRegistryOwner) {
         return { allowed: false, reason: 'Only registry owner can update during initialization' };
       }
       return { allowed: true };

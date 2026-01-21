@@ -182,7 +182,9 @@ export function useProjectMetadataManager(
       throw new Error('Missing required parameters');
     }
 
-    if (metadataLocked) {
+    // Owner bypass: when VITE_OWNER_METADATA_BYPASS is enabled, skip metadataLocked check
+    const ownerBypassEnabled = import.meta.env.VITE_OWNER_METADATA_BYPASS === 'true';
+    if (metadataLocked && !ownerBypassEnabled) {
       throw new Error('Metadata editing closed (voting started)');
     }
 

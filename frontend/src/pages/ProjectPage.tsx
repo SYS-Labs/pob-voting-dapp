@@ -82,7 +82,9 @@ const ProjectPage = ({
     return projects.find(p => p.address.toLowerCase() === projectAddress.toLowerCase()) ?? null;
   }, [projects, projectAddress]);
 
-  const { registryAvailable, initializationComplete, registryOwner } = useRegistryStatus(chainId);
+  // Use iteration's chainId for registry status (not wallet's chainId)
+  const iterationChainId = currentIteration?.chainId ?? null;
+  const { registryAvailable, initializationComplete, registryOwner } = useRegistryStatus(iterationChainId);
 
   // Auto-hide sidebar below 1024px breakpoint
   useEffect(() => {
@@ -201,8 +203,17 @@ const ProjectPage = ({
     if (!registryAvailable || initializationComplete === null) return false;
 
     const walletLower = walletAddress.toLowerCase();
+
+    // Owner bypass: when VITE_OWNER_METADATA_BYPASS is enabled, registry owner can edit any project
+    const ownerBypassEnabled = import.meta.env.VITE_OWNER_METADATA_BYPASS === 'true';
+    const isRegistryOwner = Boolean(registryOwner && walletLower === registryOwner.toLowerCase());
+
+    if (ownerBypassEnabled && isRegistryOwner) {
+      return true;
+    }
+
     if (!initializationComplete) {
-      return Boolean(registryOwner && walletLower === registryOwner.toLowerCase());
+      return isRegistryOwner;
     }
 
     if (projectsLocked) return false;

@@ -483,6 +483,7 @@ function App() {
                 projects={projects}
                 walletAddress={walletAddress}
                 chainId={chainId}
+                iterationChainId={currentIteration?.chainId ?? null}
                 contractAddress={currentIteration?.jurySC ?? null}
                 signer={signer}
                 projectsLocked={projectsLocked}
