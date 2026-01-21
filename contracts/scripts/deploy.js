@@ -16,10 +16,14 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   const chainId = Number(network.config.chainId);
 
-  const iteration = Number(process.env.POB_ITERATION || "1");
-  const pobName = process.env.POB_NAME || `Proof of Builders #${iteration}`;
-  const pobSymbol = process.env.POB_SYMBOL || `POB${iteration}`;
+  if (!process.env.POB_ITERATION || !process.env.POB_NAME || !process.env.POB_SYMBOL) {
+    throw new Error("Missing required env vars. Usage: POB_ITERATION=2 POB_NAME=\"Proof of Builders #2\" POB_SYMBOL=\"POB2\" npx hardhat run scripts/deploy.js --network testnet");
+  }
+  const iteration = Number(process.env.POB_ITERATION);
+  const pobName = process.env.POB_NAME;
+  const pobSymbol = process.env.POB_SYMBOL;
   const juryOwner = process.env.JURY_OWNER || deployer.address;
+  const deployRegistry = process.env.DEPLOY_REGISTRY === "true";
 
   console.log("╔════════════════════════════════════════════╗");
   console.log("║   CLEAN ITERATION DEPLOYMENT               ║");
@@ -34,7 +38,11 @@ async function main() {
   console.log("Admin Owner:   ", juryOwner);
   console.log("");
   console.log("This will deploy:");
-  console.log("  1. PoBRegistry (proxy + implementation)");
+  if (deployRegistry) {
+    console.log("  1. PoBRegistry (proxy + implementation)");
+  } else {
+    console.log("  1. PoBRegistry - SKIPPED (set DEPLOY_REGISTRY=true to deploy)");
+  }
   console.log("  2. PoB_02 (NFT contract)");
   console.log("  3. JurySC_02 (proxy + implementation)");
   console.log("  4. Link PoB → JurySC");
@@ -43,29 +51,36 @@ async function main() {
   await new Promise(resolve => setTimeout(resolve, 5000));
   console.log("");
 
-  let registryAddress, pobAddress, juryAddress;
+  let registryAddress, registryImpl, pobAddress, juryAddress;
 
   // ═══════════════════════════════════════════════════════════
-  // STEP 1: Deploy PoBRegistry
+  // STEP 1: Deploy PoBRegistry (optional)
   // ═══════════════════════════════════════════════════════════
-  console.log("┌─────────────────────────────────────────┐");
-  console.log("│ STEP 1: Deploying PoBRegistry           │");
-  console.log("└─────────────────────────────────────────┘");
+  if (deployRegistry) {
+    console.log("┌─────────────────────────────────────────┐");
+    console.log("│ STEP 1: Deploying PoBRegistry           │");
+    console.log("└─────────────────────────────────────────┘");
 
-  const PoBRegistry = await ethers.getContractFactory("PoBRegistry");
-  console.log("Deploying proxy...");
-  const registry = await upgrades.deployProxy(
-    PoBRegistry,
-    [deployer.address],
-    { kind: "uups", initializer: "initialize" }
-  );
-  await registry.waitForDeployment();
-  registryAddress = await registry.getAddress();
+    const PoBRegistry = await ethers.getContractFactory("PoBRegistry");
+    console.log("Deploying proxy...");
+    const registry = await upgrades.deployProxy(
+      PoBRegistry,
+      [deployer.address],
+      { kind: "uups", initializer: "initialize" }
+    );
+    await registry.waitForDeployment();
+    registryAddress = await registry.getAddress();
 
-  const registryImpl = await upgrades.erc1967.getImplementationAddress(registryAddress);
-  console.log("✓ Registry Proxy:", registryAddress);
-  console.log("  Implementation:", registryImpl);
-  console.log("");
+    registryImpl = await upgrades.erc1967.getImplementationAddress(registryAddress);
+    console.log("✓ Registry Proxy:", registryAddress);
+    console.log("  Implementation:", registryImpl);
+    console.log("");
+  } else {
+    console.log("┌─────────────────────────────────────────┐");
+    console.log("│ STEP 1: PoBRegistry - SKIPPED           │");
+    console.log("└─────────────────────────────────────────┘");
+    console.log("");
+  }
 
   // ═══════════════════════════════════════════════════════════
   // STEP 2: Deploy PoB_02
@@ -134,7 +149,9 @@ async function main() {
   console.log("║          DEPLOYMENT COMPLETE ✓             ║");
   console.log("╚════════════════════════════════════════════╝");
   console.log("");
-  console.log("PoBRegistry:  ", registryAddress);
+  if (deployRegistry) {
+    console.log("PoBRegistry:  ", registryAddress);
+  }
   console.log("PoB_02:       ", pobAddress);
   console.log("JurySC_02:    ", juryAddress);
   console.log("Admin:        ", juryOwner);
@@ -147,10 +164,6 @@ async function main() {
     iteration,
     timestamp: new Date().toISOString(),
     contracts: {
-      PoBRegistry: {
-        proxy: registryAddress,
-        implementation: registryImpl
-      },
       PoB_02: pobAddress,
       JurySC_02: {
         proxy: juryAddress,
@@ -160,6 +173,13 @@ async function main() {
     owner: juryOwner,
     deployer: deployer.address
   };
+
+  if (deployRegistry) {
+    deploymentInfo.contracts.PoBRegistry = {
+      proxy: registryAddress,
+      implementation: registryImpl
+    };
+  }
 
   const filename = `deployment-iteration-${iteration}-${network.name}-${Date.now()}.json`;
   fs.writeFileSync(filename, JSON.stringify(deploymentInfo, null, 2));
@@ -183,18 +203,17 @@ async function main() {
     console.log("");
   }
 
-  console.log("UPDATE THESE FILES WITH REGISTRY ADDRESS:");
-  console.log("  Registry Proxy:", registryAddress);
-  console.log("");
-  console.log("Files to update:");
-  console.log("  - contracts/scripts/deploy.js (line 179)");
-  console.log("  - frontend/src/utils/registry.ts (line 14)");
-  console.log("  - api/src/services/tx-verifier.ts (line 22)");
-  console.log("  - contracts/scripts/migrate-to-registry.js (line 34)");
-  console.log("");
+  if (deployRegistry) {
+    console.log("UPDATE THESE FILES WITH REGISTRY ADDRESS:");
+    console.log("  Registry Proxy:", registryAddress);
+    console.log("");
+    console.log("Files to update:");
+    console.log("  - frontend/src/utils/registry.ts");
+    console.log("  - api/src/services/tx-verifier.ts");
+    console.log("");
+  }
   console.log("NEXT STEPS:");
-  console.log("  1. Update config files with registry address above");
-  console.log("  2. Register iteration/round in registry separately");
+  console.log("  1. Register iteration/round in registry separately");
   console.log("");
 }
 

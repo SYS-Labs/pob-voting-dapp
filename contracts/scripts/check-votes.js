@@ -4,33 +4,46 @@ import fs from "fs";
 import path from "path";
 
 /**
- * Script to check voting status for a given iteration
+ * Script to check voting status for an iteration
  *
  * Usage:
- *   # Check current round (top-level)
+ *   # Basic usage (testnet) - check latest round
  *   CHAIN_ID=5700 ITERATION=1 node scripts/check-votes.js
  *
- *   # Check specific round (searches current + prev_rounds)
- *   CHAIN_ID=5700 ITERATION=1 ROUND=1 node scripts/check-votes.js
+ *   # Check specific round
+ *   CHAIN_ID=5700 ITERATION=1 ROUND=2 node scripts/check-votes.js
+ *
+ *   # Mainnet
+ *   CHAIN_ID=57 ITERATION=1 node scripts/check-votes.js
+ *
+ *   # Local network
+ *   CHAIN_ID=31337 ITERATION=1 node scripts/check-votes.js
  *
  *   # Force check with specific voting mode (0=CONSENSUS, 1=WEIGHTED)
- *   VOTING_MODE=0 ITERATION=1 node scripts/check-votes.js
- *   VOTING_MODE=1 ITERATION=1 node scripts/check-votes.js
+ *   CHAIN_ID=5700 ITERATION=1 VOTING_MODE=1 node scripts/check-votes.js
  *
- *   # With custom iterations file
- *   ITERATIONS_FILE=../frontend/public/iterations.json ITERATION=1 node scripts/check-votes.js
- *
- * Note: Past rounds are stored in the prev_rounds array. Without ROUND parameter,
- * the script checks the current round (top-level). With ROUND parameter, it searches
- * both current and prev_rounds.
+ *   # Custom API URL (for project names)
+ *   API_URL=http://localhost:4000 ITERATION=1 node scripts/check-votes.js
  */
 
 const CHAIN_ID = Number(process.env.CHAIN_ID || 5700);
 const ITERATION_NUMBER = Number(process.env.ITERATION || 1);
 const ROUND_NUMBER = process.env.ROUND ? Number(process.env.ROUND) : undefined;
 const FORCED_VOTING_MODE = process.env.VOTING_MODE !== undefined ? Number(process.env.VOTING_MODE) : undefined;
-const ITERATIONS_FILE = process.env.ITERATIONS_FILE || '../frontend/public/iterations.json';
-const PROJECTS_FILE = process.env.PROJECTS_FILE || '../frontend/public/projects.json';
+const API_BASE_URL = process.env.API_URL || 'https://pob-api.syscoin.org';
+
+// Registry contract addresses per chain
+const REGISTRY_ADDRESSES = {
+  57: '', // Mainnet - TODO: deploy
+  5700: '0xA985cE400afea8eEf107c24d879c8c777ece1a8a',
+  31337: '0xab180957A96821e90C0114292DDAfa9E9B050d65',
+};
+
+// Registry ABI (minimal)
+const REGISTRY_ABI = [
+  'function getIteration(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 chainId, uint256 roundCount, bool exists))',
+  'function getRounds(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 roundId, address jurySC, uint256 deployBlockHint, bool exists)[])',
+];
 
 // Vote weights per entity (customize as needed)
 const VOTE_WEIGHTS = {
@@ -61,81 +74,49 @@ function formatAddress(addr) {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
+/**
+ * Fetch project metadata from API to get project names
+ * Returns a map of project address (lowercase) -> metadata
+ */
+async function fetchProjectMetadataFromAPI(chainId, iterationId) {
+  try {
+    const url = `${API_BASE_URL}/api/iterations/${chainId}/${iterationId}`;
+    log(`Fetching project names from API...`, 'dim');
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      log(`API request failed: ${response.status}`, 'dim');
+      return new Map();
+    }
+
+    const data = await response.json();
+    const iteration = data.iteration;
+
+    if (!iteration) {
+      log(`Iteration not found in API`, 'dim');
+      return new Map();
+    }
+
+    // Build map of project address -> metadata
+    const metadataMap = new Map();
+    for (const project of iteration.projects || []) {
+      if (project.address && project.metadata) {
+        metadataMap.set(project.address.toLowerCase(), project.metadata);
+      }
+    }
+
+    log(`Found ${metadataMap.size} project(s) with metadata`, 'dim');
+    return metadataMap;
+  } catch (error) {
+    log(`Failed to fetch from API: ${error.message}`, 'dim');
+    return new Map();
+  }
+}
+
 async function main() {
   log('\n═══════════════════════════════════════════════════════', 'bright');
   log('       Proof-of-Builders Voting Report', 'bright');
   log('═══════════════════════════════════════════════════════\n', 'bright');
-
-  // Load iterations config
-  const iterationsPath = path.join(process.cwd(), ITERATIONS_FILE);
-  if (!fs.existsSync(iterationsPath)) {
-    throw new Error(`Iterations file not found: ${iterationsPath}`);
-  }
-
-  const iterations = JSON.parse(fs.readFileSync(iterationsPath, 'utf8'));
-
-  // Find base iteration by iteration number and chainId
-  const baseIteration = iterations.find(it =>
-    it.iteration === ITERATION_NUMBER &&
-    it.chainId === CHAIN_ID
-  );
-
-  if (!baseIteration) {
-    throw new Error(`Iteration ${ITERATION_NUMBER} on chain ${CHAIN_ID} not found in ${ITERATIONS_FILE}`);
-  }
-
-  let iteration;
-  if (ROUND_NUMBER !== undefined) {
-    // Check if requested round is the current round (top-level)
-    if (baseIteration.round === ROUND_NUMBER) {
-      iteration = baseIteration;
-    } else if (baseIteration.prev_rounds) {
-      // Search in previous rounds
-      const prevRound = baseIteration.prev_rounds.find(r => r.round === ROUND_NUMBER);
-      if (prevRound) {
-        // Merge prev_round data with base iteration data
-        iteration = {
-          ...baseIteration,
-          ...prevRound,
-          name: `${baseIteration.name} - Round ${prevRound.round}`,
-        };
-      }
-    }
-
-    if (!iteration) {
-      const availableRounds = [
-        baseIteration.round,
-        ...(baseIteration.prev_rounds || []).map(r => r.round)
-      ].filter(r => r !== undefined).join(', ');
-      throw new Error(
-        `Round ${ROUND_NUMBER} not found for Iteration ${ITERATION_NUMBER} on chain ${CHAIN_ID}. ` +
-        `Available rounds: ${availableRounds}`
-      );
-    }
-  } else {
-    // No round specified, use current round (top-level)
-    iteration = baseIteration;
-  }
-
-  log(`Iteration: ${iteration.name}`, 'cyan');
-  if (iteration.round !== undefined) {
-    log(`Round: ${iteration.round}`, 'cyan');
-  }
-  log(`Chain ID: ${iteration.chainId}`, 'cyan');
-  log(`Jury Contract: ${iteration.jurySC}`, 'cyan');
-  log(`Deploy Block: ${iteration.deployBlockHint}`, 'dim');
-
-  // Load project metadata
-  const projectsPath = path.join(process.cwd(), PROJECTS_FILE);
-  const projectMetadata = {};
-  if (fs.existsSync(projectsPath)) {
-    const projects = JSON.parse(fs.readFileSync(projectsPath, 'utf8'));
-    projects
-      .filter(p => p.chainId === CHAIN_ID)
-      .forEach(p => {
-        projectMetadata[p.account.toLowerCase()] = p;
-      });
-  }
 
   // Get RPC URL for the chain
   let rpcUrl;
@@ -143,8 +124,6 @@ async function main() {
     rpcUrl = 'https://rpc.tanenbaum.io';
   } else if (CHAIN_ID === 57) {
     rpcUrl = 'https://rpc.syscoin.org';
-  } else if (CHAIN_ID === 274) {
-    rpcUrl = 'https://rpc.zksys-devnet.zeeve.online';
   } else if (CHAIN_ID === 31337) {
     rpcUrl = 'http://127.0.0.1:8547';
   } else {
@@ -152,14 +131,59 @@ async function main() {
   }
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+  // Get registry address for this chain
+  const registryAddress = REGISTRY_ADDRESSES[CHAIN_ID];
+  if (!registryAddress) {
+    throw new Error(`No registry address configured for chain ${CHAIN_ID}`);
+  }
+
+  // Connect to registry and fetch iteration data
+  const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
+
+  log(`Fetching iteration ${ITERATION_NUMBER} from registry...`, 'dim');
+
+  const [iterationInfo, rounds] = await Promise.all([
+    registry.getIteration(ITERATION_NUMBER),
+    registry.getRounds(ITERATION_NUMBER),
+  ]);
+
+  if (!rounds || rounds.length === 0) {
+    throw new Error(`No rounds found for iteration ${ITERATION_NUMBER}`);
+  }
+
+  // Select round: use specified ROUND_NUMBER or latest (highest roundId)
+  let selectedRound;
+  if (ROUND_NUMBER !== undefined) {
+    selectedRound = rounds.find(r => Number(r.roundId) === ROUND_NUMBER);
+    if (!selectedRound) {
+      const availableRounds = rounds.map(r => Number(r.roundId)).join(', ');
+      throw new Error(`Round ${ROUND_NUMBER} not found. Available rounds: ${availableRounds}`);
+    }
+  } else {
+    // Get latest round (highest roundId)
+    selectedRound = rounds.reduce((latest, r) =>
+      Number(r.roundId) > Number(latest.roundId) ? r : latest
+    );
+  }
+
+  const jurySCAddress = selectedRound.jurySC;
+  const deployBlockHint = Number(selectedRound.deployBlockHint);
+  const roundId = Number(selectedRound.roundId);
+
+  log(`Iteration: ${ITERATION_NUMBER}`, 'cyan');
+  log(`Round: ${roundId}${ROUND_NUMBER === undefined ? ' (latest)' : ''}`, 'cyan');
+  log(`Chain ID: ${CHAIN_ID}`, 'cyan');
+  log(`Jury Contract: ${jurySCAddress}`, 'cyan');
+  log(`Deploy Block: ${deployBlockHint}`, 'dim');
   log(`Connected to: ${rpcUrl}\n`, 'dim');
 
   // Load contract ABIs
   const JurySC_ABI = JSON.parse(
-    fs.readFileSync(path.join(process.cwd(), '../frontend/src/abis/JurySC_01.json'), 'utf8')
+    fs.readFileSync(path.join(process.cwd(), '../frontend/src/abis/JurySC_02_v001.json'), 'utf8')
   );
 
-  const juryContract = new ethers.Contract(iteration.jurySC, JurySC_ABI, provider);
+  const juryContract = new ethers.Contract(jurySCAddress, JurySC_ABI, provider);
 
   // Get contract state
   const [
@@ -217,11 +241,14 @@ async function main() {
   }
   log('');
 
+  // Fetch project metadata from API (for names)
+  const projectMetadata = await fetchProjectMetadataFromAPI(CHAIN_ID, ITERATION_NUMBER);
+
   // Load projects
   const projects = [];
   for (let i = 1; i <= projectCount; i++) {
     const address = await juryContract.projectAddress(i);
-    const metadata = projectMetadata[address.toLowerCase()];
+    const metadata = projectMetadata.get(address.toLowerCase());
     projects.push({
       id: i,
       address,
@@ -244,9 +271,9 @@ async function main() {
 
   const currentBlock = await provider.getBlockNumber();
   const [devRelLogs, daoHicLogs, communityLogs] = await Promise.all([
-    juryContract.queryFilter(juryContract.filters.VotedDevRel(), iteration.deployBlockHint, 'latest'),
-    juryContract.queryFilter(juryContract.filters.VotedDaoHic(), iteration.deployBlockHint, 'latest'),
-    juryContract.queryFilter(juryContract.filters.VotedCommunity(), iteration.deployBlockHint, 'latest'),
+    juryContract.queryFilter(juryContract.filters.VotedDevRel(), deployBlockHint, 'latest'),
+    juryContract.queryFilter(juryContract.filters.VotedDaoHic(), deployBlockHint, 'latest'),
+    juryContract.queryFilter(juryContract.filters.VotedCommunity(), deployBlockHint, 'latest'),
   ]);
 
   const allVoteEvents = [
@@ -255,7 +282,7 @@ async function main() {
     ...communityLogs.map(log => ({ ...log, voterType: 'Community' })),
   ].sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
 
-  log(`Found ${allVoteEvents.length} vote events (scanning blocks ${iteration.deployBlockHint} → ${currentBlock})`, 'cyan');
+  log(`Found ${allVoteEvents.length} vote events (scanning blocks ${deployBlockHint} → ${currentBlock})`, 'cyan');
   log(`  DevRel: ${devRelLogs.length}`, 'dim');
   log(`  DAO_HIC: ${daoHicLogs.length}`, 'dim');
   log(`  Community: ${communityLogs.length}`, 'dim');
