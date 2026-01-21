@@ -170,41 +170,23 @@ export async function checkAuthorization(
         throw new Error('Project address required for project metadata');
       }
 
-      // Check 1: signer must be the project address
-      if (signer.toLowerCase() !== projectAddress.toLowerCase()) {
-        logger.warn('Authorization failed: signer != project address', {
+      // Check if signer is registry owner
+      const owner = await registry.owner();
+      const isOwner = signer.toLowerCase() === owner.toLowerCase();
+      const isProjectOwner = signer.toLowerCase() === projectAddress.toLowerCase();
+
+      // Signer must be the project address OR registry owner
+      // Contract handles all other checks (projectsLocked, isRegisteredProject, etc.)
+      if (!isProjectOwner && !isOwner) {
+        logger.warn('Authorization failed: signer is neither project address nor registry owner', {
           signer,
-          projectAddress
+          projectAddress,
+          owner
         });
         return false;
       }
 
-      // Check 2: project must be registered in JurySC
-      const juryContract = new ethers.Contract(jurySC, JURYSC_ABI, provider);
-      const isRegistered = await juryContract.isRegisteredProject(projectAddress);
-
-      if (!isRegistered) {
-        logger.warn('Authorization failed: project not registered in JurySC', {
-          chainId,
-          jurySC,
-          projectAddress
-        });
-        return false;
-      }
-
-      // Check 3: metadata editing window must still be open
-      const projectsLocked = await juryContract.projectsLocked();
-
-      if (projectsLocked) {
-        logger.warn('Authorization failed: metadata editing closed (voting started)', {
-          chainId,
-          jurySC,
-          projectAddress
-        });
-        return false;
-      }
-
-      logger.info('Project authorized', { signer, projectAddress, chainId, jurySC });
+      logger.info('Project authorized', { signer, projectAddress, chainId, jurySC, isOwner, isProjectOwner });
       return true;
 
     } else {
