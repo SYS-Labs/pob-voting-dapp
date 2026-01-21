@@ -208,3 +208,16 @@ CREATE TABLE IF NOT EXISTS iteration_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_snapshots_chain_iter ON iteration_snapshots(chain_id, iteration_id);
 CREATE INDEX IF NOT EXISTS idx_snapshots_updated ON iteration_snapshots(last_updated_at);
+
+-- Generic retry tracking - track failed operations to avoid retry storms
+-- key format: "module:action:identifier" (e.g., "ipfs:fetch:bafkrei...", "tx:send:0x...")
+-- Uses exponential backoff: 5min -> 30min -> 2h -> 24h (configurable per module)
+CREATE TABLE IF NOT EXISTS retry_tracker (
+  key TEXT PRIMARY KEY,
+  attempt_count INTEGER NOT NULL DEFAULT 1,
+  last_attempt_at INTEGER NOT NULL,
+  next_retry_at INTEGER NOT NULL,
+  last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_retry_tracker_next ON retry_tracker(next_retry_at);

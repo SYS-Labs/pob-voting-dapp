@@ -11,6 +11,8 @@ import { logger } from '../utils/logger.js';
 import { initDatabase } from '../db/init.js';
 import { createIterationsDatabase, type JuryState, type ProjectSnapshot } from '../db/iterations.js';
 import { createMetadataDatabase } from '../db/metadata.js';
+import { createRetryTracker } from '../db/retry-tracker.js';
+import { IPFSService } from '../services/ipfs.js';
 import { NETWORKS } from '../constants/networks.js';
 
 // Minimal ABIs for contract calls
@@ -56,6 +58,8 @@ class IterationIndexer {
   private db: Database.Database;
   private iterationsDb: ReturnType<typeof createIterationsDatabase>;
   private metadataDb: ReturnType<typeof createMetadataDatabase>;
+  private retryTracker: ReturnType<typeof createRetryTracker>;
+  private ipfsService: IPFSService;
   private providers: Map<number, JsonRpcProvider> = new Map();
   private isRunning = false;
 
@@ -64,6 +68,8 @@ class IterationIndexer {
     this.db = initDatabase(path);
     this.iterationsDb = createIterationsDatabase(this.db);
     this.metadataDb = createMetadataDatabase(this.db);
+    this.retryTracker = createRetryTracker(this.db);
+    this.ipfsService = new IPFSService();
 
     // Initialize providers for each network
     for (const [chainId, config] of Object.entries(NETWORKS)) {
@@ -75,6 +81,43 @@ class IterationIndexer {
       if (config.registryAddress) {
         this.providers.set(id, new JsonRpcProvider(config.rpcUrl));
       }
+    }
+  }
+
+  /**
+   * Fetch metadata from IPFS and cache it, with retry tracking
+   * Returns null if fetch fails or retry is not yet allowed
+   */
+  private async fetchAndCacheMetadata(cid: string): Promise<Record<string, unknown> | null> {
+    // Check if we should retry this CID
+    if (!this.retryTracker.shouldRetry('ipfs', 'fetch', cid)) {
+      return null; // Too soon to retry
+    }
+
+    try {
+      const data = await this.ipfsService.fetchJSON(cid);
+
+      // Cache the fetched content
+      this.metadataDb.cacheIPFSContent(cid, JSON.stringify(data));
+
+      // Clear any failure record on success
+      this.retryTracker.recordSuccess('ipfs', 'fetch', cid);
+
+      logger.info('Fetched and cached IPFS metadata', { cid });
+      return data as Record<string, unknown>;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.retryTracker.recordFailure('ipfs', 'fetch', cid, errorMsg);
+
+      const record = this.retryTracker.getRecord('ipfs', 'fetch', cid);
+      logger.warn('Failed to fetch IPFS metadata', {
+        cid,
+        error: errorMsg,
+        attemptCount: record?.attempt_count,
+        nextRetryAt: record?.next_retry_at ? new Date(record.next_retry_at).toISOString() : null
+      });
+
+      return null;
     }
   }
 
@@ -229,13 +272,14 @@ class IterationIndexer {
       const projectAddresses = await this.getProjectAddresses(jurySC);
       const metadataCIDs = await this.getProjectMetadataCIDs(registry, chainId, round.jurySC, projectAddresses);
 
-      // Build project snapshots with cached metadata
+      // Build project snapshots with metadata (cached or fetched)
       const projects: ProjectSnapshot[] = [];
       for (const addr of projectAddresses) {
         const cid = metadataCIDs.get(addr) || null;
         let metadata: Record<string, unknown> | null = null;
 
         if (cid) {
+          // First check cache
           const cached = this.metadataDb.getCachedIPFSContent(cid);
           if (cached) {
             try {
@@ -243,6 +287,9 @@ class IterationIndexer {
             } catch {
               // Invalid JSON in cache
             }
+          } else {
+            // Not cached - try to fetch if retry is allowed
+            metadata = await this.fetchAndCacheMetadata(cid);
           }
         }
 
