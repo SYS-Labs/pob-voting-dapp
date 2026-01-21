@@ -168,20 +168,18 @@ export function useContractState(
 
         // Apply API data to state
 
-        // Projects
-        if (snapshot.projects && snapshot.projects.length > 0) {
-          const apiProjects: Project[] = snapshot.projects.map((p, index) => ({
-            id: index + 1,
-            address: p.address,
-            metadata: (p.metadata as unknown as ProjectMetadata) || {
-              name: `Project #${index + 1}`,
-              account: p.address,
-              chainId: snapshot.chainId,
-            },
-          }));
-          setProjects(apiProjects);
-          console.log(`[loadFromAPI] Loaded ${apiProjects.length} projects from API`);
-        }
+        // Projects - always set, even if empty (to clear previous iteration's projects)
+        const apiProjects: Project[] = (snapshot.projects || []).map((p, index) => ({
+          id: index + 1,
+          address: p.address,
+          metadata: (p.metadata as unknown as ProjectMetadata) || {
+            name: `Project #${index + 1}`,
+            account: p.address,
+            chainId: snapshot.chainId,
+          },
+        }));
+        setProjects(apiProjects);
+        console.log(`[loadFromAPI] Loaded ${apiProjects.length} projects from API`);
 
         // Flags
         setProjectsLocked(snapshot.projectsLocked);

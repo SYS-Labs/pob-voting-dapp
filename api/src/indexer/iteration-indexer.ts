@@ -17,7 +17,7 @@ import { NETWORKS } from '../constants/networks.js';
 const REGISTRY_ABI = [
   'function getAllIterationIds() external view returns (uint256[])',
   'function getIteration(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 chainId, string name, uint256 roundCount))',
-  'function getRounds(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 roundId, address jurySC, uint256 deployBlockHint)[])',
+  'function getRounds(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 roundId, address jurySC, uint256 deployBlockHint, bool exists)[])',
   'function getProjectMetadata(uint256 chainId, address jurySC, address project) external view returns (string)',
   'function batchGetProjectMetadata(uint256 chainId, address jurySC, address[] projects) external view returns (string[])'
 ];
