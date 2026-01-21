@@ -1,11 +1,10 @@
 import { useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import type { JsonRpcSigner } from 'ethers';
 import type { Project } from '~/interfaces';
 import { useProjectMetadataManager, type ProjectMetadataForm } from '~/hooks/useProjectMetadataManager';
 import { useRegistryStatus } from '~/hooks/useRegistryStatus';
-import { isValidYouTubeUrl, isValidUrl, isUserRejectedError, formatCID, getExplorerTxLink, getMetadataCidUrl } from '~/utils';
-import { ProgressSpinner } from '~/components/ProgressSpinner';
+import { isValidYouTubeUrl, isValidUrl, isUserRejectedError } from '~/utils';
 
 interface ProjectEditPageProps {
   projects: Project[];
@@ -27,6 +26,7 @@ const ProjectEditPage = ({
   projectsLocked,
 }: ProjectEditPageProps) => {
   const { iterationNumber, projectAddress } = useParams<{ iterationNumber: string; projectAddress: string }>();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState<ProjectMetadataForm>({
     name: '',
     yt_vid: '',
@@ -46,11 +46,6 @@ const ProjectEditPage = ({
     metadata,
     isSubmitting,
     submitMetadata,
-    currentCID,
-    currentConfirmations,
-    pendingCID,
-    pendingTxHash,
-    pendingConfirmations,
   } = useProjectMetadataManager(
     project?.address || null,
     chainId,
@@ -151,6 +146,8 @@ const ProjectEditPage = ({
 
     try {
       await submitMetadata(formData);
+      // Transaction sent successfully, navigate back to project page to see update status
+      navigate(`/iteration/${iterationNumber}/project/${projectAddress}`);
     } catch (err) {
       if (isUserRejectedError(err)) {
         return;
@@ -228,64 +225,6 @@ const ProjectEditPage = ({
           <div className="pob-pane__heading">
             <h2 className="pob-pane__title">Edit Project</h2>
           </div>
-
-          <p className="pob-pane__meta">Metadata Status</p>
-          <div className="pob-stack--dense">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[var(--pob-text-muted)]">Current CID:</span>
-              <div className="flex items-center gap-2">
-                <code className="pob-mono text-[var(--pob-text-muted)]">
-                  {currentCID ? formatCID(currentCID) : 'Not set'}
-                </code>
-                {currentCID && currentConfirmations >= 5 && (
-                  <span
-                    className="pob-pill"
-                    style={{
-                      backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                      color: 'rgb(16, 185, 129)',
-                      border: '1px solid rgba(16, 185, 129, 0.3)'
-                    }}
-                  >
-                    ✓ {currentConfirmations}/5
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {pendingCID && (
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[var(--pob-text-muted)]">Pending Update:</span>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={getMetadataCidUrl(pendingCID)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[var(--pob-primary)] hover:underline"
-                    title={`View via API: ${pendingCID}`}
-                  >
-                    📦 IPFS
-                  </a>
-                  {pendingTxHash && chainId && (
-                    <a
-                      href={getExplorerTxLink(chainId, pendingTxHash)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--pob-primary)] hover:underline"
-                      title={`View transaction: ${pendingTxHash}`}
-                    >
-                      🔗 TX
-                    </a>
-                  )}
-                  <span className="pob-pill flex items-center gap-1">
-                    <ProgressSpinner size={16} progress={Math.min((pendingConfirmations / 5) * 100, 100)} />
-                    {pendingConfirmations}/5
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="pob-pane__divider" />
 
           <form onSubmit={handleSubmit} className="pob-form">
             {/* Basic Info Section */}

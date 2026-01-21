@@ -461,6 +461,7 @@ function App() {
                   pendingAction={pendingAction}
                   walletAddress={walletAddress}
                   chainId={chainId}
+                  signer={signer}
                   getProjectLabel={getProjectLabel}
                   executeMint={executeMint}
                   executeVote={executeVote}

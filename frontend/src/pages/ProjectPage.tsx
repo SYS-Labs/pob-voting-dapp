@@ -1,12 +1,15 @@
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import type { Iteration, ParticipantRole, Project, Badge } from '~/interfaces';
+import type { JsonRpcSigner } from 'ethers';
 import MarkdownRenderer from '~/components/MarkdownRenderer';
 import VoteConfirmationModal from '~/components/VoteConfirmationModal';
-import { formatAddress, getYouTubeEmbedUrl } from '~/utils';
+import { formatAddress, getYouTubeEmbedUrl, formatCID, getExplorerTxLink, getMetadataCidUrl } from '~/utils';
 import { NETWORKS } from '~/constants/networks';
 import { ROLE_LABELS, ROLE_COLORS } from '~/constants/roles';
 import { useRegistryStatus } from '~/hooks/useRegistryStatus';
+import { useProjectMetadataManager } from '~/hooks/useProjectMetadataManager';
+import { ProgressSpinner } from '~/components/ProgressSpinner';
 
 interface CommunityBadge {
   tokenId: string;
@@ -44,6 +47,7 @@ interface ProjectPageProps {
   pendingAction: string | null;
   walletAddress: string | null;
   chainId: number | null;
+  signer: JsonRpcSigner | null;
   getProjectLabel: (address: string | null) => string | null;
   executeMint: (role: ParticipantRole, refreshCallback?: () => Promise<void>) => Promise<void>;
   executeVote: (role: ParticipantRole, projectAddress: string, tokenId?: string, refreshCallback?: () => Promise<void>) => void;
@@ -66,6 +70,7 @@ const ProjectPage = ({
   pendingAction,
   walletAddress,
   chainId,
+  signer,
   getProjectLabel,
   executeMint,
   executeVote,
@@ -84,7 +89,23 @@ const ProjectPage = ({
 
   // Use iteration's chainId for registry status (not wallet's chainId)
   const iterationChainId = currentIteration?.chainId ?? null;
+  const contractAddress = currentIteration?.jurySC ?? null;
   const { registryAvailable, initializationComplete, registryOwner } = useRegistryStatus(iterationChainId);
+
+  // Project metadata manager - for status display
+  const {
+    currentCID,
+    currentConfirmations,
+    pendingCID,
+    pendingTxHash,
+    pendingConfirmations,
+  } = useProjectMetadataManager(
+    project?.address || null,
+    iterationChainId,
+    contractAddress,
+    signer,
+    projectsLocked
+  );
 
   // Auto-hide sidebar below 1024px breakpoint
   useEffect(() => {
@@ -219,6 +240,15 @@ const ProjectPage = ({
     if (projectsLocked) return false;
     return walletLower === project.address.toLowerCase();
   }, [project, walletAddress, registryAvailable, initializationComplete, registryOwner, projectsLocked]);
+
+  // Can see metadata status section: registry owner or project wallet
+  const canSeeMetadataStatus = useMemo(() => {
+    if (!project || !walletAddress) return false;
+    const walletLower = walletAddress.toLowerCase();
+    const isRegistryOwner = Boolean(registryOwner && walletLower === registryOwner.toLowerCase());
+    const isProjectWallet = walletLower === project.address.toLowerCase();
+    return isRegistryOwner || isProjectWallet;
+  }, [project, walletAddress, registryOwner]);
 
   if (loading) {
     return (
@@ -365,6 +395,78 @@ const ProjectPage = ({
                   </a>
                 )}
               </div>
+            )}
+
+            {/* Public Audit Links - visible to everyone */}
+            {currentCID && (
+              <>
+                <div className="pob-pane__divider" />
+                <div className="pob-stack--dense">
+                  <p className="pob-pane__meta">On-Chain Metadata</p>
+                  <div className="flex items-center gap-3 text-xs">
+                    <a
+                      href={getMetadataCidUrl(currentCID)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--pob-primary)] hover:underline"
+                      title={`IPFS CID: ${currentCID}`}
+                    >
+                      📦 IPFS
+                    </a>
+                    <span className="pob-mono text-[var(--pob-text-muted)]">
+                      {formatCID(currentCID)}
+                    </span>
+                    {currentConfirmations >= 5 && (
+                      <span
+                        className="pob-pill"
+                        style={{
+                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                          color: 'rgb(16, 185, 129)',
+                          border: '1px solid rgba(16, 185, 129, 0.3)'
+                        }}
+                      >
+                        ✓ Confirmed
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Metadata Status Section - visible to owner/project wallet only */}
+            {canSeeMetadataStatus && pendingCID && (
+              <>
+                {!currentCID && <div className="pob-pane__divider" />}
+                <div className="pob-stack--dense" style={{ marginTop: currentCID ? '0.75rem' : undefined }}>
+                  <p className="pob-pane__meta">Update Status</p>
+                  <div className="flex items-center gap-3 text-xs">
+                    <a
+                      href={getMetadataCidUrl(pendingCID)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--pob-primary)] hover:underline"
+                      title={`Pending CID: ${pendingCID}`}
+                    >
+                      📦 IPFS
+                    </a>
+                    {pendingTxHash && iterationChainId && (
+                      <a
+                        href={getExplorerTxLink(iterationChainId, pendingTxHash)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[var(--pob-primary)] hover:underline"
+                        title={`Transaction: ${pendingTxHash}`}
+                      >
+                        🔗 TX
+                      </a>
+                    )}
+                    <span className="pob-pill flex items-center gap-1">
+                      <ProgressSpinner size={16} progress={Math.min((pendingConfirmations / 5) * 100, 100)} />
+                      {pendingConfirmations}/5
+                    </span>
+                  </div>
+                </div>
+              </>
             )}
 
           </div>

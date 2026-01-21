@@ -23,7 +23,7 @@ class Logger {
   }
 
   private format(level: LogLevel, message: string, data?: unknown): string {
-    const dataStr = data ? ` ${JSON.stringify(data)}` : '';
+    const dataStr = data ? ` ${JSON.stringify(data, (_, v) => typeof v === 'bigint' ? v.toString() : v)}` : '';
     return `[${level.toUpperCase()}] ${message}${dataStr}`;
   }
 
