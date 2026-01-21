@@ -176,18 +176,14 @@ export class MetadataService {
   ): Promise<ProjectMetadata | null> {
     try {
       const registry = this.getRegistryContract(chainId);
-      logger.info('Fetching project metadata CID from registry', { chainId, contractAddress, projectAddress });
       const cid = await registry.getProjectMetadata(chainId, contractAddress, projectAddress);
-      logger.info('Registry returned CID', { cid, chainId, contractAddress, projectAddress });
 
       if (!cid || cid === '') {
-        logger.info('No project metadata CID set', { chainId, contractAddress, projectAddress });
+        logger.debug('No project metadata CID set', { chainId, contractAddress, projectAddress });
         return null;
       }
 
-      logger.info('Fetching metadata from IPFS', { cid });
       const metadata = await this.ipfs.fetchJSON(cid);
-      logger.info('Successfully fetched metadata from IPFS', { cid });
       return metadata as ProjectMetadata;
     } catch (error) {
       logger.error('Failed to get project metadata', { error, chainId, contractAddress, projectAddress });
@@ -219,9 +215,7 @@ export class MetadataService {
   ): Promise<string | null> {
     try {
       const registry = this.getRegistryContract(chainId);
-      logger.info('Fetching project metadata CID only', { chainId, contractAddress, projectAddress });
       const cid = await registry.getProjectMetadata(chainId, contractAddress, projectAddress);
-      logger.info('Registry returned CID (CID-only call)', { cid, chainId, contractAddress, projectAddress });
       return cid || null;
     } catch (error) {
       logger.error('Failed to get project metadata CID', { error, chainId, contractAddress, projectAddress });
