@@ -41,6 +41,11 @@ export interface PreviousRoundAPI {
   version: string;
   deployBlockHint: number;
   votingMode: number;
+  juryState: JuryState;
+  winner: { projectAddress: string | null; hasWinner: boolean };
+  entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
+  daoHicIndividualVotes: Record<string, string>;
+  projects: ProjectSnapshot[];
 }
 
 export interface IterationSnapshotAPI {
@@ -313,7 +318,19 @@ export function createIterationsDatabase(db: Database.Database) {
           pob: r.pob_address,
           version: '001', // Historical rounds
           deployBlockHint: r.deploy_block_hint,
-          votingMode: r.voting_mode
+          votingMode: r.voting_mode,
+          juryState: r.jury_state,
+          winner: {
+            projectAddress: r.winner_address,
+            hasWinner: r.has_winner === 1
+          },
+          entityVotes: {
+            devRel: r.devrel_vote,
+            daoHic: r.daohic_vote,
+            community: r.community_vote
+          },
+          daoHicIndividualVotes: r.daohic_individual_votes ? JSON.parse(r.daohic_individual_votes) : {},
+          projects: r.projects ? JSON.parse(r.projects) : []
         }));
 
       if (prevRounds.length > 0) {

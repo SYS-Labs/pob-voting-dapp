@@ -20,6 +20,11 @@ export interface PreviousRoundSnapshot {
   version: string;
   deployBlockHint: number;
   votingMode: number;
+  juryState: JuryState;
+  winner: { projectAddress: string | null; hasWinner: boolean };
+  entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
+  daoHicIndividualVotes: Record<string, string>;
+  projects: ProjectSnapshot[];
 }
 
 export interface IterationSnapshot {

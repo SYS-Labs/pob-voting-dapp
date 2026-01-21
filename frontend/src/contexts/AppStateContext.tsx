@@ -255,7 +255,7 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       status = 'upcoming';
     }
 
-    // Map previous rounds from API
+    // Map previous rounds from API (include full voting data)
     const prev_rounds = snapshot.prevRounds?.map(r => ({
       round: r.round,
       jurySC: r.jurySC,
@@ -263,6 +263,11 @@ export function AppStateProvider({ children }: AppStateProviderProps) {
       version: r.version,
       deployBlockHint: r.deployBlockHint,
       votingMode: r.votingMode,
+      juryState: r.juryState,
+      winner: r.winner,
+      entityVotes: r.entityVotes,
+      daoHicIndividualVotes: r.daoHicIndividualVotes,
+      projects: r.projects,
     })) || [];
 
     return {

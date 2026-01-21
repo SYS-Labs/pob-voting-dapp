@@ -9,6 +9,12 @@ export interface PreviousRound {
   version: string; // Contract version: "001", "002", etc. (mandatory)
   deployBlockHint?: number;
   votingMode?: number; // Optional: if set, overrides contract votingMode() call (0=CONSENSUS, 1=WEIGHTED)
+  // Full round data from API (optional - populated when available from indexer)
+  juryState?: 'deployed' | 'activated' | 'active' | 'ended' | 'locked';
+  winner?: { projectAddress: string | null; hasWinner: boolean };
+  entityVotes?: { devRel: string | null; daoHic: string | null; community: string | null };
+  daoHicIndividualVotes?: Record<string, string>;
+  projects?: { address: string; metadataCID: string | null; metadata: Record<string, unknown> | null }[];
 }
 
 export interface Iteration {

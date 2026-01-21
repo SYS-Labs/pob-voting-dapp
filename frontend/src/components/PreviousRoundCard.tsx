@@ -244,6 +244,7 @@ const PreviousRoundCard = ({
               <FinalResultsPanel
                 winner={roundData.winner}
                 entityVotes={roundData.entityVotes}
+                daoHicIndividualVotes={roundData.daoHicIndividualVotes}
                 votingMode={roundData.votingMode}
                 projects={roundData.projects}
                 projectScores={roundData.projectScores}

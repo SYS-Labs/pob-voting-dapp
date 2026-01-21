@@ -12,6 +12,7 @@ interface RoundData {
   endTime: number | null;
   winner: { projectAddress: string | null; hasWinner: boolean };
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
+  daoHicIndividualVotes: Record<string, string>;
   userBadges: Badge[];
   canMint: boolean; // User is eligible to mint a badge for this round
   votingMode: number;
@@ -178,6 +179,23 @@ export function usePreviousRoundData(
           canMint = isDevRel || isDaoHic || Boolean(isRegisteredProject);
         }
 
+        // Use API data for daoHicIndividualVotes if available, otherwise fetch via RPC
+        let daoHicIndividualVotes: Record<string, string> = round.daoHicIndividualVotes || {};
+        if (Object.keys(daoHicIndividualVotes).length === 0 && Array.isArray(daoHicVoters) && daoHicVoters.length > 0) {
+          // Fallback: fetch individual votes via RPC
+          const votePromises = daoHicVoters.map(async (voter: string) => {
+            try {
+              const vote = await contract.daoHicVoteOf(voter);
+              if (vote && vote !== ethers.ZeroAddress) {
+                daoHicIndividualVotes[voter] = vote;
+              }
+            } catch {
+              // Voter may not have voted yet or function not available
+            }
+          });
+          await Promise.all(votePromises);
+        }
+
         const data: RoundData = {
           startTime: Number(startTime) || null,
           endTime: Number(endTime) || null,
@@ -190,6 +208,7 @@ export function usePreviousRoundData(
             daoHic: normalizeAddress(daoHicRaw),
             community: normalizeAddress(communityRaw),
           },
+          daoHicIndividualVotes,
           userBadges,
           canMint,
           votingMode,
@@ -207,6 +226,7 @@ export function usePreviousRoundData(
           endTime: null,
           winner: { projectAddress: null, hasWinner: false },
           entityVotes: { devRel: null, daoHic: null, community: null },
+          daoHicIndividualVotes: {},
           userBadges: [],
           canMint: false,
           votingMode: 0,
