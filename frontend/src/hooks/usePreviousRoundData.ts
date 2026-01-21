@@ -35,6 +35,14 @@ export function usePreviousRoundData(
   const [loading, setLoading] = useState(false);
   const [roundData, setRoundData] = useState<RoundData | null>(null);
 
+  // Check if API provided full round data (entityVotes, winner, projects, daoHicIndividualVotes)
+  const hasAPIData = Boolean(
+    round.entityVotes &&
+    round.winner &&
+    round.projects &&
+    round.projects.length > 0
+  );
+
   useEffect(() => {
     if (!isExpanded || roundData || !publicProvider) return;
 
@@ -51,13 +59,87 @@ export function usePreviousRoundData(
           version: round.version,
           abiVersion: round.version === '001' ? 'v001' : 'v002',
           walletAddress,
+          hasAPIData,
         });
+
+        const version = round.version || '003';
+        const isV001 = version === '001';
+
+        // If API provided full data, use it instead of fetching via RPC
+        if (hasAPIData) {
+          console.log(`[usePreviousRoundData] Round #${round.round}: Using API data (skipping RPC calls)`);
+
+          // Only fetch user-specific data that API doesn't provide
+          const [userBadges, devRelAccount, daoHicVoters, isRegisteredProject, startTime, endTime] = await Promise.all([
+            walletAddress
+              ? loadBadgesFromContract(round.pob, chainId, walletAddress, publicProvider, round.deployBlockHint, round.round)
+              : Promise.resolve([]),
+            contract.devRelAccount().catch(() => ethers.ZeroAddress),
+            contract.getDaoHicVoters().catch(() => [] as string[]),
+            walletAddress ? contract.isRegisteredProject(walletAddress).catch(() => false) : Promise.resolve(false),
+            contract.startTime().catch(() => 0),
+            contract.endTime().catch(() => 0),
+          ]);
+
+          // Check if user can mint a badge
+          let canMint = false;
+          if (walletAddress && userBadges.length === 0) {
+            const walletLower = walletAddress.toLowerCase();
+            const isDevRel = devRelAccount && devRelAccount.toLowerCase() === walletLower;
+            const isDaoHic = Array.isArray(daoHicVoters) && daoHicVoters.some((v: string) => v.toLowerCase() === walletLower);
+            canMint = isDevRel || isDaoHic || Boolean(isRegisteredProject);
+          }
+
+          // Build projects array from API data (cast metadata type)
+          const projects = round.projects!.map((p, index) => ({
+            id: index + 1,
+            address: p.address,
+            metadata: p.metadata as unknown as ProjectMetadata | undefined,
+          }));
+
+          // Use votingMode from API data
+          const votingMode = round.votingMode ?? 0;
+
+          // Load project scores if in weighted mode (need RPC for this)
+          let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
+          if (votingMode === 1 && !isV001) {
+            try {
+              const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
+              projectScores = {
+                addresses: addresses as string[],
+                scores: (scores as bigint[]).map(s => s.toString()),
+                totalPossible: (totalPossible as bigint).toString(),
+              };
+            } catch (error) {
+              console.log('[usePreviousRoundData] getWinnerWithScores not available or failed:', error);
+            }
+          }
+
+          const data: RoundData = {
+            startTime: Number(startTime) || null,
+            endTime: Number(endTime) || null,
+            winner: round.winner!,
+            entityVotes: round.entityVotes!,
+            daoHicIndividualVotes: round.daoHicIndividualVotes || {},
+            userBadges,
+            canMint,
+            votingMode,
+            projects,
+            projectScores,
+          };
+
+          console.log(`[usePreviousRoundData] Loaded data for Round #${round.round} (from API)`, data);
+          setRoundData(data);
+          return;
+        }
+
+        // Fallback: fetch all data via RPC (API didn't provide full data)
+        console.log(`[usePreviousRoundData] Round #${round.round}: Falling back to RPC (no API data)`);
 
         // Detect voting mode based on contract version
         // v001: Always CONSENSUS, use getWinner()
         // v002: Dual mode - detect by checking which winner function returns a result
         // v003+: Trust votingMode() from contract
-        const version = round.version || '003';
         let votingMode = 0;
         let winnerRaw: [string, boolean] = [ethers.ZeroAddress, false];
 
@@ -90,8 +172,6 @@ export function usePreviousRoundData(
             : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
           console.log(`[usePreviousRoundData] Round #${round.round}: v003+ - using votingMode(): ${votingMode}`);
         }
-
-        const isV001 = version === '001';
 
         // Load contract data and badges in parallel
         const [devRelRaw, daoHicRaw, communityRaw, startTime, endTime, projectCount, userBadges, devRelAccount, daoHicVoters, isRegisteredProject] = await Promise.all([
@@ -216,7 +296,7 @@ export function usePreviousRoundData(
           projectScores,
         };
 
-        console.log(`[usePreviousRoundData] Loaded data for Round #${round.round}`, data);
+        console.log(`[usePreviousRoundData] Loaded data for Round #${round.round} (from RPC)`, data);
         setRoundData(data);
       } catch (error) {
         console.error(`[usePreviousRoundData] Failed to load data for Round #${round.round}`, error);
@@ -239,7 +319,7 @@ export function usePreviousRoundData(
     };
 
     void loadRoundData();
-  }, [isExpanded, roundData, publicProvider, round.jurySC, round.pob, round.round, round.version, round.votingMode, chainId, walletAddress]);
+  }, [isExpanded, roundData, publicProvider, round.jurySC, round.pob, round.round, round.version, round.votingMode, round.entityVotes, round.winner, round.projects, round.daoHicIndividualVotes, hasAPIData, chainId, walletAddress]);
 
   return { loading, roundData };
 }
