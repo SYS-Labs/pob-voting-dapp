@@ -102,14 +102,14 @@ const ForumPage = ({ walletAddress }: ForumPageProps) => {
   }
 
   async function handleToggleStatus(
-    threadId: number,
-    _postId: string,
+    _threadId: number,
+    postId: string,
     currentStatus: string,
     signature: string,
     message: string
   ) {
     const newStatus = currentStatus === 'active' ? 'paused' : 'active';
-    await updateThreadStatus(threadId, newStatus as 'active' | 'paused' | 'archived', signature, message);
+    await updateThreadStatus(postId, newStatus as 'active' | 'paused' | 'archived', signature, message);
     await loadMonitoredThreads();
   }
 

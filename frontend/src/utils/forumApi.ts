@@ -73,12 +73,12 @@ export async function registerThread(
  * Update thread status (admin only)
  */
 export async function updateThreadStatus(
-  threadId: number,
+  postId: string,
   status: 'active' | 'paused' | 'archived',
   signature: string,
   message: string
 ): Promise<void> {
-  const res = await fetch(`${apiBase}/api/admin/threads/${threadId}`, {
+  const res = await fetch(`${apiBase}/api/admin/threads/${postId}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
