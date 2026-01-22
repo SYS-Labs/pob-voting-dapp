@@ -36,9 +36,16 @@ const AdminPanel = ({
   const [error, setError] = useState<string | null>(null);
 
   const handleRegisterThread = async () => {
-    const postId = newPostId.trim();
+    let postId = newPostId.trim();
+
+    // Extract post ID from URL if user pasted a full URL
+    const urlMatch = postId.match(/status\/(\d+)/);
+    if (urlMatch) {
+      postId = urlMatch[1];
+    }
+
     if (!postId) {
-      setError('Please enter a post ID');
+      setError('Please enter a post ID or URL');
       return;
     }
 
@@ -132,7 +139,7 @@ const AdminPanel = ({
           <input
             type="text"
             className="pob-input flex-1"
-            placeholder="X Post ID (e.g., 1234567890123456789)"
+            placeholder="X Post ID or URL"
             value={newPostId}
             onChange={(e) => setNewPostId(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleRegisterThread()}
