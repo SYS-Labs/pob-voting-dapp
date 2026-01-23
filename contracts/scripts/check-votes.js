@@ -258,6 +258,11 @@ async function main() {
         DAO_HIC: 0,
         Community: 0,
       },
+      // Actual vote counts (not just consensus flags)
+      voteCounts: {
+        daoHic: 0,
+        community: 0,
+      },
       totalWeight: 0,
     });
   }
@@ -286,15 +291,28 @@ async function main() {
   log(`  DevRel: ${devRelLogs.length}`, 'dim');
   log(`  DAO_HIC: ${daoHicLogs.length}`, 'dim');
   log(`  Community: ${communityLogs.length}`, 'dim');
+  log(`  (includes vote changes - only latest vote per voter counts)`, 'dim');
   log('');
 
   if (allVoteEvents.length > 0) {
+    // Track latest vote per voter to mark superseded ones
+    const latestVoteByVoter = new Map();
+    for (const voteLog of allVoteEvents) {
+      const voter = voteLog.args.voter.toLowerCase();
+      const voterKey = `${voteLog.voterType}:${voter}`;
+      latestVoteByVoter.set(voterKey, voteLog);
+    }
+
     for (let i = 0; i < allVoteEvents.length; i++) {
       const voteLog = allVoteEvents[i];
       const voter = voteLog.args.voter;
+      const voterKey = `${voteLog.voterType}:${voter.toLowerCase()}`;
       const projectIdOrAddress = voteLog.args.projectId || voteLog.args.projectAddress;
       const block = await provider.getBlock(voteLog.blockNumber);
       const timestamp = new Date(block.timestamp * 1000);
+
+      // Check if this vote was superseded
+      const isSuperseded = latestVoteByVoter.get(voterKey) !== voteLog;
 
       // Find project
       let project;
@@ -305,10 +323,11 @@ async function main() {
       }
 
       const voteNum = String(i + 1).padStart(3, ' ');
-      log(`[${voteNum}] Block ${voteLog.blockNumber} | ${timestamp.toLocaleString()}`, 'dim');
-      log(`      Type: ${voteLog.voterType}`, 'cyan');
-      log(`      Voter: ${formatAddress(voter)}`, 'bright');
-      log(`      Voted for: ${project?.name || 'Unknown'}`, 'green');
+      const supersededTag = isSuperseded ? ' [SUPERSEDED]' : '';
+      log(`[${voteNum}] Block ${voteLog.blockNumber} | ${timestamp.toLocaleString()}${supersededTag}`, isSuperseded ? 'yellow' : 'dim');
+      log(`      Type: ${voteLog.voterType}`, isSuperseded ? 'yellow' : 'cyan');
+      log(`      Voter: ${formatAddress(voter)}`, isSuperseded ? 'yellow' : 'bright');
+      log(`      Voted for: ${project?.name || 'Unknown'}`, isSuperseded ? 'yellow' : 'green');
       log(`      Tx: ${voteLog.transactionHash}`, 'dim');
       log('');
     }
@@ -361,6 +380,12 @@ async function main() {
     }
   }
 
+  // Fetch actual DAO_HIC vote counts per project
+  for (const project of projects) {
+    const daoVotes = await juryContract.daoHicProjectVotes(project.address);
+    project.voteCounts.daoHic = Number(daoVotes);
+  }
+
   // DAO_HIC consensus
   const daoHicEntityVote = await juryContract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress);
   const daoHicEntityProject = projects.find(p => p.address.toLowerCase() === daoHicEntityVote.toLowerCase());
@@ -379,10 +404,11 @@ async function main() {
   log(`Community Entity (${totalCommunityVoters} votes cast):`, 'cyan');
 
   if (Number(totalCommunityVoters) > 0) {
-    // Get community votes per project
+    // Get community votes per project and store actual counts
     const communityVotesByProject = new Map();
     for (const project of projects) {
       const votes = await juryContract.communityProjectVotes(project.address);
+      project.voteCounts.community = Number(votes);
       if (Number(votes) > 0) {
         communityVotesByProject.set(project.address.toLowerCase(), Number(votes));
       }
@@ -454,16 +480,16 @@ async function main() {
       log(`  Weighted Score: ${project.percentage}%`, weightColor);
       log(`    (${ethers.formatEther(project.score)} / ${ethers.formatEther(totalPossible)})`, 'dim');
 
-      // Show breakdown
+      // Show breakdown using actual vote counts
       const breakdown = [];
-      if (project.votes.DevRel > 0) {
+      if (devRelVoteAddress.toLowerCase() === project.address.toLowerCase()) {
         breakdown.push(`DevRel`);
       }
-      if (project.votes.DAO_HIC > 0) {
-        breakdown.push(`DAO_HIC (${project.votes.DAO_HIC} votes)`);
+      if (project.voteCounts.daoHic > 0) {
+        breakdown.push(`DAO_HIC (${project.voteCounts.daoHic} vote${project.voteCounts.daoHic !== 1 ? 's' : ''})`);
       }
-      if (project.votes.Community > 0) {
-        breakdown.push(`Community (${project.votes.Community} votes)`);
+      if (project.voteCounts.community > 0) {
+        breakdown.push(`Community (${project.voteCounts.community} vote${project.voteCounts.community !== 1 ? 's' : ''})`);
       }
 
       if (breakdown.length > 0) {
@@ -514,19 +540,26 @@ async function main() {
         // Mode-specific details
         if (effectiveVotingMode === 0) {
           // CONSENSUS mode
-          // Calculate consensus weight for winner
+          // Calculate consensus weight for winner (entity-level, not individual votes)
           let winnerWeight = 0;
-          if (winningProject?.votes.DevRel > 0) winnerWeight++;
+          if (devRelVoteAddress.toLowerCase() === winningProject?.address.toLowerCase()) winnerWeight++;
           if (winningProject?.votes.DAO_HIC > 0) winnerWeight++;
           if (winningProject?.votes.Community > 0) winnerWeight++;
 
           log(`Consensus Weight: ${winnerWeight}/3 entities (${(winnerWeight * 100 / 3).toFixed(2)}%)`, 'green');
           log('');
 
+          // Show breakdown with actual vote counts
           const breakdown = [];
-          if (winningProject?.votes.DevRel > 0) breakdown.push('DevRel');
-          if (winningProject?.votes.DAO_HIC > 0) breakdown.push('DAO_HIC');
-          if (winningProject?.votes.Community > 0) breakdown.push('Community');
+          if (devRelVoteAddress.toLowerCase() === winningProject?.address.toLowerCase()) {
+            breakdown.push('DevRel');
+          }
+          if (winningProject?.voteCounts.daoHic > 0) {
+            breakdown.push(`DAO_HIC (${winningProject.voteCounts.daoHic} vote${winningProject.voteCounts.daoHic !== 1 ? 's' : ''})`);
+          }
+          if (winningProject?.voteCounts.community > 0) {
+            breakdown.push(`Community (${winningProject.voteCounts.community} vote${winningProject.voteCounts.community !== 1 ? 's' : ''})`);
+          }
 
           if (breakdown.length > 0) {
             log(`Winning votes from: ${breakdown.join(', ')}`, 'cyan');
@@ -541,7 +574,7 @@ async function main() {
             .filter(p => p.address.toLowerCase() !== selectedWinner.toLowerCase())
             .map(project => {
               let weight = 0;
-              if (project.votes.DevRel > 0) weight++;
+              if (devRelVoteAddress.toLowerCase() === project.address.toLowerCase()) weight++;
               if (project.votes.DAO_HIC > 0) weight++;
               if (project.votes.Community > 0) weight++;
               return { ...project, consensusWeight: weight };
@@ -555,11 +588,17 @@ async function main() {
             log(`  ${project.name} (ID: ${project.id})`, 'bright');
             log(`    Consensus Weight: ${project.consensusWeight}/3 entities (${percentage}%)`, weightColor);
 
-            // Show breakdown
+            // Show breakdown with actual vote counts
             const breakdown = [];
-            if (project.votes.DevRel > 0) breakdown.push('DevRel');
-            if (project.votes.DAO_HIC > 0) breakdown.push('DAO_HIC');
-            if (project.votes.Community > 0) breakdown.push('Community');
+            if (devRelVoteAddress.toLowerCase() === project.address.toLowerCase()) {
+              breakdown.push('DevRel');
+            }
+            if (project.voteCounts.daoHic > 0) {
+              breakdown.push(`DAO_HIC (${project.voteCounts.daoHic} vote${project.voteCounts.daoHic !== 1 ? 's' : ''})`);
+            }
+            if (project.voteCounts.community > 0) {
+              breakdown.push(`Community (${project.voteCounts.community} vote${project.voteCounts.community !== 1 ? 's' : ''})`);
+            }
 
             if (breakdown.length > 0) {
               log(`    Votes from: ${breakdown.join(', ')}`, 'dim');
@@ -581,11 +620,17 @@ async function main() {
               log(`  (${ethers.formatEther(score)} / ${ethers.formatEther(totalPossible)})`, 'dim');
               log('');
 
-              // Show contribution breakdown
+              // Show contribution breakdown using actual vote counts
               const breakdown = [];
-              if (winningProject?.votes.DevRel > 0) breakdown.push('DevRel');
-              if (winningProject?.votes.DAO_HIC > 0) breakdown.push(`DAO_HIC (${winningProject?.votes.DAO_HIC})`);
-              if (winningProject?.votes.Community > 0) breakdown.push(`Community (${winningProject?.votes.Community})`);
+              if (devRelVoteAddress.toLowerCase() === winningProject?.address.toLowerCase()) {
+                breakdown.push('DevRel');
+              }
+              if (winningProject?.voteCounts.daoHic > 0) {
+                breakdown.push(`DAO_HIC (${winningProject.voteCounts.daoHic} vote${winningProject.voteCounts.daoHic !== 1 ? 's' : ''})`);
+              }
+              if (winningProject?.voteCounts.community > 0) {
+                breakdown.push(`Community (${winningProject.voteCounts.community} vote${winningProject.voteCounts.community !== 1 ? 's' : ''})`);
+              }
 
               if (breakdown.length > 0) {
                 log(`Votes from: ${breakdown.join(', ')}`, 'cyan');
@@ -621,11 +666,17 @@ async function main() {
               log(`  ${project.name} (ID: ${project.id})`, 'bright');
               log(`    Score: ${project.percentage}% (${ethers.formatEther(project.score)} / ${ethers.formatEther(totalPossible)})`, weightColor);
 
-              // Show breakdown
+              // Show breakdown using actual vote counts
               const breakdown = [];
-              if (project.votes.DevRel > 0) breakdown.push('DevRel');
-              if (project.votes.DAO_HIC > 0) breakdown.push(`DAO_HIC (${project.votes.DAO_HIC})`);
-              if (project.votes.Community > 0) breakdown.push(`Community (${project.votes.Community})`);
+              if (devRelVoteAddress.toLowerCase() === project.address.toLowerCase()) {
+                breakdown.push('DevRel');
+              }
+              if (project.voteCounts.daoHic > 0) {
+                breakdown.push(`DAO_HIC (${project.voteCounts.daoHic} vote${project.voteCounts.daoHic !== 1 ? 's' : ''})`);
+              }
+              if (project.voteCounts.community > 0) {
+                breakdown.push(`Community (${project.voteCounts.community} vote${project.voteCounts.community !== 1 ? 's' : ''})`);
+              }
 
               if (breakdown.length > 0) {
                 log(`    Votes from: ${breakdown.join(', ')}`, 'dim');
@@ -667,18 +718,32 @@ async function main() {
     log('');
     log('Current standings (not final):', 'dim');
 
-    const projectsByWeight = [...projects].sort((a, b) => b.totalWeight - a.totalWeight);
-    if (projectsByWeight[0].totalWeight > 0) {
-      const tied = projectsByWeight.filter(p => p.totalWeight === projectsByWeight[0].totalWeight && p.totalWeight > 0);
+    // Use actual scores from contract
+    try {
+      const [addresses, scores, totalPossible] = await juryContract.getWinnerWithScores();
+      const hasVotes = scores.some(s => s > 0n);
 
-      if (tied.length > 1) {
-        log(`  Tied (${tied.length} projects with weight ${tied[0].totalWeight}):`, 'yellow');
-        tied.forEach(p => log(`    - ${p.name}`, 'yellow'));
+      if (hasVotes) {
+        // Find leading project(s)
+        const maxScore = scores.reduce((max, s) => s > max ? s : max, 0n);
+        const leaders = projects.filter(p => {
+          const idx = addresses.findIndex(a => a.toLowerCase() === p.address.toLowerCase());
+          return idx >= 0 && scores[idx] === maxScore;
+        });
+
+        if (leaders.length > 1) {
+          const pct = (Number(maxScore) * 100 / Number(totalPossible)).toFixed(2);
+          log(`  Tied (${leaders.length} projects at ${pct}%):`, 'yellow');
+          leaders.forEach(p => log(`    - ${p.name}`, 'yellow'));
+        } else if (leaders.length === 1) {
+          const pct = (Number(maxScore) * 100 / Number(totalPossible)).toFixed(2);
+          log(`  Leading: ${leaders[0].name} (${pct}%)`, 'cyan');
+        }
       } else {
-        log(`  Leading: ${projectsByWeight[0].name} (Weight: ${projectsByWeight[0].totalWeight})`, 'cyan');
+        log(`  No votes cast yet`, 'dim');
       }
-    } else {
-      log(`  No votes cast yet`, 'dim');
+    } catch (err) {
+      log(`  Could not retrieve standings: ${err.message}`, 'dim');
     }
   } else {
     log('');
