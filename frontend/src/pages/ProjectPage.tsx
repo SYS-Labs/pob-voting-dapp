@@ -4,7 +4,7 @@ import type { Iteration, ParticipantRole, Project, Badge } from '~/interfaces';
 import type { JsonRpcSigner } from 'ethers';
 import MarkdownRenderer from '~/components/MarkdownRenderer';
 import VoteConfirmationModal from '~/components/VoteConfirmationModal';
-import { formatAddress, getYouTubeEmbedUrl, formatCID, getExplorerTxLink, getMetadataCidUrl } from '~/utils';
+import { formatAddress, getYouTubeEmbedUrl, getExplorerTxLink, getMetadataCidUrl } from '~/utils';
 import { NETWORKS } from '~/constants/networks';
 import { ROLE_LABELS, ROLE_COLORS } from '~/constants/roles';
 import { useRegistryStatus } from '~/hooks/useRegistryStatus';
@@ -95,7 +95,7 @@ const ProjectPage = ({
   // Project metadata manager - for status display
   const {
     currentCID,
-    currentConfirmations,
+    currentTxHash,
     pendingCID,
     pendingTxHash,
     pendingConfirmations,
@@ -342,96 +342,81 @@ const ProjectPage = ({
               </div>
             ) : null}
 
-            {/* Social links */}
-            {project.metadata?.socials && (
-              project.metadata.socials.x ||
-              project.metadata.socials.instagram ||
-              project.metadata.socials.tiktok ||
-              project.metadata.socials.linkedin
-            ) && (
-              <div className="pob-socials" style={{ marginTop: '1.5rem' }}>
-                {project.metadata.socials.x && (
-                  <a
-                    href={project.metadata.socials.x}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="pob-socials__link pob-socials__link--x"
-                    title="X (Twitter)"
-                  >
-                    X
-                  </a>
-                )}
-                {project.metadata.socials.instagram && (
-                  <a
-                    href={project.metadata.socials.instagram}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="pob-socials__link"
-                    title="Instagram"
-                  >
-                    Instagram
-                  </a>
-                )}
-                {project.metadata.socials.tiktok && (
-                  <a
-                    href={project.metadata.socials.tiktok}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="pob-socials__link"
-                    title="TikTok"
-                  >
-                    TikTok
-                  </a>
-                )}
-                {project.metadata.socials.linkedin && (
-                  <a
-                    href={project.metadata.socials.linkedin}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="pob-socials__link"
-                    title="LinkedIn"
-                  >
-                    LinkedIn
-                  </a>
-                )}
-              </div>
-            )}
+            {/* Social links + on-chain metadata links */}
+            <div className="pob-socials" style={{ marginTop: '1.5rem' }}>
+              {/* Social links on the left */}
+              {project.metadata?.socials?.x && (
+                <a
+                  href={project.metadata.socials.x}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pob-socials__link pob-socials__link--x"
+                  title="X (Twitter)"
+                >
+                  X
+                </a>
+              )}
+              {project.metadata?.socials?.instagram && (
+                <a
+                  href={project.metadata.socials.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pob-socials__link"
+                  title="Instagram"
+                >
+                  Instagram
+                </a>
+              )}
+              {project.metadata?.socials?.tiktok && (
+                <a
+                  href={project.metadata.socials.tiktok}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pob-socials__link"
+                  title="TikTok"
+                >
+                  TikTok
+                </a>
+              )}
+              {project.metadata?.socials?.linkedin && (
+                <a
+                  href={project.metadata.socials.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pob-socials__link"
+                  title="LinkedIn"
+                >
+                  LinkedIn
+                </a>
+              )}
 
-            {/* Public Audit Links - visible to everyone */}
-            {currentCID && (
-              <>
-                <div className="pob-pane__divider" />
-                <div className="pob-stack--dense">
-                  <p className="pob-pane__meta">On-Chain Metadata</p>
-                  <div className="flex items-center gap-3 text-xs">
-                    <a
-                      href={getMetadataCidUrl(currentCID)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--pob-primary)] hover:underline"
-                      title={`IPFS CID: ${currentCID}`}
-                    >
-                      📦 IPFS
-                    </a>
-                    <span className="pob-mono text-[var(--pob-text-muted)]">
-                      {formatCID(currentCID)}
-                    </span>
-                    {currentConfirmations >= 5 && (
-                      <span
-                        className="pob-pill"
-                        style={{
-                          backgroundColor: 'rgba(16, 185, 129, 0.15)',
-                          color: 'rgb(16, 185, 129)',
-                          border: '1px solid rgba(16, 185, 129, 0.3)'
-                        }}
-                      >
-                        ✓ Confirmed
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
+              {/* Spacer to push on-chain links to the right */}
+              <span style={{ flex: 1 }} />
+
+              {/* On-chain metadata links on the right */}
+              {currentCID && (
+                <a
+                  href={getMetadataCidUrl(currentCID)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pob-socials__link"
+                  title={`IPFS CID: ${currentCID}`}
+                >
+                  📦 IPFS
+                </a>
+              )}
+              {currentTxHash && iterationChainId && (
+                <a
+                  href={getExplorerTxLink(iterationChainId, currentTxHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="pob-socials__link"
+                  title={`Transaction: ${currentTxHash}`}
+                >
+                  ⛓️ TX
+                </a>
+              )}
+            </div>
 
             {/* Metadata Status Section - visible to owner/project wallet only */}
             {canSeeMetadataStatus && pendingCID && (

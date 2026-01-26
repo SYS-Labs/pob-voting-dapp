@@ -21,6 +21,7 @@ export interface ProjectMetadataForm {
 
 export interface UseProjectMetadataManagerReturn {
   currentCID: string | null;
+  currentTxHash: string | null;
   currentConfirmations: number;
   pendingCID: string | null;
   pendingTxHash: string | null;
@@ -43,6 +44,7 @@ export function useProjectMetadataManager(
   metadataLocked: boolean
 ): UseProjectMetadataManagerReturn {
   const [currentCID, setCurrentCID] = useState<string | null>(null);
+  const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
   const [currentConfirmations, setCurrentConfirmations] = useState(5); // Default settled
   const [pendingCID, setPendingCID] = useState<string | null>(null);
   const [pendingTxHash, setPendingTxHash] = useState<string | null>(null);
@@ -80,6 +82,10 @@ export function useProjectMetadataManager(
       try {
         const data = await metadataAPI.getProjectMetadata(chainId, contractAddress, projectAddress);
         setMetadata(data);
+        // Extract txHash from metadata if present
+        if (data?.txHash) {
+          setCurrentTxHash(data.txHash);
+        }
       } catch (error) {
         console.error('Failed to load metadata from API:', error);
       }
@@ -312,6 +318,7 @@ export function useProjectMetadataManager(
 
   return {
     currentCID,
+    currentTxHash,
     currentConfirmations,
     pendingCID,
     pendingTxHash,
