@@ -269,6 +269,7 @@ const IterationHeader = ({
           projectScores={projectScores}
           getProjectLabel={getProjectLabel}
           isOwner={isOwner}
+          iterationNumber={iteration?.iteration}
         />
       ) : null}
     </section>

@@ -14,6 +14,7 @@ interface ProjectCardProps {
   onRemove: (project: Project) => void;
   communityBadges?: Array<{ tokenId: string; hasVoted: boolean }>;
   iterationNumber?: number;
+  isWinner?: boolean;
 }
 
 // Truncate text to a maximum length, adding ellipsis if truncated
@@ -44,6 +45,7 @@ const ProjectCard = ({
   onRemove,
   communityBadges = [],
   iterationNumber,
+  isWinner = false,
 }: ProjectCardProps) => {
   const projectName = project.metadata?.name ?? `Project #${project.id}`;
   const embedUrl = getYouTubeEmbedUrl(project.metadata?.yt_vid ?? null);
@@ -53,14 +55,20 @@ const ProjectCard = ({
     : null;
 
   return (
-    <div className="pob-fieldset projects-list__item space-y-3">
+    <div className={`pob-fieldset projects-list__item space-y-3${isWinner ? ' projects-list__item--winner' : ''}`}>
       <div className="space-y-2">
         {projectPageUrl ? (
           <Link to={projectPageUrl} className="project-card__title-link">
-            <p className="text-lg font-semibold text-white project-card__title">{projectName}</p>
+            <p className="text-lg font-semibold text-white project-card__title">
+              {isWinner && <span className="project-card__winner-icon">🏆 </span>}
+              {projectName}
+            </p>
           </Link>
         ) : (
-          <p className="text-lg font-semibold text-white">{projectName}</p>
+          <p className="text-lg font-semibold text-white">
+            {isWinner && <span className="project-card__winner-icon">🏆 </span>}
+            {projectName}
+          </p>
         )}
         <p className="pob-mono text-xs text-[var(--pob-text-muted)]">
           {formatAddress(project.address)}

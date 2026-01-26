@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 interface FinalResultsPanelProps {
   winner: { projectAddress: string | null; hasWinner: boolean };
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
@@ -7,6 +9,7 @@ interface FinalResultsPanelProps {
   projectScores?: { addresses: string[]; scores: string[]; totalPossible: string } | null;
   getProjectLabel?: (address: string | null) => string | null;
   isOwner: boolean;
+  iterationNumber?: number;
 }
 
 const FinalResultsPanel = ({
@@ -18,7 +21,24 @@ const FinalResultsPanel = ({
   projectScores,
   getProjectLabel,
   isOwner,
+  iterationNumber,
 }: FinalResultsPanelProps) => {
+  // Helper to render project name as link or plain text
+  const renderProjectName = (address: string | null, fallback: string) => {
+    if (!address) return fallback;
+    const label = getProjectLabel ? getProjectLabel(address) ?? fallback : fallback;
+    if (iterationNumber) {
+      return (
+        <Link
+          to={`/iteration/${iterationNumber}/project/${address}`}
+          className="final-results-link"
+        >
+          {label}
+        </Link>
+      );
+    }
+    return label;
+  };
   return (
     <div
       style={{
@@ -41,7 +61,7 @@ const FinalResultsPanel = ({
                 <p className="text-lg font-bold text-[var(--pob-primary)]">
                   🏆{' '}
                   <span className="italic">
-                    {getProjectLabel ? getProjectLabel(winner.projectAddress) ?? winner.projectAddress : winner.projectAddress}
+                    {renderProjectName(winner.projectAddress, winner.projectAddress)}
                   </span>
                 </p>
                 {(() => {
@@ -74,7 +94,7 @@ const FinalResultsPanel = ({
                         <p className="text-lg font-bold text-[var(--pob-primary)]">
                           🏆{' '}
                           <span className="italic">
-                            {getProjectLabel ? getProjectLabel(winner.projectAddress) ?? winner.projectAddress : winner.projectAddress}
+                            {renderProjectName(winner.projectAddress, winner.projectAddress!)}
                           </span>
                         </p>
                         <p className="text-sm text-[var(--pob-text-muted)]">{percentage.toFixed(2)}%</p>
@@ -92,7 +112,7 @@ const FinalResultsPanel = ({
                   <p className="text-lg font-bold text-[var(--pob-primary)]">
                     🏆{' '}
                     <span className="italic">
-                      {getProjectLabel ? getProjectLabel(winner.projectAddress) ?? winner.projectAddress : winner.projectAddress}
+                      {renderProjectName(winner.projectAddress, winner.projectAddress!)}
                     </span>
                   </p>
                 );
@@ -121,7 +141,7 @@ const FinalResultsPanel = ({
                     .map(project => (
                       <div key={project.address} className="text-xs">
                         <p className="text-white italic">
-                          {getProjectLabel ? getProjectLabel(project.address) ?? `Project #${project.id}` : `Project #${project.id}`}
+                          {renderProjectName(project.address, `Project #${project.id}`)}
                         </p>
                         <p className="text-[var(--pob-text-muted)] ml-2">
                           {project.weight}/3 entities ({project.percentage}%)
@@ -150,7 +170,7 @@ const FinalResultsPanel = ({
                       <div key={project.address} className="text-xs space-y-1">
                         <div className="flex items-center justify-between">
                           <p className="text-white italic">
-                            {getProjectLabel ? getProjectLabel(project.address) ?? `Project #${project.id}` : `Project #${project.id}`}
+                            {renderProjectName(project.address, `Project #${project.id}`)}
                           </p>
                           <p className="text-[var(--pob-text-muted)]">
                             {project.percentage.toFixed(2)}%
@@ -189,7 +209,7 @@ const FinalResultsPanel = ({
                   • Community:{' '}
                   {entityVotes.community ? (
                     <span className="italic">
-                      {getProjectLabel ? getProjectLabel(entityVotes.community) ?? entityVotes.community : entityVotes.community}
+                      {renderProjectName(entityVotes.community, entityVotes.community)}
                     </span>
                   ) : (
                     'Did not vote'
@@ -200,7 +220,7 @@ const FinalResultsPanel = ({
                   <p>
                     • DAO HIC:{' '}
                     <span className="italic">
-                      {getProjectLabel ? getProjectLabel(entityVotes.daoHic) ?? entityVotes.daoHic : entityVotes.daoHic}
+                      {renderProjectName(entityVotes.daoHic, entityVotes.daoHic)}
                     </span>
                   </p>
                 ) : Object.keys(daoHicIndividualVotes).length > 0 ? (
@@ -213,7 +233,7 @@ const FinalResultsPanel = ({
                         return uniqueProjects.map(projectAddr => (
                           <p key={projectAddr} className="text-[var(--pob-text-muted)]">
                             → <span className="italic">
-                              {getProjectLabel ? getProjectLabel(projectAddr) ?? projectAddr : projectAddr}
+                              {renderProjectName(projectAddr, projectAddr)}
                             </span>
                           </p>
                         ));
@@ -228,7 +248,7 @@ const FinalResultsPanel = ({
                   • DevRel:{' '}
                   {entityVotes.devRel ? (
                     <span className="italic">
-                      {getProjectLabel ? getProjectLabel(entityVotes.devRel) ?? entityVotes.devRel : entityVotes.devRel}
+                      {renderProjectName(entityVotes.devRel, entityVotes.devRel)}
                     </span>
                   ) : (
                     'Did not vote'
@@ -241,7 +261,7 @@ const FinalResultsPanel = ({
                 .map(address => (
                   <p key={address}>
                     • <span className="italic">
-                      {getProjectLabel ? getProjectLabel(address!) ?? address : address}
+                      {renderProjectName(address!, address!)}
                     </span>
                   </p>
                 ))

@@ -81,11 +81,34 @@ const ProjectPage = ({
   const [sidebarVisible, setSidebarVisible] = useState(window.innerWidth >= 1024);
   const wasLargeScreen = useRef(window.innerWidth >= 1024);
 
-  // Find the project
+  // Find the project - check current round first, then previous rounds
   const project = useMemo(() => {
     if (!projectAddress) return null;
-    return projects.find(p => p.address.toLowerCase() === projectAddress.toLowerCase()) ?? null;
-  }, [projects, projectAddress]);
+    const addrLower = projectAddress.toLowerCase();
+
+    // Check current round projects
+    const currentRoundProject = projects.find(p => p.address.toLowerCase() === addrLower);
+    if (currentRoundProject) return currentRoundProject;
+
+    // Check previous rounds if not found
+    if (currentIteration?.prev_rounds) {
+      for (const round of currentIteration.prev_rounds) {
+        if (round.projects) {
+          const prevProject = round.projects.find(p => p.address.toLowerCase() === addrLower);
+          if (prevProject) {
+            // Convert to Project interface
+            return {
+              id: 0, // ID not meaningful for previous round projects
+              address: prevProject.address,
+              metadata: prevProject.metadata as unknown as Project['metadata'],
+            };
+          }
+        }
+      }
+    }
+
+    return null;
+  }, [projects, projectAddress, currentIteration]);
 
   // Use iteration's chainId for registry status (not wallet's chainId)
   const iterationChainId = currentIteration?.chainId ?? null;

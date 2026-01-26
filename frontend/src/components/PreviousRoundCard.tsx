@@ -24,6 +24,7 @@ interface PreviousRoundCardProps {
   getProjectLabel: (address: string | null) => string | null;
   runTransaction: (label: string, txFn: () => Promise<any>, refreshFn?: () => Promise<void>) => Promise<boolean>;
   refreshBadges: () => Promise<void>;
+  iterationNumber?: number;
 }
 
 const PreviousRoundCard = ({
@@ -37,6 +38,7 @@ const PreviousRoundCard = ({
   getProjectLabel,
   runTransaction,
   refreshBadges,
+  iterationNumber,
 }: PreviousRoundCardProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { loading, roundData } = usePreviousRoundData(round, chainId, publicProvider, isExpanded, walletAddress);
@@ -250,6 +252,7 @@ const PreviousRoundCard = ({
                 projectScores={roundData.projectScores}
                 getProjectLabel={localGetProjectLabel}
                 isOwner={isOwner}
+                iterationNumber={iterationNumber}
               />
             </>
           ) : (

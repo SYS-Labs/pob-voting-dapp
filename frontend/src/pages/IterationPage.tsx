@@ -261,6 +261,59 @@ const IterationPage = ({
     setPendingVote(null);
   }, []);
 
+  // When voting has ended, combine projects from all rounds (current + previous)
+  // with the winner listed first
+  const allProjectsForFinalized = useMemo(() => {
+    // Only apply when voting has ended
+    if (!statusFlags.votingEnded || !currentIteration) {
+      return null;
+    }
+
+    // Collect all projects from current round
+    const projectMap = new Map<string, Project>();
+    let nextId = 1;
+
+    // Add current round projects first
+    for (const project of projects) {
+      projectMap.set(project.address.toLowerCase(), project);
+      if (project.id >= nextId) nextId = project.id + 1;
+    }
+
+    // Add projects from previous rounds (if not already present)
+    if (currentIteration.prev_rounds) {
+      for (const round of currentIteration.prev_rounds) {
+        if (round.projects) {
+          for (const prevProject of round.projects) {
+            const key = prevProject.address.toLowerCase();
+            if (!projectMap.has(key)) {
+              // Convert previous round project to Project interface
+              projectMap.set(key, {
+                id: nextId++,
+                address: prevProject.address,
+                metadata: prevProject.metadata as unknown as Project['metadata'],
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Convert to array and sort: winner first, then others
+    const allProjects = Array.from(projectMap.values());
+    const winnerAddress = winner.hasWinner ? winner.projectAddress?.toLowerCase() : null;
+
+    return allProjects.sort((a, b) => {
+      const aIsWinner = a.address.toLowerCase() === winnerAddress;
+      const bIsWinner = b.address.toLowerCase() === winnerAddress;
+      if (aIsWinner && !bIsWinner) return -1;
+      if (!aIsWinner && bIsWinner) return 1;
+      return 0; // Keep original order for non-winners
+    });
+  }, [statusFlags.votingEnded, currentIteration, projects, winner]);
+
+  // Use combined projects when finalized, otherwise use shuffled projects
+  const displayProjects = allProjectsForFinalized ?? shuffledProjects;
+
   return (
     <>
       {(!showToolbox || !sidebarVisible) && (
@@ -304,6 +357,7 @@ const IterationPage = ({
               getProjectLabel={getProjectLabel}
               runTransaction={runTransaction}
               refreshBadges={refreshBadges}
+              iterationNumber={currentIteration.iteration}
             />
           ))
         }
@@ -312,10 +366,15 @@ const IterationPage = ({
           <section className="pob-pane pob-pane--subtle">
             <div className="pob-pane__heading">
               <h3 className="pob-pane__title">Projects</h3>
+              {statusFlags.votingEnded && allProjectsForFinalized && allProjectsForFinalized.length > projects.length && (
+                <span className="text-xs text-[var(--pob-text-muted)]">
+                  (all rounds)
+                </span>
+              )}
             </div>
-            {projects.length ? (
+            {displayProjects.length ? (
               <div className="projects-grid">
-                {shuffledProjects.map((project) => {
+                {displayProjects.map((project) => {
                   // Determine voting role and status
                   // Projects cannot vote - they are participants, not jurors
                   // Community is the default for anyone without devrel/dao_hic role (and not owner/project)
@@ -357,6 +416,10 @@ const IterationPage = ({
                                  !statusFlags.votingEnded &&
                                  (!hasVotedAnywhere || canChangeVote);
 
+                  const isProjectWinner = statusFlags.votingEnded &&
+                    winner.hasWinner &&
+                    winner.projectAddress?.toLowerCase() === project.address.toLowerCase();
+
                   return (
                     <ProjectCard
                       key={project.id}
@@ -380,6 +443,7 @@ const IterationPage = ({
                       }}
                       communityBadges={currentIterationCommunityBadges}
                       iterationNumber={currentIteration?.iteration}
+                      isWinner={isProjectWinner}
                     />
                   );
                 })}
