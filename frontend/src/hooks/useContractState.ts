@@ -5,7 +5,7 @@ import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
 import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
 import JurySC_02_v001_ABI from '~/abis/JurySC_02_v001.json';
 import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
-import { batchGetProjectMetadataCIDs } from '~/utils/registry';
+import { batchGetProjectMetadataCIDs, VOTING_MODE_OVERRIDES } from '~/utils/registry';
 import { metadataAPI } from '~/utils/metadata-api';
 import { iterationsAPI, type IterationSnapshot } from '~/utils/iterations-api';
 import type {
@@ -408,12 +408,14 @@ export function useContractState(
           console.log('[loadEntityVotes] v002 dual - detected CONSENSUS mode');
         }
       } else {
-        // v003+: Trust votingMode() from contract
-        detectedMode = Number(await contract.votingMode().catch(() => 0));
+        // v003+: Trust votingMode() from contract, but apply override if needed
+        const contractMode = Number(await contract.votingMode().catch(() => 0));
+        const jurySCAddress = currentIteration?.jurySC?.toLowerCase() || '';
+        detectedMode = VOTING_MODE_OVERRIDES[jurySCAddress] ?? contractMode;
         winnerRaw = detectedMode === 0
           ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
           : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-        console.log('[loadEntityVotes] v003+ contract - using votingMode():', detectedMode);
+        console.log('[loadEntityVotes] v003+ contract - using votingMode():', detectedMode, jurySCAddress in VOTING_MODE_OVERRIDES ? '(overridden)' : '');
       }
 
       setVotingMode(detectedMode);

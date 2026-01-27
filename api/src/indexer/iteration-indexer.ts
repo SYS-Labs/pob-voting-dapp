@@ -49,6 +49,14 @@ const JURY_ABI = [
 // Poll interval: 37 seconds (configurable via env)
 const POLL_INTERVAL = parseInt(process.env.ITERATION_POLL_INTERVAL || '37000', 10);
 
+// Hardcoded voting mode overrides for locked contracts that can't be upgraded
+// These contracts have incorrect votingMode() return values but are permanently locked
+// Key: jurySC address (lowercase), Value: votingMode (0=CONSENSUS, 1=WEIGHTED)
+const VOTING_MODE_OVERRIDES: Record<string, number> = {
+  // Iteration 1 Round 2 (testnet) - contract locked with WEIGHTED mode but returns 0
+  '0x837992ac7b89c148f7e42755816e74e84cf985ad': 1,
+};
+
 // Optional: Force single chain mode (if set, only index this chain)
 const SINGLE_CHAIN_ID = process.env.CHAIN_ID
   ? parseInt(process.env.CHAIN_ID, 10)
@@ -237,6 +245,9 @@ class IterationIndexer {
         provider.getBlockNumber()
       ]);
 
+      // Apply voting mode override if this contract is in the override list
+      const effectiveVotingMode = VOTING_MODE_OVERRIDES[round.jurySC.toLowerCase()] ?? Number(votingMode);
+
       // Get project scores if voting has ended
       let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
       if (votingEnded) {
@@ -316,7 +327,7 @@ class IterationIndexer {
         jury_state: juryState,
         start_time: Number(startTime) || null,
         end_time: Number(endTime) || null,
-        voting_mode: Number(votingMode),
+        voting_mode: effectiveVotingMode,
         projects_locked: projectsLocked ? 1 : 0,
         contract_locked: locked ? 1 : 0,
         winner_address: winner[0] && winner[0] !== ethers.ZeroAddress ? winner[0] : null,

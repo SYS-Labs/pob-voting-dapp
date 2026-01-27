@@ -4,7 +4,7 @@ import type { PreviousRound, ProjectMetadata } from '~/interfaces';
 import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
 import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
 import { loadBadgesFromContract, type Badge } from '~/utils/loadBadgesFromContract';
-import { batchGetProjectMetadataCIDs } from '~/utils/registry';
+import { batchGetProjectMetadataCIDs, VOTING_MODE_OVERRIDES } from '~/utils/registry';
 import { metadataAPI } from '~/utils/metadata-api';
 
 interface RoundData {
@@ -165,12 +165,14 @@ export function usePreviousRoundData(
             console.log(`[usePreviousRoundData] Round #${round.round}: v002 dual - detected CONSENSUS mode`);
           }
         } else {
-          // v003+: Trust votingMode() from contract
-          votingMode = Number(await contract.votingMode().catch(() => 0));
+          // v003+: Trust votingMode() from contract, but apply override if needed
+          const contractMode = Number(await contract.votingMode().catch(() => 0));
+          const jurySCAddress = round.jurySC.toLowerCase();
+          votingMode = VOTING_MODE_OVERRIDES[jurySCAddress] ?? contractMode;
           winnerRaw = votingMode === 0
             ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
             : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-          console.log(`[usePreviousRoundData] Round #${round.round}: v003+ - using votingMode(): ${votingMode}`);
+          console.log(`[usePreviousRoundData] Round #${round.round}: v003+ - using votingMode(): ${votingMode}${jurySCAddress in VOTING_MODE_OVERRIDES ? ' (overridden)' : ''}`);
         }
 
         // Load contract data and badges in parallel
