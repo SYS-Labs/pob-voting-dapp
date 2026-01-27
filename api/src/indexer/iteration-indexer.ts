@@ -41,6 +41,8 @@ const JURY_ABI = [
   'function getCommunityEntityVote() external view returns (address)',
   'function getVoteParticipationCounts() external view returns (uint256, uint256, uint256)',
   'function getWinner() external view returns (address, bool)',
+  'function getWinnerConsensus() external view returns (address, bool)',
+  'function getWinnerWeighted() external view returns (address, bool)',
   'function getWinnerWithScores() external view returns (address[], uint256[], uint256)',
   'function projectCount() external view returns (uint256)',
   'function projectAddress(uint256 index) external view returns (address)'
@@ -208,10 +210,14 @@ class IterationIndexer {
     const jurySC = new Contract(round.jurySC, JURY_ABI, provider);
 
     try {
+      // Check for hardcoded voting mode override
+      const votingModeOverride = VOTING_MODE_OVERRIDES[round.jurySC.toLowerCase()];
+
       // Batch fetch all contract state
+      // Use correct winner function based on override (skip votingMode() call if overridden)
       const [
         pobAddress,
-        votingMode,
+        votingModeRaw,
         isActive,
         votingEnded,
         startTime,
@@ -228,7 +234,7 @@ class IterationIndexer {
         currentBlock
       ] = await Promise.all([
         jurySC.pob().catch(() => ethers.ZeroAddress),
-        jurySC.votingMode().catch(() => 0),
+        votingModeOverride !== undefined ? Promise.resolve(votingModeOverride) : jurySC.votingMode().catch(() => 0),
         jurySC.isActive().catch(() => false),
         jurySC.votingEnded().catch(() => false),
         jurySC.startTime().catch(() => BigInt(0)),
@@ -241,12 +247,11 @@ class IterationIndexer {
         jurySC.getDaoHicEntityVote().catch(() => null),
         jurySC.getCommunityEntityVote().catch(() => null),
         jurySC.getVoteParticipationCounts().catch(() => [BigInt(0), BigInt(0), BigInt(0)]),
-        jurySC.getWinner().catch(() => [null, false]),
+        votingModeOverride === 1 ? jurySC.getWinnerWeighted().catch(() => [null, false]) : jurySC.getWinner().catch(() => [null, false]),
         provider.getBlockNumber()
       ]);
 
-      // Apply voting mode override if this contract is in the override list
-      const effectiveVotingMode = VOTING_MODE_OVERRIDES[round.jurySC.toLowerCase()] ?? Number(votingMode);
+      const votingMode = Number(votingModeRaw);
 
       // Get project scores if voting has ended
       let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
@@ -327,7 +332,7 @@ class IterationIndexer {
         jury_state: juryState,
         start_time: Number(startTime) || null,
         end_time: Number(endTime) || null,
-        voting_mode: effectiveVotingMode,
+        voting_mode: votingMode,
         projects_locked: projectsLocked ? 1 : 0,
         contract_locked: locked ? 1 : 0,
         winner_address: winner[0] && winner[0] !== ethers.ZeroAddress ? winner[0] : null,

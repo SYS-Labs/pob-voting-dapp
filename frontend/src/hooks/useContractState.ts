@@ -378,15 +378,26 @@ export function useContractState(
 
       console.log('[loadEntityVotes] Loading entity votes from contract...');
 
+      // Check for hardcoded voting mode override first
+      const jurySCAddress = currentIteration?.jurySC?.toLowerCase() || '';
+      const votingModeOverride = VOTING_MODE_OVERRIDES[jurySCAddress];
+
       // Detect voting mode based on contract version
       // v001: Always CONSENSUS, use getWinner()
       // v002: Dual mode - detect by checking which winner function returns a result
-      // v003+: Trust votingMode() from contract
+      // v003+: Trust votingMode() from contract (or override)
       const version = currentIteration?.version || '003';
       let detectedMode = 0;
       let winnerRaw: [string, boolean] = [ethers.ZeroAddress, false];
 
-      if (version === '001') {
+      if (votingModeOverride !== undefined) {
+        // Hardcoded override - skip RPC call for votingMode, use correct winner function directly
+        detectedMode = votingModeOverride;
+        winnerRaw = detectedMode === 0
+          ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
+          : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+        console.log('[loadEntityVotes] Using hardcoded override - votingMode:', detectedMode);
+      } else if (version === '001') {
         // v001: Always CONSENSUS
         detectedMode = 0;
         winnerRaw = await contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
@@ -408,14 +419,12 @@ export function useContractState(
           console.log('[loadEntityVotes] v002 dual - detected CONSENSUS mode');
         }
       } else {
-        // v003+: Trust votingMode() from contract, but apply override if needed
-        const contractMode = Number(await contract.votingMode().catch(() => 0));
-        const jurySCAddress = currentIteration?.jurySC?.toLowerCase() || '';
-        detectedMode = VOTING_MODE_OVERRIDES[jurySCAddress] ?? contractMode;
+        // v003+: Trust votingMode() from contract
+        detectedMode = Number(await contract.votingMode().catch(() => 0));
         winnerRaw = detectedMode === 0
           ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
           : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-        console.log('[loadEntityVotes] v003+ contract - using votingMode():', detectedMode, jurySCAddress in VOTING_MODE_OVERRIDES ? '(overridden)' : '');
+        console.log('[loadEntityVotes] v003+ contract - using votingMode():', detectedMode);
       }
 
       setVotingMode(detectedMode);

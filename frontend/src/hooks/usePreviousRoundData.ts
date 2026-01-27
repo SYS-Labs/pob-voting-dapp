@@ -136,14 +136,25 @@ export function usePreviousRoundData(
         // Fallback: fetch all data via RPC (API didn't provide full data)
         console.log(`[usePreviousRoundData] Round #${round.round}: Falling back to RPC (no API data)`);
 
+        // Check for hardcoded voting mode override first
+        const jurySCAddress = round.jurySC.toLowerCase();
+        const votingModeOverride = VOTING_MODE_OVERRIDES[jurySCAddress];
+
         // Detect voting mode based on contract version
         // v001: Always CONSENSUS, use getWinner()
         // v002: Dual mode - detect by checking which winner function returns a result
-        // v003+: Trust votingMode() from contract
+        // v003+: Trust votingMode() from contract (or override)
         let votingMode = 0;
         let winnerRaw: [string, boolean] = [ethers.ZeroAddress, false];
 
-        if (version === '001') {
+        if (votingModeOverride !== undefined) {
+          // Hardcoded override - skip RPC call for votingMode, use correct winner function directly
+          votingMode = votingModeOverride;
+          winnerRaw = votingMode === 0
+            ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
+            : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+          console.log(`[usePreviousRoundData] Round #${round.round}: Using hardcoded override - votingMode: ${votingMode}`);
+        } else if (version === '001') {
           // v001: Always CONSENSUS
           votingMode = 0;
           winnerRaw = await contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
@@ -165,14 +176,12 @@ export function usePreviousRoundData(
             console.log(`[usePreviousRoundData] Round #${round.round}: v002 dual - detected CONSENSUS mode`);
           }
         } else {
-          // v003+: Trust votingMode() from contract, but apply override if needed
-          const contractMode = Number(await contract.votingMode().catch(() => 0));
-          const jurySCAddress = round.jurySC.toLowerCase();
-          votingMode = VOTING_MODE_OVERRIDES[jurySCAddress] ?? contractMode;
+          // v003+: Trust votingMode() from contract
+          votingMode = Number(await contract.votingMode().catch(() => 0));
           winnerRaw = votingMode === 0
             ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
             : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-          console.log(`[usePreviousRoundData] Round #${round.round}: v003+ - using votingMode(): ${votingMode}${jurySCAddress in VOTING_MODE_OVERRIDES ? ' (overridden)' : ''}`);
+          console.log(`[usePreviousRoundData] Round #${round.round}: v003+ - using votingMode(): ${votingMode}`);
         }
 
         // Load contract data and badges in parallel
