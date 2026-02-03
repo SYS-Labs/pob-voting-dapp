@@ -1,6 +1,13 @@
 import { Link, useParams } from 'react-router-dom';
 import type { ParticipantRole, Badge } from '~/interfaces';
 import { ROLE_LABELS, ROLE_COLORS } from '~/constants/roles';
+import { PoB_01ABI, PoB_02ABI } from '~/abis';
+
+// Helper to select PoB ABI based on version
+function getPoBContractABI(version: string | undefined) {
+  if (version === '001' || version === '002') return PoB_01ABI;
+  return PoB_02ABI; // Default to v02 for "003" and future versions
+}
 
 interface RoleStatuses {
   community: boolean;
