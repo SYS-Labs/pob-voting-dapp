@@ -1,0 +1,390 @@
+<script lang="ts">
+  import { Link, navigate } from 'svelte-routing';
+  import { get } from 'svelte/store';
+  import type { JsonRpcSigner } from 'ethers';
+  import type { Project } from '~/interfaces';
+  import { createProjectMetadataManager, type ProjectMetadataForm } from '~/stores/projectMetadataManager';
+  import { createRegistryStatusStore } from '~/stores/registryStatus';
+  import { isValidYouTubeUrl, isValidUrl, isUserRejectedError } from '~/utils';
+
+  interface Props {
+    iterationNumber: string;
+    projectAddress: string;
+    projects: Project[];
+    walletAddress: string | null;
+    chainId: number | null;
+    iterationChainId: number | null;
+    contractAddress: string | null;
+    signer: JsonRpcSigner | null;
+    projectsLocked: boolean;
+  }
+
+  let {
+    iterationNumber,
+    projectAddress,
+    projects,
+    walletAddress,
+    chainId,
+    iterationChainId,
+    contractAddress,
+    signer,
+    projectsLocked,
+  }: Props = $props();
+
+  let formData = $state<ProjectMetadataForm>({
+    name: '',
+    yt_vid: '',
+    proposal: '',
+    socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
+  });
+  let error = $state<string | null>(null);
+  let initialized = $state(false);
+
+  // Find the project
+  const project = $derived(
+    projectAddress
+      ? projects.find(p => p.address.toLowerCase() === projectAddress.toLowerCase()) || null
+      : null
+  );
+
+  // Project metadata manager
+  let metadataManagerStore = $state<ReturnType<typeof createProjectMetadataManager> | null>(null);
+
+  $effect(() => {
+    metadataManagerStore?.destroy?.();
+    metadataManagerStore = createProjectMetadataManager(
+      project?.address || null,
+      chainId,
+      contractAddress,
+      signer,
+      projectsLocked
+    );
+    return () => metadataManagerStore?.destroy?.();
+  });
+
+  const metadata = $derived(metadataManagerStore ? $metadataManagerStore.metadata : null);
+  const isSubmitting = $derived(metadataManagerStore ? $metadataManagerStore.isSubmitting : false);
+
+  // Registry status
+  let registryStatusManager = $state<ReturnType<typeof createRegistryStatusStore> | null>(null);
+
+  $effect(() => {
+    registryStatusManager?.destroy();
+    registryStatusManager = createRegistryStatusStore(iterationChainId);
+    return () => registryStatusManager?.destroy();
+  });
+
+  const registryAvailable = $derived(registryStatusManager?.registryAvailable ?? false);
+  const initializationComplete = $derived(
+    registryStatusManager?.initializationComplete ? get(registryStatusManager.initializationComplete) : null
+  );
+  const registryOwner = $derived(
+    registryStatusManager?.registryOwner ? get(registryStatusManager.registryOwner) : null
+  );
+
+  // Initialize form data when metadata loads
+  $effect(() => {
+    if (!initialized && (metadata || project)) {
+      const source = metadata || project?.metadata;
+      if (source) {
+        formData = {
+          name: source.name || '',
+          yt_vid: source.yt_vid || '',
+          proposal: source.proposal || '',
+          socials: {
+            x: source.socials?.x || '',
+            instagram: source.socials?.instagram || '',
+            tiktok: source.socials?.tiktok || '',
+            linkedin: source.socials?.linkedin || '',
+          },
+        };
+        initialized = true;
+      } else if (project) {
+        formData = {
+          name: `Project #${project.id}`,
+          yt_vid: '',
+          proposal: '',
+          socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
+        };
+        initialized = true;
+      }
+    }
+  });
+
+  // Determine if editing is allowed
+  const canEdit = $derived.by(() => {
+    if (!signer) {
+      return { allowed: false, reason: 'Connect wallet to update metadata' };
+    }
+    if (!registryAvailable) {
+      return { allowed: false, reason: 'Metadata registry not available on this network' };
+    }
+    if (initializationComplete === null) {
+      return { allowed: false, reason: 'Loading metadata permissions' };
+    }
+
+    const walletLower = walletAddress?.toLowerCase();
+    const isRegistryOwner = Boolean(registryOwner && walletLower === registryOwner?.toLowerCase());
+
+    // Owner bypass
+    const ownerBypassEnabled = import.meta.env.VITE_OWNER_METADATA_BYPASS === 'true';
+    if (ownerBypassEnabled && isRegistryOwner) {
+      return { allowed: true };
+    }
+
+    if (!initializationComplete) {
+      if (!registryOwner) {
+        return { allowed: false, reason: 'Loading registry owner' };
+      }
+      if (!isRegistryOwner) {
+        return { allowed: false, reason: 'Only registry owner can update during initialization' };
+      }
+      return { allowed: true };
+    }
+
+    if (projectsLocked) {
+      return { allowed: false, reason: 'Metadata editing closed (voting started)' };
+    }
+    if (!projectAddress || !walletLower || walletLower !== projectAddress.toLowerCase()) {
+      return { allowed: false, reason: 'Only project owner can update' };
+    }
+    return { allowed: true };
+  });
+
+  // Form validation
+  const isFormValid = $derived.by(() => {
+    if (!formData.name.trim()) return false;
+    if (formData.name.length > 200) return false;
+    if (formData.yt_vid && !isValidYouTubeUrl(formData.yt_vid)) return false;
+    if (formData.proposal && !isValidUrl(formData.proposal)) return false;
+    if (formData.socials.x && !isValidUrl(formData.socials.x)) return false;
+    if (formData.socials.instagram && !isValidUrl(formData.socials.instagram)) return false;
+    if (formData.socials.tiktok && !isValidUrl(formData.socials.tiktok)) return false;
+    if (formData.socials.linkedin && !isValidUrl(formData.socials.linkedin)) return false;
+    return true;
+  });
+
+  // Handle form submission
+  async function handleSubmit(e: Event) {
+    e.preventDefault();
+    error = null;
+
+    try {
+      await metadataManagerStore?.submitMetadata(formData);
+      navigate(`/iteration/${iterationNumber}/project/${projectAddress}`);
+    } catch (err) {
+      if (isUserRejectedError(err)) {
+        return;
+      }
+      console.error('Failed to submit metadata:', err);
+      error = err instanceof Error ? err.message : 'Failed to submit metadata';
+    }
+  }
+</script>
+
+{#if !walletAddress}
+  <div class="pob-page">
+    <div class="pob-container pob-container--narrow">
+      <div class="pob-pane">
+        <p class="text-sm text-[var(--pob-text-muted)]">
+          Please connect your wallet to edit project metadata.
+        </p>
+      </div>
+    </div>
+  </div>
+{:else if !project}
+  <div class="pob-page">
+    <div class="pob-container pob-container--narrow">
+      <div class="pob-pane">
+        <p class="text-sm text-[var(--pob-text-muted)]">
+          Project not found.
+        </p>
+      </div>
+    </div>
+  </div>
+{:else if !canEdit.allowed}
+  <div class="pob-page">
+    <div class="pob-container pob-container--narrow">
+      <div style="margin-bottom: 1rem;">
+        <Link
+          to={`/iteration/${iterationNumber}/project/${projectAddress}`}
+          class="text-sm text-[var(--pob-primary)] hover:underline"
+        >
+          ← Back to Project
+        </Link>
+      </div>
+      <div class="pob-pane">
+        <p class="text-sm text-[var(--pob-text-muted)]">
+          {canEdit.reason}
+        </p>
+      </div>
+    </div>
+  </div>
+{:else}
+  <div class="pob-page">
+    <div class="pob-container pob-container--narrow">
+      <!-- Back link -->
+      <div style="margin-bottom: 1rem;">
+        <Link
+          to={`/iteration/${iterationNumber}/project/${projectAddress}`}
+          class="text-sm text-[var(--pob-primary)] hover:underline"
+        >
+          ← Back to Project
+        </Link>
+      </div>
+
+      <!-- Page header -->
+      <div class="pob-pane">
+        <div class="pob-pane__heading">
+          <h2 class="pob-pane__title">Edit Project</h2>
+        </div>
+
+        <form onsubmit={handleSubmit} class="pob-form">
+          <!-- Basic Info Section -->
+          <div class="pob-form__section">
+            <div class="pob-form__field">
+              <label for="project-name" class="pob-form__label">
+                Project Name <span class="pob-form__required">*</span>
+              </label>
+              <input
+                id="project-name"
+                type="text"
+                bind:value={formData.name}
+                class="pob-input"
+                placeholder="Enter project name"
+                maxlength={200}
+                required
+              />
+              <p class="pob-form__hint">
+                {formData.name.length}/200 characters
+              </p>
+            </div>
+          </div>
+
+          <!-- Proposal Section -->
+          <div class="pob-form__section">
+            <h3 class="pob-form__section-title">Proposal</h3>
+
+            <div class="pob-form__field">
+              <label for="project-youtube" class="pob-form__label">YouTube Video URL</label>
+              <input
+                id="project-youtube"
+                type="text"
+                bind:value={formData.yt_vid}
+                class="pob-input"
+                placeholder="https://youtu.be/... or https://youtube.com/watch?v=..."
+              />
+              {#if formData.yt_vid && !isValidYouTubeUrl(formData.yt_vid)}
+                <p class="pob-form__error">Invalid YouTube URL format</p>
+              {/if}
+            </div>
+
+            <div class="pob-form__field">
+              <label for="project-proposal" class="pob-form__label">Proposal URL</label>
+              <input
+                id="project-proposal"
+                type="text"
+                bind:value={formData.proposal}
+                class="pob-input"
+                placeholder="https://..."
+              />
+              {#if formData.proposal && !isValidUrl(formData.proposal)}
+                <p class="pob-form__error">Invalid URL format</p>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Socials Section -->
+          <div class="pob-form__section">
+            <h3 class="pob-form__section-title">Socials</h3>
+
+            <!-- X (Twitter) - Featured/Primary -->
+            <div class="pob-form__field pob-form__field--featured">
+              <label for="project-x" class="pob-form__label">X (ex Twitter)</label>
+              <input
+                id="project-x"
+                type="text"
+                bind:value={formData.socials.x}
+                class="pob-input pob-input--featured"
+                placeholder="https://x.com/yourproject"
+              />
+              {#if formData.socials.x && !isValidUrl(formData.socials.x)}
+                <p class="pob-form__error">Invalid URL format</p>
+              {/if}
+            </div>
+
+            <!-- Other Socials - Grid Layout -->
+            <div class="pob-form__socials-grid">
+              <div class="pob-form__field">
+                <label for="project-instagram" class="pob-form__label">Instagram</label>
+                <input
+                  id="project-instagram"
+                  type="text"
+                  bind:value={formData.socials.instagram}
+                  class="pob-input"
+                  placeholder="https://instagram.com/..."
+                />
+                {#if formData.socials.instagram && !isValidUrl(formData.socials.instagram)}
+                  <p class="pob-form__error">Invalid URL format</p>
+                {/if}
+              </div>
+
+              <div class="pob-form__field">
+                <label for="project-tiktok" class="pob-form__label">TikTok</label>
+                <input
+                  id="project-tiktok"
+                  type="text"
+                  bind:value={formData.socials.tiktok}
+                  class="pob-input"
+                  placeholder="https://tiktok.com/@..."
+                />
+                {#if formData.socials.tiktok && !isValidUrl(formData.socials.tiktok)}
+                  <p class="pob-form__error">Invalid URL format</p>
+                {/if}
+              </div>
+
+              <div class="pob-form__field">
+                <label for="project-linkedin" class="pob-form__label">LinkedIn</label>
+                <input
+                  id="project-linkedin"
+                  type="text"
+                  bind:value={formData.socials.linkedin}
+                  class="pob-input"
+                  placeholder="https://linkedin.com/company/..."
+                />
+                {#if formData.socials.linkedin && !isValidUrl(formData.socials.linkedin)}
+                  <p class="pob-form__error">Invalid URL format</p>
+                {/if}
+              </div>
+            </div>
+          </div>
+
+          <!-- Error display -->
+          {#if error}
+            <div class="pob-warning">
+              <p class="text-xs">{error}</p>
+            </div>
+          {/if}
+
+          <!-- Form Actions -->
+          <div class="pob-form__actions">
+            <Link
+              to={`/iteration/${iterationNumber}/project/${projectAddress}`}
+              class="pob-button pob-button--outline"
+              style="text-decoration: none;"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={isSubmitting || !isFormValid}
+              class="pob-button"
+            >
+              {isSubmitting ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}

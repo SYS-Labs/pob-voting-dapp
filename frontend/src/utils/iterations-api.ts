@@ -23,6 +23,8 @@ export interface PreviousRoundSnapshot {
   juryState: JuryState;
   winner: { projectAddress: string | null; hasWinner: boolean };
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
+  devRelAccount: string | null;
+  daoHicVoters: string[];
   daoHicIndividualVotes: Record<string, string>;
   projects: ProjectSnapshot[];
 }

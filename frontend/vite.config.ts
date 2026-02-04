@@ -1,10 +1,11 @@
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [svelte(), tailwindcss()],
   resolve: {
     alias: {
       '~': path.resolve(__dirname, './src'),
@@ -24,8 +25,8 @@ export default defineConfig({
         manualChunks: {
           // Split ethers.js into its own chunk since it's the largest dependency
           'ethers': ['ethers'],
-          // Split React and React-DOM into a vendor chunk
-          'react-vendor': ['react', 'react-dom'],
+          // Split Svelte into a vendor chunk
+          'svelte-vendor': ['svelte', 'svelte/internal'],
         },
       },
     },

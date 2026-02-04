@@ -13,6 +13,9 @@ export interface PreviousRound {
   juryState?: 'deployed' | 'activated' | 'active' | 'ended' | 'locked';
   winner?: { projectAddress: string | null; hasWinner: boolean };
   entityVotes?: { devRel: string | null; daoHic: string | null; community: string | null };
+  // Role eligibility data from API (used for badge minting)
+  devRelAccount?: string | null;
+  daoHicVoters?: string[];
   daoHicIndividualVotes?: Record<string, string>;
   projects?: { address: string; metadataCID: string | null; metadata: Record<string, unknown> | null }[];
 }
@@ -64,6 +67,27 @@ export interface Badge {
   iteration: number;
   round?: number; // Round number within the iteration (optional)
   claimed?: boolean;
+}
+
+export interface CommunityBadge {
+  tokenId: string;
+  hasVoted: boolean;
+  vote: string | null;
+  claimed?: boolean;
+  iteration: number;
+  round?: number;
+}
+
+export interface RoleStatuses {
+  community: boolean;
+  devrel: boolean;
+  dao_hic: boolean;
+  project: boolean;
+}
+
+export interface StatusFlags {
+  isActive: boolean;
+  votingEnded: boolean;
 }
 
 /**
