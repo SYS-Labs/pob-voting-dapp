@@ -44,6 +44,8 @@ export interface PreviousRoundAPI {
   juryState: JuryState;
   winner: { projectAddress: string | null; hasWinner: boolean };
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
+  devRelAccount: string | null;
+  daoHicVoters: string[];
   daoHicIndividualVotes: Record<string, string>;
   projects: ProjectSnapshot[];
 }
@@ -329,6 +331,8 @@ export function createIterationsDatabase(db: Database.Database) {
             daoHic: r.daohic_vote,
             community: r.community_vote
           },
+          devRelAccount: r.devrel_account,
+          daoHicVoters: r.daohic_voters ? JSON.parse(r.daohic_voters) : [],
           daoHicIndividualVotes: r.daohic_individual_votes ? JSON.parse(r.daohic_individual_votes) : {},
           projects: r.projects ? JSON.parse(r.projects) : []
         }));
