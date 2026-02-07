@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Link, navigate } from 'svelte-routing';
-  import { get } from 'svelte/store';
   import type { Iteration, ParticipantRole, Project, Badge, CommunityBadge, RoleStatuses, StatusFlags } from '~/interfaces';
   import type { JsonRpcSigner } from 'ethers';
   import MarkdownRenderer from '~/components/MarkdownRenderer.svelte';
@@ -105,12 +104,30 @@
   });
 
   const registryAvailable = $derived(registryStatusManager?.registryAvailable ?? false);
-  const initializationComplete = $derived(
-    registryStatusManager?.initializationComplete ? get(registryStatusManager.initializationComplete) : null
-  );
-  const registryOwner = $derived(
-    registryStatusManager?.registryOwner ? get(registryStatusManager.registryOwner) : null
-  );
+
+  let initializationComplete = $state<boolean | null>(null);
+  let registryOwner = $state<string | null>(null);
+
+  $effect(() => {
+    const manager = registryStatusManager;
+    if (!manager) {
+      initializationComplete = null;
+      registryOwner = null;
+      return;
+    }
+
+    const unsubInit = manager.initializationComplete.subscribe((v: boolean | null) => {
+      initializationComplete = v;
+    });
+    const unsubOwner = manager.registryOwner.subscribe((v: string | null) => {
+      registryOwner = v;
+    });
+
+    return () => {
+      unsubInit();
+      unsubOwner();
+    };
+  });
 
   // Project metadata manager - use $effect for proper lifecycle management
   let metadataManager = $state<ReturnType<typeof createProjectMetadataManager> | null>(null);
@@ -120,12 +137,14 @@
     pendingCID: string | null;
     pendingTxHash: string | null;
     pendingConfirmations: number;
+    metadata: import('~/interfaces').ProjectMetadata | null;
   }>({
     currentCID: null,
     currentTxHash: null,
     pendingCID: null,
     pendingTxHash: null,
     pendingConfirmations: 0,
+    metadata: null,
   });
 
   $effect(() => {
@@ -133,14 +152,13 @@
     const chain = iterationChainId;
     const contract = contractAddress;
     const sig = signer;
-    const locked = projectsLocked;
 
     if (!addr || !chain || !contract) {
       metadataManager = null;
       return;
     }
 
-    const manager = createProjectMetadataManager(addr, chain, contract, sig, locked);
+    const manager = createProjectMetadataManager(addr, chain, contract, sig);
     metadataManager = manager;
 
     // Subscribe to state changes
@@ -151,6 +169,7 @@
         pendingCID: state.pendingCID,
         pendingTxHash: state.pendingTxHash,
         pendingConfirmations: state.pendingConfirmations,
+        metadata: state.metadata,
       };
     });
 
@@ -283,25 +302,20 @@
   const hasDaoHicBadge = $derived(currentIterationBadges?.some(badge => badge.role === 'dao_hic') ?? false);
 
   const canEditMetadata = $derived.by(() => {
-    if (!project || !walletAddress) return false;
-    if (!registryAvailable || initializationComplete === null) return false;
+    if (!project || !walletAddress || !registryAvailable) return false;
+    if (initializationComplete === null) return false;
 
     const walletLower = walletAddress.toLowerCase();
-
-    // Owner bypass
-    const ownerBypassEnabled = import.meta.env.VITE_OWNER_METADATA_BYPASS === 'true';
     const isRegistryOwner = Boolean(registryOwner && walletLower === registryOwner.toLowerCase());
-
-    if (ownerBypassEnabled && isRegistryOwner) {
-      return true;
-    }
+    const isProjectWallet = walletLower === project.address.toLowerCase();
 
     if (!initializationComplete) {
+      // Before initialization complete: only owner can edit
       return isRegistryOwner;
     }
 
-    if (projectsLocked) return false;
-    return walletLower === project.address.toLowerCase();
+    // After initialization complete: only project wallet, and only when not locked
+    return isProjectWallet && !projectsLocked;
   });
 
   // Can see metadata status section: registry owner or project wallet
@@ -313,8 +327,10 @@
     return isRegistryOwner || isProjectWallet;
   });
 
-  const projectName = $derived(project?.metadata?.name ?? `Project #${project?.id ?? 0}`);
-  const embedUrl = $derived(getYouTubeEmbedUrl(project?.metadata?.yt_vid ?? null));
+  // Use registry metadata (freshest) when available, fall back to project.metadata (from contractState)
+  const resolvedMetadata = $derived(metadataState.metadata ?? project?.metadata ?? null);
+  const projectName = $derived(resolvedMetadata?.name ?? `Project #${project?.id ?? 0}`);
+  const embedUrl = $derived(getYouTubeEmbedUrl(resolvedMetadata?.yt_vid ?? null));
 </script>
 
 {#if loading}
@@ -368,7 +384,7 @@
 
         <!-- Full description -->
         <div class="project-page__description">
-          <MarkdownRenderer content={project.metadata?.description} />
+          <MarkdownRenderer content={resolvedMetadata?.description} />
         </div>
 
         <!-- Video embed -->
@@ -384,10 +400,10 @@
         {/if}
 
         <!-- Proposal link -->
-        {#if project.metadata?.proposal}
+        {#if resolvedMetadata?.proposal}
           <div style="margin-top: 1rem;">
             <a
-              href={project.metadata.proposal}
+              href={resolvedMetadata.proposal}
               target="_blank"
               rel="noopener noreferrer"
               class="pob-button pob-button--outline pob-button--compact"
@@ -400,9 +416,9 @@
         <!-- Social links + on-chain metadata links -->
         <div class="pob-socials" style="margin-top: 1.5rem;">
           <!-- Social links on the left -->
-          {#if project.metadata?.socials?.x}
+          {#if resolvedMetadata?.socials?.x}
             <a
-              href={project.metadata.socials.x}
+              href={resolvedMetadata.socials.x}
               target="_blank"
               rel="noopener noreferrer"
               class="pob-socials__link pob-socials__link--x"
@@ -411,9 +427,9 @@
               X
             </a>
           {/if}
-          {#if project.metadata?.socials?.instagram}
+          {#if resolvedMetadata?.socials?.instagram}
             <a
-              href={project.metadata.socials.instagram}
+              href={resolvedMetadata.socials.instagram}
               target="_blank"
               rel="noopener noreferrer"
               class="pob-socials__link"
@@ -422,9 +438,9 @@
               Instagram
             </a>
           {/if}
-          {#if project.metadata?.socials?.tiktok}
+          {#if resolvedMetadata?.socials?.tiktok}
             <a
-              href={project.metadata.socials.tiktok}
+              href={resolvedMetadata.socials.tiktok}
               target="_blank"
               rel="noopener noreferrer"
               class="pob-socials__link"
@@ -433,9 +449,9 @@
               TikTok
             </a>
           {/if}
-          {#if project.metadata?.socials?.linkedin}
+          {#if resolvedMetadata?.socials?.linkedin}
             <a
-              href={project.metadata.socials.linkedin}
+              href={resolvedMetadata.socials.linkedin}
               target="_blank"
               rel="noopener noreferrer"
               class="pob-socials__link"
@@ -476,34 +492,12 @@
         <!-- Metadata Status Section - visible to owner/project wallet only -->
         {#if canSeeMetadataStatus && pendingCID}
           {#if !currentCID}<div class="pob-pane__divider"></div>{/if}
-          <div class="pob-stack--dense" style={currentCID ? 'margin-top: 0.75rem;' : ''}>
-            <p class="pob-pane__meta">Update Status</p>
-            <div class="flex items-center gap-3 text-xs">
-              <a
-                href={getMetadataCidUrl(pendingCID)}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-[var(--pob-primary)] hover:underline"
-                title={`Pending CID: ${pendingCID}`}
-              >
-                📦 IPFS
-              </a>
-              {#if pendingTxHash && iterationChainId}
-                <a
-                  href={getExplorerTxLink(iterationChainId, pendingTxHash)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-[var(--pob-primary)] hover:underline"
-                  title={`Transaction: ${pendingTxHash}`}
-                >
-                  🔗 TX
-                </a>
-              {/if}
-              <span class="pob-pill flex items-center gap-1">
-                <ProgressSpinner size={16} progress={Math.min((pendingConfirmations / 5) * 100, 100)} />
-                {pendingConfirmations}/5
-              </span>
-            </div>
+          <div class="flex items-center gap-2 justify-end" style={currentCID ? 'margin-top: 0.75rem;' : ''}>
+            <p class="pob-pane__meta">Updating...</p>
+            <span class="pob-pill flex items-center gap-1">
+              <ProgressSpinner size={16} progress={Math.min((pendingConfirmations / 5) * 100, 100)} />
+              {pendingConfirmations}/5
+            </span>
           </div>
         {/if}
       </div>

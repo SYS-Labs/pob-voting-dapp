@@ -508,45 +508,6 @@ async function loadUserVotes(
   console.log('[loadUserVotes] Complete.');
 }
 
-async function loadVotingStatus(
-  contract: Contract,
-  currentIteration: Iteration,
-  publicProvider: JsonRpcProvider,
-  selectedChainId: number,
-  address: string | null
-): Promise<{ isActive: boolean; votingEnded: boolean }> {
-  console.log('[loadVotingStatus] Starting...');
-  const iterationNum = currentIteration.iteration;
-
-  const [isActive, votingEnded, devRelVoted, devRelVoteValue, daoVote, daoVoted, startTime, endTime] =
-    await cachedPromiseAll(publicProvider, selectedChainId, [
-      { key: `iteration:${iterationNum}:isActive`, promise: contract.isActive() },
-      { key: `iteration:${iterationNum}:votingEnded`, promise: contract.votingEnded() },
-      { key: `iteration:${iterationNum}:devRelHasVoted`, promise: contract.devRelHasVoted() },
-      { key: `iteration:${iterationNum}:devRelVote`, promise: contract.devRelVote() },
-      { key: `iteration:${iterationNum}:daoHicVoteOf:${address}`, promise: address ? contract.daoHicVoteOf(address) : Promise.resolve(null) },
-      { key: `iteration:${iterationNum}:daoHicHasVoted:${address}`, promise: address ? contract.daoHicHasVoted(address) : Promise.resolve(false) },
-      { key: `iteration:${iterationNum}:startTime`, promise: contract.startTime() },
-      { key: `iteration:${iterationNum}:endTime`, promise: contract.endTime() },
-    ]);
-
-  const flags = {
-    isActive: Boolean(isActive),
-    votingEnded: Boolean(votingEnded),
-  };
-
-  contractStateStore.update(s => ({
-    ...s,
-    statusFlags: flags,
-    devRelVote: Boolean(devRelVoted) ? normalizeAddress(devRelVoteValue) : null,
-    daoHicVote: Boolean(daoVoted) ? normalizeAddress(daoVote) : null,
-    iterationTimes: { startTime: Number(startTime), endTime: Number(endTime) },
-  }));
-
-  console.log('[loadVotingStatus] Complete.');
-  return flags;
-}
-
 async function loadVoteCounts(
   juryContract: Contract,
   currentIteration: Iteration,
@@ -844,22 +805,12 @@ export async function loadIterationState(
         loadTasks.push(badgesPromise);
       }
     } else {
-      console.log('[loadIterationState] API unavailable - falling back to RPC');
+      console.warn('[loadIterationState] API unavailable for iteration', currentIteration.iteration);
+      contractStateStore.update(s => ({ ...s, hasLoadError: true }));
 
-      const statusResult = await loadVotingStatus(juryContract, currentIteration, publicProvider, selectedChainId, walletAddress);
-
-      loadTasks.push(
-        loadEntityVotes(juryContract, currentIteration, publicProvider, selectedChainId, statusResult.isActive, statusResult.votingEnded)
-      );
-
-      if (isIterationLikePage) {
-        loadTasks.push(loadProjects(juryContract, currentIteration, publicProvider, selectedChainId));
+      if (walletAddress) {
+        loadTasks.push(loadUserVotes(juryContract, currentIteration, publicProvider, selectedChainId, walletAddress));
       }
-
-      if (currentPage === 'iteration' && walletAddress && isOwnerFlag) {
-        loadTasks.push(loadOwnerData(juryContract, currentIteration, publicProvider, selectedChainId));
-      }
-
       if (currentPage === 'badges' && walletAddress) {
         loadTasks.push(loadBadgesMinimal(walletAddress, publicProvider, allIterations, currentIteration));
       } else if (isIterationLikePage && walletAddress) {
@@ -869,10 +820,6 @@ export async function loadIterationState(
           }
         });
         loadTasks.push(badgesPromise);
-      }
-
-      if (currentPage === 'iteration' && (statusResult.isActive || statusResult.votingEnded)) {
-        loadTasks.push(loadVoteCounts(juryContract, currentIteration, publicProvider, selectedChainId));
       }
     }
 

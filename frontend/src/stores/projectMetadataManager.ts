@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { Transaction, type JsonRpcSigner } from 'ethers';
+import { Contract, Transaction, type JsonRpcSigner } from 'ethers';
 import type { ProjectMetadata } from '~/interfaces';
 import { metadataAPI } from '~/utils/metadata-api';
 import { getPublicProvider } from '~/utils/provider';
@@ -39,7 +39,6 @@ export function createProjectMetadataManager(
   chainId: number | null,
   contractAddress: string | null,
   signer: JsonRpcSigner | null,
-  metadataLocked: boolean
 ) {
   const state = writable<ProjectMetadataManagerState>({
     currentCID: null,
@@ -165,6 +164,9 @@ export function createProjectMetadataManager(
             clearInterval(pollingInterval);
             pollingInterval = null;
           }
+
+          // Reload metadata from API with the new CID
+          loadCID();
         }
       } catch (error) {
         console.error('Failed to poll confirmations:', error);
@@ -181,11 +183,6 @@ export function createProjectMetadataManager(
       throw new Error('Missing required parameters');
     }
 
-    const ownerBypassEnabled = import.meta.env.VITE_OWNER_METADATA_BYPASS === 'true';
-    if (metadataLocked && !ownerBypassEnabled) {
-      throw new Error('Metadata editing closed (voting started)');
-    }
-
     const currentState = get(state);
     if (currentState.pendingConfirmations > 0 && currentState.pendingConfirmations < 5) {
       throw new Error('Please wait for pending transaction to confirm');
@@ -194,6 +191,58 @@ export function createProjectMetadataManager(
     const registryAddress = REGISTRY_ADDRESSES[chainId];
     if (!registryAddress) {
       throw new Error(`PoBRegistry not deployed on chain ${chainId}`);
+    }
+
+    // Pre-flight RPC checks to match contract requirements and give clear errors
+    const provider = getPublicProvider(chainId);
+    if (!provider) {
+      throw new Error('No RPC provider available');
+    }
+
+    const registryABI = [
+      'function owner() view returns (address)',
+      'function initializationComplete() view returns (bool)',
+    ];
+    const jurySCABI = [
+      'function isRegisteredProject(address) view returns (bool)',
+      'function projectsLocked() view returns (bool)',
+    ];
+
+    const registry = new Contract(registryAddress, registryABI, provider);
+    const jurySC = new Contract(contractAddress, jurySCABI, provider);
+
+    const [registryOwner, initComplete] = await Promise.all([
+      registry.owner(),
+      registry.initializationComplete(),
+    ]);
+
+    const signerAddress = await signer.getAddress();
+    const isOwner = signerAddress.toLowerCase() === registryOwner.toLowerCase();
+
+    if (!initComplete) {
+      // During initialization only registry owner can set metadata
+      if (!isOwner) {
+        throw new Error('Only the registry owner can update metadata during initialization');
+      }
+    } else {
+      // After initialization: project wallet must match, and contract checks apply
+      if (!isOwner) {
+        if (signerAddress.toLowerCase() !== projectAddress.toLowerCase()) {
+          throw new Error('Only the project wallet can update its own metadata');
+        }
+
+        const [isRegistered, locked] = await Promise.all([
+          jurySC.isRegisteredProject(projectAddress),
+          jurySC.projectsLocked(),
+        ]);
+
+        if (!isRegistered) {
+          throw new Error('Project is not registered in the JurySC contract');
+        }
+        if (locked) {
+          throw new Error('Metadata editing is closed (voting has started)');
+        }
+      }
     }
 
     state.update(s => ({ ...s, isSubmitting: true }));

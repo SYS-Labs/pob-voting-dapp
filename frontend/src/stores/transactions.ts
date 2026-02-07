@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
-import { Contract, ethers, type JsonRpcProvider } from 'ethers';
+import { Contract, ethers } from 'ethers';
 import { JurySC_01ABI, PoB_01ABI, PoB_02ABI } from '~/abis';
-import type { Iteration, ParticipantRole } from '~/interfaces';
+import type { ParticipantRole } from '~/interfaces';
 import { ROLE_LABELS } from '~/constants/roles';
 import { NETWORKS } from '~/constants/networks';
 import { getTransactionContext } from './registry';
@@ -70,31 +70,6 @@ function requireWallet(
     throw new Error('Please switch to a supported network (Syscoin NEVM).');
   }
   return true;
-}
-
-async function validateVotingState(
-  currentIteration: Iteration | null,
-  publicProvider: JsonRpcProvider | null,
-  requireActive = true
-): Promise<{ isActive: boolean; votingEnded: boolean }> {
-  if (!currentIteration || !publicProvider) {
-    throw new Error('Cannot validate: missing iteration or provider');
-  }
-
-  const jurySC = new Contract(currentIteration.jurySC, JurySC_01ABI, publicProvider);
-  const [isActive, votingEnded] = await Promise.all([
-    jurySC.isActive(),
-    jurySC.votingEnded()
-  ]);
-
-  if (requireActive && !isActive) {
-    throw new Error('Voting is not active. Please refresh the page.');
-  }
-  if (requireActive && votingEnded) {
-    throw new Error('Voting has ended. Please refresh the page.');
-  }
-
-  return { isActive, votingEnded };
 }
 
 export async function runTransaction(
@@ -166,15 +141,6 @@ export async function executeMint(
   requireWallet(ctx.walletAddress, ctx.correctNetwork);
   if (!ctx.signer || !ctx.selectedIteration) return;
 
-  if (role === 'community') {
-    await validateVotingState(ctx.selectedIteration, ctx.publicProvider, true);
-  } else {
-    const { votingEnded } = await validateVotingState(ctx.selectedIteration, ctx.publicProvider, false);
-    if (!votingEnded) {
-      throw new Error('You can only mint this badge after voting has ended.');
-    }
-  }
-
   const pobABI = getPoBContractABI(ctx.selectedIteration.version);
   const contract = new Contract(ctx.selectedIteration.pob, pobABI, ctx.signer);
 
@@ -217,8 +183,6 @@ export async function executeVote(
   const ctx = getTransactionContext();
   requireWallet(ctx.walletAddress, ctx.correctNetwork);
   if (!ctx.signer || !ctx.selectedIteration) return;
-
-  await validateVotingState(ctx.selectedIteration, ctx.publicProvider, true);
 
   const contract = new Contract(ctx.selectedIteration.jurySC, JurySC_01ABI, ctx.signer);
   const label = `Vote as ${ROLE_LABELS[role]}`;

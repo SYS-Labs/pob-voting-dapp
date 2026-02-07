@@ -3,9 +3,9 @@
   import IterationHeader from '~/components/IterationHeader.svelte';
   import PreviousRoundCard from '~/components/PreviousRoundCard.svelte';
   import ProjectCard from '~/components/ProjectCard.svelte';
+  import OwnerPanel from '~/components/OwnerPanel.svelte';
   import JuryPanel from '~/components/JuryPanel.svelte';
   import ParticipantPanel from '~/components/ParticipantPanel.svelte';
-  import OwnerPanel from '~/components/OwnerPanel.svelte';
   import BadgePanel from '~/components/BadgePanel.svelte';
   import DateTimePanel from '~/components/DateTimePanel.svelte';
   import ToolboxCard from '~/components/ToolboxCard.svelte';
@@ -299,7 +299,6 @@
       iteration={currentIteration}
       {statusBadge}
       {iterationTimes}
-      isActive={statusFlags.isActive}
       votingEnded={statusFlags.votingEnded}
       {projectsLocked}
       {winner}
@@ -311,9 +310,7 @@
       {chainId}
       {pendingAction}
       {roles}
-      {rolesLoading}
       badges={currentIterationBadges}
-      communityBadges={currentIterationCommunityBadges}
       {executeMint}
       {refreshBadges}
       {votingMode}
@@ -335,6 +332,7 @@
           {runTransaction}
           {refreshBadges}
           iterationNumber={currentIteration.iteration}
+          userBadges={badges.filter(b => b.iteration === currentIteration.iteration && b.round === round.round)}
         />
       {/each}
     {/if}
@@ -428,6 +426,27 @@
       <DateTimePanel />
     {/if}
 
+    {#if !showToolbox && !isOwner}
+      <ParticipantPanel
+        {roles}
+        {walletAddress}
+        iterationNumber={currentIteration?.iteration}
+      />
+
+      <JuryPanel
+        {roles}
+        {statusFlags}
+        communityBadges={currentIterationCommunityBadges}
+        badges={currentIterationBadges}
+        {devRelVote}
+        {daoHicVote}
+        {pendingAction}
+        {walletAddress}
+        {chainId}
+        {getProjectLabel}
+      />
+    {/if}
+
     {#if !showToolbox}
       <BadgePanel
         badges={currentIterationBadges}
@@ -442,41 +461,7 @@
       />
     {/if}
 
-    {#if !isOwner}
-      <JuryPanel
-        {roles}
-        {statusFlags}
-        communityBadges={currentIterationCommunityBadges}
-        badges={currentIterationBadges}
-        allBadges={badges}
-        {devRelVote}
-        {daoHicVote}
-        {pendingAction}
-        {walletAddress}
-        {chainId}
-        {getProjectLabel}
-        executeMint={(role) => void executeMint(role, refreshBadges)}
-        previousRounds={currentIteration?.prev_rounds}
-        {signer}
-        {runTransaction}
-        {refreshBadges}
-      />
-      <ParticipantPanel
-        {roles}
-        {projectsLocked}
-        votingEnded={statusFlags.votingEnded}
-        {pendingAction}
-        {walletAddress}
-        badges={currentIterationBadges}
-        allBadges={badges}
-        executeMint={(role) => void executeMint(role, refreshBadges)}
-        previousRounds={currentIteration?.prev_rounds}
-        {signer}
-        {runTransaction}
-        {refreshBadges}
-        iterationNumber={currentIteration?.iteration}
-      />
-    {:else if currentIteration}
+    {#if isOwner && currentIteration}
       <OwnerPanel
         {currentIteration}
         {statusFlags}

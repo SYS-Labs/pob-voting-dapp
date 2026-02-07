@@ -11,17 +11,25 @@ export function createProviderWithoutENS(ethereum: any, chainId: number): Browse
   return provider;
 }
 
+// Cached public providers keyed by chainId
+const publicProviderCache = new Map<number, JsonRpcProvider>();
+
 /**
- * Get a public RPC provider for read-only operations
+ * Get a public RPC provider for read-only operations (cached)
  * @param chainId - The chain ID to connect to
  * @returns A JsonRpcProvider or null if chainId is not supported
  */
 export function getPublicProvider(chainId: number): JsonRpcProvider | null {
+  const cached = publicProviderCache.get(chainId);
+  if (cached) return cached;
+
   const network = NETWORKS[chainId];
   if (!network) {
     console.warn(`[getPublicProvider] No network config for chain ID ${chainId}`);
     return null;
   }
 
-  return new JsonRpcProvider(network.rpcUrl, chainId, { staticNetwork: true });
+  const provider = new JsonRpcProvider(network.rpcUrl, chainId, { staticNetwork: true });
+  publicProviderCache.set(chainId, provider);
+  return provider;
 }

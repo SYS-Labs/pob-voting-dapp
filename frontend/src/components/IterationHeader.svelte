@@ -1,19 +1,11 @@
 <script lang="ts">
   import type { Iteration, ParticipantRole, Badge, IterationMetadata } from '~/interfaces';
   import { formatDate } from '~/utils';
-  import { NETWORKS } from '~/constants/networks';
   import FinalResultsPanel from './FinalResultsPanel.svelte';
   import ContractAddress from './ContractAddress.svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
   import { Link } from 'svelte-routing';
   import { metadataAPI } from '~/utils/metadata-api';
-
-  interface CommunityBadge {
-    tokenId: string;
-    hasVoted: boolean;
-    vote: string | null;
-    claimed?: boolean;
-  }
 
   interface RoleStatuses {
     community: boolean;
@@ -26,7 +18,6 @@
     iteration: Iteration | null;
     statusBadge: { label: string; color: string };
     iterationTimes: { startTime: number | null; endTime: number | null };
-    isActive?: boolean;
     votingEnded?: boolean;
     projectsLocked?: boolean;
     winner?: { projectAddress: string | null; hasWinner: boolean };
@@ -38,9 +29,7 @@
     chainId?: number | null;
     pendingAction?: string | null;
     roles?: RoleStatuses;
-    rolesLoading?: boolean;
     badges?: Badge[];
-    communityBadges?: CommunityBadge[];
     executeMint?: (role: ParticipantRole, refreshCallback?: () => Promise<void>) => Promise<void>;
     refreshBadges?: () => Promise<void>;
     votingMode?: number;
@@ -52,7 +41,6 @@
     iteration,
     statusBadge,
     iterationTimes,
-    isActive = false,
     votingEnded,
     projectsLocked,
     winner,
@@ -63,9 +51,7 @@
     walletAddress,
     pendingAction,
     roles,
-    rolesLoading = false,
     badges,
-    communityBadges,
     executeMint,
     refreshBadges,
     votingMode = 0,
@@ -94,29 +80,25 @@
     loadMetadata();
   });
 
-  let network = $derived(iteration ? NETWORKS[iteration.chainId] : null);
-  let mintAmount = $derived(network?.mintAmount ?? '30');
-  let tokenSymbol = $derived(network?.tokenSymbol ?? 'TSYS');
-
   // Determine user's role and mint button visibility
   let hasDevRelBadge = $derived(badges?.some(badge => badge.role === 'devrel') ?? false);
   let hasDaoHicBadge = $derived(badges?.some(badge => badge.role === 'dao_hic') ?? false);
   let hasProjectBadge = $derived(badges?.some(badge => badge.role === 'project') ?? false);
-  let hasCommunityBadge = $derived(communityBadges && communityBadges.length > 0);
 
-  let canBecomeCommunity = $derived(
-    !roles?.project && !roles?.devrel && !roles?.dao_hic && !roles?.community
+  // Has the user already minted their non-community badge?
+  let hasMintedBadge = $derived(
+    (roles?.devrel && hasDevRelBadge) ||
+    (roles?.dao_hic && hasDaoHicBadge) ||
+    (roles?.project && hasProjectBadge)
   );
 
-  // Determine which mint button to show
-  let mintButtonType = $derived.by((): 'devrel' | 'dao_hic' | 'project' | 'community' | null => {
+  // Determine which mint button to show (non-community roles only)
+  let mintButtonType = $derived.by((): 'devrel' | 'dao_hic' | 'project' | null => {
     if (!walletAddress || !executeMint || isOwner) return null;
 
     if (roles?.devrel && !hasDevRelBadge && votingEnded) return 'devrel';
     if (roles?.dao_hic && !hasDaoHicBadge && votingEnded) return 'dao_hic';
     if (roles?.project && !hasProjectBadge && projectsLocked) return 'project';
-    if (rolesLoading) return null;
-    if (canBecomeCommunity && !hasCommunityBadge && isActive) return 'community';
 
     return null;
   });
@@ -164,6 +146,9 @@
         </p>
       </div>
       <div class="flex items-center gap-2">
+        {#if hasMintedBadge}
+          <span class="pob-pill pob-pill--active">Badge minted</span>
+        {/if}
         <span class={statusBadge.color}>{statusBadge.label}</span>
       </div>
     </div>
@@ -246,15 +231,6 @@
             disabled={pendingAction !== null}
           >
             {pendingAction === 'Mint Project Badge' ? 'Minting...' : 'Mint Project badge'}
-          </button>
-        {:else if mintButtonType === 'community'}
-          <button
-            type="button"
-            onclick={handleMint}
-            class="pob-button pob-button--compact"
-            disabled={pendingAction !== null}
-          >
-            {pendingAction === 'Mint Community Badge' ? 'Minting...' : `Mint community badge (${mintAmount} ${tokenSymbol})`}
           </button>
         {/if}
       </div>

@@ -184,12 +184,20 @@ export function setupWalletListeners(): () => void {
   };
 }
 
-// Get public provider for a specific chain
+// Cached public providers keyed by chainId
+const publicProviderCache = new Map<number, JsonRpcProvider>();
+
+// Get public provider for a specific chain (cached)
 export function getPublicProviderForChain(targetChainId: number): JsonRpcProvider | null {
+  const cached = publicProviderCache.get(targetChainId);
+  if (cached) return cached;
+
   const network = NETWORKS[targetChainId];
   if (!network) {
     console.warn('[getPublicProviderForChain] No network config for chainId:', targetChainId);
     return null;
   }
-  return new JsonRpcProvider(network.rpcUrl, targetChainId, { staticNetwork: true });
+  const provider = new JsonRpcProvider(network.rpcUrl, targetChainId, { staticNetwork: true });
+  publicProviderCache.set(targetChainId, provider);
+  return provider;
 }

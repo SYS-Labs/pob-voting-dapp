@@ -150,6 +150,9 @@ export function createIterationMetadataManager(
             clearInterval(pollingInterval);
             pollingInterval = null;
           }
+
+          // Reload metadata from API with the new CID
+          loadCID();
         }
       } catch (error) {
         console.error('Failed to poll confirmations:', error);

@@ -22,6 +22,7 @@
     runTransaction: (label: string, action: () => Promise<unknown>, onConfirmed?: () => Promise<void>) => Promise<boolean>;
     refreshIterations: () => Promise<void>;
     isLoading?: boolean;
+    error?: string | null;
   }
 
   let {
@@ -35,6 +36,7 @@
     runTransaction,
     refreshIterations,
     isLoading = false,
+    error = null,
   }: Props = $props();
 
   let registerModalOpen = $state(false);
@@ -313,6 +315,19 @@
       <div class="flex flex-col items-center justify-center py-12 gap-4">
         <ProgressSpinner size={48} />
         <p class="text-sm text-[var(--pob-text-muted)]">Loading iterations...</p>
+      </div>
+    </section>
+  {:else if error}
+    <section class="pob-pane">
+      <div class="flex flex-col items-center justify-center py-12 gap-4">
+        <p class="text-sm text-[var(--pob-warning-text)]">{error}</p>
+        <button
+          type="button"
+          class="pob-button pob-button--compact"
+          onclick={() => refreshIterations()}
+        >
+          Retry
+        </button>
       </div>
     </section>
   {:else}

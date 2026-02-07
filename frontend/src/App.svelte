@@ -20,6 +20,7 @@
   import ProjectPage from '~/pages/ProjectPage.svelte';
   import ProjectEditPage from '~/pages/ProjectEditPage.svelte';
   import IterationMetadataPage from '~/pages/IterationMetadataPage.svelte';
+  import IterationEditPage from '~/pages/IterationEditPage.svelte';
   import BadgesPage from '~/pages/BadgesPage.svelte';
   import FaqPage from '~/pages/FaqPage.svelte';
   import ForumPage from '~/pages/ForumPage.svelte';
@@ -41,7 +42,6 @@
     setSelectedIteration,
     updateIterationStatus,
     refreshIterations,
-    loadIterationStatuses,
   } from '~/stores/iterations';
   import {
     modalsStore,
@@ -138,6 +138,7 @@
   const iterationsLoading = $derived($iterationsStore.loading);
   const selectedIterationNumber = $derived($iterationsStore.selectedIterationNumber);
   const iterationStatusesMap = $derived($iterationsStore.statuses);
+  const iterationsError = $derived($iterationsStore.error);
   const selectedIteration = $derived($currentIteration);
 
   // Contract state
@@ -423,6 +424,7 @@
           {runTransaction}
           {refreshIterations}
           isLoading={iterationsLoading}
+          error={iterationsError}
         />
       </Route>
 
@@ -492,6 +494,32 @@
         {/if}
       </Route>
 
+      <!-- Project edit page (must be before project detail to match first) -->
+      <Route path="/iteration/:iterationNumber/project/:projectAddress/edit" let:params>
+        {#if showIterationPage}
+          <ProjectEditPage
+            iterationNumber={params.iterationNumber}
+            projectAddress={params.projectAddress}
+            {projects}
+            {walletAddress}
+            {chainId}
+            iterationChainId={selectedIteration?.chainId ?? null}
+            contractAddress={selectedIteration?.jurySC ?? null}
+            {signer}
+            {projectsLocked}
+          />
+        {:else if showIterationLoader}
+          <section class="pob-pane">
+            <div class="flex flex-col items-center justify-center py-12 gap-4">
+              <ProgressSpinner size={48} />
+              <p class="text-sm text-[var(--pob-text-muted)]">Loading iteration...</p>
+            </div>
+          </section>
+        {:else}
+          <NotFoundPage />
+        {/if}
+      </Route>
+
       <!-- Project detail page -->
       <Route path="/iteration/:iterationNumber/project/:projectAddress" let:params>
         {#if showIterationPage}
@@ -530,32 +558,52 @@
         {/if}
       </Route>
 
-      <!-- Project edit page -->
-      <Route path="/iteration/:iterationNumber/project/:projectAddress/edit" let:params>
-        <ProjectEditPage
-          iterationNumber={params.iterationNumber}
-          projectAddress={params.projectAddress}
-          {projects}
-          {walletAddress}
-          {chainId}
-          iterationChainId={selectedIteration?.chainId ?? null}
-          contractAddress={selectedIteration?.jurySC ?? null}
-          {signer}
-          {projectsLocked}
-        />
+      <!-- Iteration edit page -->
+      <Route path="/iteration/:iterationNumber/details/edit" let:params>
+        {#if showIterationPage}
+          <IterationEditPage
+            iterationNumber={params.iterationNumber}
+            currentIteration={selectedIteration}
+            {walletAddress}
+            {chainId}
+            {signer}
+            votingActive={statusFlags.isActive && !statusFlags.votingEnded}
+            {isOwner}
+          />
+        {:else if showIterationLoader}
+          <section class="pob-pane">
+            <div class="flex flex-col items-center justify-center py-12 gap-4">
+              <ProgressSpinner size={48} />
+              <p class="text-sm text-[var(--pob-text-muted)]">Loading iteration...</p>
+            </div>
+          </section>
+        {:else}
+          <NotFoundPage />
+        {/if}
       </Route>
 
       <!-- Iteration metadata page -->
       <Route path="/iteration/:iterationNumber/details" let:params>
-        <IterationMetadataPage
-          iterationNumber={params.iterationNumber}
-          currentIteration={selectedIteration}
-          {walletAddress}
-          {chainId}
-          {signer}
-          votingActive={statusFlags.isActive && !statusFlags.votingEnded}
-          {isOwner}
-        />
+        {#if showIterationPage}
+          <IterationMetadataPage
+            iterationNumber={params.iterationNumber}
+            currentIteration={selectedIteration}
+            {walletAddress}
+            {chainId}
+            {signer}
+            votingActive={statusFlags.isActive && !statusFlags.votingEnded}
+            {isOwner}
+          />
+        {:else if showIterationLoader}
+          <section class="pob-pane">
+            <div class="flex flex-col items-center justify-center py-12 gap-4">
+              <ProgressSpinner size={48} />
+              <p class="text-sm text-[var(--pob-text-muted)]">Loading iteration...</p>
+            </div>
+          </section>
+        {:else}
+          <NotFoundPage />
+        {/if}
       </Route>
 
       <!-- Badges page -->

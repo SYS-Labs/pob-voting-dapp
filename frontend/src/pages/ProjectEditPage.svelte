@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Link, navigate } from 'svelte-routing';
-  import { get } from 'svelte/store';
   import type { JsonRpcSigner } from 'ethers';
   import type { Project } from '~/interfaces';
   import { createProjectMetadataManager, type ProjectMetadataForm } from '~/stores/projectMetadataManager';
@@ -51,15 +50,14 @@
   let metadataManagerStore = $state<ReturnType<typeof createProjectMetadataManager> | null>(null);
 
   $effect(() => {
-    metadataManagerStore?.destroy?.();
-    metadataManagerStore = createProjectMetadataManager(
+    const manager = createProjectMetadataManager(
       project?.address || null,
       chainId,
       contractAddress,
       signer,
-      projectsLocked
     );
-    return () => metadataManagerStore?.destroy?.();
+    metadataManagerStore = manager;
+    return () => manager.destroy();
   });
 
   const metadata = $derived(metadataManagerStore ? $metadataManagerStore.metadata : null);
@@ -69,49 +67,82 @@
   let registryStatusManager = $state<ReturnType<typeof createRegistryStatusStore> | null>(null);
 
   $effect(() => {
-    registryStatusManager?.destroy();
-    registryStatusManager = createRegistryStatusStore(iterationChainId);
-    return () => registryStatusManager?.destroy();
+    const manager = createRegistryStatusStore(iterationChainId);
+    registryStatusManager = manager;
+    return () => manager.destroy();
   });
 
   const registryAvailable = $derived(registryStatusManager?.registryAvailable ?? false);
-  const initializationComplete = $derived(
-    registryStatusManager?.initializationComplete ? get(registryStatusManager.initializationComplete) : null
-  );
-  const registryOwner = $derived(
-    registryStatusManager?.registryOwner ? get(registryStatusManager.registryOwner) : null
-  );
+
+  let initializationComplete = $state<boolean | null>(null);
+  let registryOwner = $state<string | null>(null);
+
+  $effect(() => {
+    const manager = registryStatusManager;
+    if (!manager) {
+      initializationComplete = null;
+      registryOwner = null;
+      return;
+    }
+
+    const unsubInit = manager.initializationComplete.subscribe((v: boolean | null) => {
+      initializationComplete = v;
+    });
+    const unsubOwner = manager.registryOwner.subscribe((v: string | null) => {
+      registryOwner = v;
+    });
+
+    return () => {
+      unsubInit();
+      unsubOwner();
+    };
+  });
 
   // Initialize form data when metadata loads
+  // metadata (from registry API) has the real stored values.
+  // project?.metadata (from contract state) or project.id fallback are placeholders —
+  // don't lock initialization on them so metadata can overwrite when it arrives.
   $effect(() => {
-    if (!initialized && (metadata || project)) {
-      const source = metadata || project?.metadata;
-      if (source) {
-        formData = {
-          name: source.name || '',
-          yt_vid: source.yt_vid || '',
-          proposal: source.proposal || '',
-          socials: {
-            x: source.socials?.x || '',
-            instagram: source.socials?.instagram || '',
-            tiktok: source.socials?.tiktok || '',
-            linkedin: source.socials?.linkedin || '',
-          },
-        };
-        initialized = true;
-      } else if (project) {
-        formData = {
-          name: `Project #${project.id}`,
-          yt_vid: '',
-          proposal: '',
-          socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
-        };
-        initialized = true;
-      }
+    if (initialized) return;
+    const source = metadata || project?.metadata;
+    if (metadata) {
+      formData = {
+        name: metadata.name || '',
+        yt_vid: metadata.yt_vid || '',
+        proposal: metadata.proposal || '',
+        socials: {
+          x: metadata.socials?.x || '',
+          instagram: metadata.socials?.instagram || '',
+          tiktok: metadata.socials?.tiktok || '',
+          linkedin: metadata.socials?.linkedin || '',
+        },
+      };
+      initialized = true;
+    } else if (source) {
+      formData = {
+        name: source.name || '',
+        yt_vid: source.yt_vid || '',
+        proposal: source.proposal || '',
+        socials: {
+          x: source.socials?.x || '',
+          instagram: source.socials?.instagram || '',
+          tiktok: source.socials?.tiktok || '',
+          linkedin: source.socials?.linkedin || '',
+        },
+      };
+      // Don't set initialized — let registry metadata overwrite when it arrives
+    } else if (project) {
+      formData = {
+        name: `Project #${project.id}`,
+        yt_vid: '',
+        proposal: '',
+        socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
+      };
+      // Don't set initialized — let metadata overwrite when it arrives
     }
   });
 
-  // Determine if editing is allowed
+  // Determine if editing is allowed (matches contract authorization logic)
   const canEdit = $derived.by(() => {
     if (!signer) {
       return { allowed: false, reason: 'Connect wallet to update metadata' };
@@ -120,35 +151,28 @@
       return { allowed: false, reason: 'Metadata registry not available on this network' };
     }
     if (initializationComplete === null) {
-      return { allowed: false, reason: 'Loading metadata permissions' };
+      return { allowed: false, reason: 'Loading registry status...' };
     }
 
     const walletLower = walletAddress?.toLowerCase();
     const isRegistryOwner = Boolean(registryOwner && walletLower === registryOwner?.toLowerCase());
-
-    // Owner bypass
-    const ownerBypassEnabled = import.meta.env.VITE_OWNER_METADATA_BYPASS === 'true';
-    if (ownerBypassEnabled && isRegistryOwner) {
-      return { allowed: true };
-    }
+    const isProjectWallet = Boolean(projectAddress && walletLower === projectAddress.toLowerCase());
 
     if (!initializationComplete) {
-      if (!registryOwner) {
-        return { allowed: false, reason: 'Loading registry owner' };
-      }
-      if (!isRegistryOwner) {
-        return { allowed: false, reason: 'Only registry owner can update during initialization' };
+      // Before initialization complete: only owner can edit
+      if (isRegistryOwner) return { allowed: true };
+      return { allowed: false, reason: 'Only the registry owner can set metadata during initialization' };
+    }
+
+    // After initialization complete: only project wallet, and only when not locked
+    if (isProjectWallet) {
+      if (projectsLocked) {
+        return { allowed: false, reason: 'Metadata editing is closed (voting has started)' };
       }
       return { allowed: true };
     }
 
-    if (projectsLocked) {
-      return { allowed: false, reason: 'Metadata editing closed (voting started)' };
-    }
-    if (!projectAddress || !walletLower || walletLower !== projectAddress.toLowerCase()) {
-      return { allowed: false, reason: 'Only project owner can update' };
-    }
-    return { allowed: true };
+    return { allowed: false, reason: 'Only the project wallet can update its metadata' };
   });
 
   // Form validation

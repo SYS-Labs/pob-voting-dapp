@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Contract } from 'ethers';
-  import type { PreviousRound, ParticipantRole } from '~/interfaces';
+  import type { PreviousRound, ParticipantRole, Badge } from '~/interfaces';
   import { PoB_01ABI, PoB_02ABI } from '~/abis';
   import { formatDate } from '~/utils';
   import { createPreviousRoundDataStore } from '~/stores/previousRoundData';
@@ -24,6 +24,7 @@
     runTransaction: (label: string, txFn: () => Promise<any>, refreshFn?: () => Promise<void>) => Promise<boolean>;
     refreshBadges: () => Promise<void>;
     iterationNumber?: number;
+    userBadges?: Badge[];
   }
 
   let {
@@ -38,9 +39,20 @@
     runTransaction,
     refreshBadges,
     iterationNumber,
+    userBadges = [],
   }: Props = $props();
 
   let isExpanded = $state(false);
+
+  // Can the user mint a badge for this round? (computed from parent data, no RPC needed)
+  const canMintEagerly = $derived.by(() => {
+    if (!walletAddress || userBadges.length > 0) return false;
+    const w = walletAddress.toLowerCase();
+    if (round.devRelAccount?.toLowerCase() === w) return true;
+    if (round.daoHicVoters?.some(v => v.toLowerCase() === w)) return true;
+    if (round.projects?.some(p => p.address.toLowerCase() === w)) return true;
+    return false;
+  });
 
   // Reactive store that loads when expanded
   const { loading, roundData } = $derived(
@@ -62,32 +74,19 @@
     return getProjectLabel(address);
   }
 
-  async function getUserRole(): Promise<ParticipantRole | null> {
-    if (!walletAddress || !signer) return null;
-    try {
-      const contract = new Contract(round.jurySC, ['function devRelAccount() view returns (address)', 'function getDaoHicVoters() view returns (address[])', 'function getProjects() view returns (address[])'], publicProvider);
-      const [devRel, daoHicVoters, projects] = await Promise.all([
-        contract.devRelAccount(),
-        contract.getDaoHicVoters(),
-        contract.getProjects(),
-      ]);
-      const walletLower = walletAddress.toLowerCase();
-      if (devRel && devRel.toLowerCase() === walletLower) return 'devrel';
-      if (daoHicVoters.some((v: string) => v.toLowerCase() === walletLower)) return 'dao_hic';
-      if (projects.some((p: string) => p.toLowerCase() === walletLower)) return 'project';
-    } catch (err) {
-      console.error('[PreviousRoundCard] Failed to determine user role', err);
-    }
+  function getUserRole(): ParticipantRole | null {
+    if (!walletAddress) return null;
+    const w = walletAddress.toLowerCase();
+    if (round.devRelAccount?.toLowerCase() === w) return 'devrel';
+    if (round.daoHicVoters?.some(v => v.toLowerCase() === w)) return 'dao_hic';
+    if (round.projects?.some(p => p.address.toLowerCase() === w)) return 'project';
     return null;
   }
 
   async function handleMintBadge() {
     if (!signer) return;
-    const role = await getUserRole();
-    if (!role) {
-      console.error('[PreviousRoundCard] Could not determine role for minting');
-      return;
-    }
+    const role = getUserRole();
+    if (!role) return;
 
     const pobABI = getPoBContractABI(round.version);
     const contract = new Contract(round.pob, pobABI, signer);
@@ -176,35 +175,28 @@
       {/if}
     </div>
     <div class="flex items-center gap-2">
-      {#if isExpanded && $roundData && walletAddress}
-        {@const badges = $roundData.userBadges}
-        {@const hasBadge = badges.length > 0}
-        {@const communityBadge = badges.find(b => b.role === 'community')}
-
-        {#if hasBadge}
-          {#if communityBadge && !communityBadge.claimed}
-            <button
-              type="button"
-              onclick={(e) => handleClaimClick(e, communityBadge.tokenId)}
-              disabled={pendingAction !== null}
-              class="pob-button text-xs"
-            >
-              {pendingAction?.includes(communityBadge.tokenId) ? 'Claiming…' : 'Claim deposit'}
-            </button>
-            <span class="pob-pill pob-pill--active">Minted</span>
-          {:else}
-            <span class="pob-pill pob-pill--active">Minted already</span>
-          {/if}
-        {:else if $roundData.canMint}
+      {#if walletAddress && userBadges.length > 0}
+        {@const communityBadge = userBadges.find(b => b.role === 'community')}
+        {#if isExpanded && communityBadge && !communityBadge.claimed}
           <button
             type="button"
-            onclick={handleMintClick}
+            onclick={(e) => handleClaimClick(e, communityBadge.tokenId)}
             disabled={pendingAction !== null}
             class="pob-button text-xs"
           >
-            {pendingAction?.includes(`Round ${round.round}`) ? 'Minting…' : 'Mint badge'}
+            {pendingAction?.includes(communityBadge.tokenId) ? 'Claiming…' : 'Claim deposit'}
           </button>
         {/if}
+        <span class="pob-pill pob-pill--active">Badge minted</span>
+      {:else if canMintEagerly}
+        <button
+          type="button"
+          onclick={handleMintClick}
+          disabled={pendingAction !== null}
+          class="pob-button text-xs"
+        >
+          {pendingAction?.includes(`Round ${round.round}`) ? 'Minting…' : 'Mint badge'}
+        </button>
       {/if}
       <span class="pob-pill pob-pill--ended">Ended</span>
     </div>
