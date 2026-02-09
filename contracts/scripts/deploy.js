@@ -47,8 +47,10 @@ async function main() {
   console.log("  3. JurySC_02 (proxy + implementation)");
   console.log("  4. Link PoB → JurySC");
   console.log("");
-  console.log("Press Ctrl+C within 5 seconds to cancel...");
-  await new Promise(resolve => setTimeout(resolve, 5000));
+  if (network.name !== "localhost" && network.name !== "hardhat") {
+    console.log("Press Ctrl+C within 5 seconds to cancel...");
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
   console.log("");
 
   let registryAddress, registryImpl, pobAddress, juryAddress;
