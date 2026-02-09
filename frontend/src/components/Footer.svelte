@@ -33,6 +33,14 @@
         >
           Telegram (Hispano)
         </a>
+        <a
+          href="https://github.com/SYS-Labs/pob-voting-dapp"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="footer-link"
+        >
+          GitHub
+        </a>
       </div>
     </div>
   </div>
