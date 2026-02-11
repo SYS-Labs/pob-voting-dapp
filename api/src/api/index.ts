@@ -16,6 +16,8 @@ import { createDeploymentDatabase } from '../db/deployments.js';
 import { createMonitoredThreadsDatabase } from '../db/monitored-threads.js';
 import { createMetadataDatabase } from '../db/metadata.js';
 import { createIterationsDatabase } from '../db/iterations.js';
+import { createCertsDatabase } from '../db/certs.js';
+import { createProfilesDatabase } from '../db/profiles.js';
 import { IPFSService } from '../services/ipfs.js';
 import { MetadataService } from '../services/metadata.js';
 import { logger } from '../utils/logger.js';
@@ -29,6 +31,8 @@ const deploymentDb = createDeploymentDatabase(db);
 const threadsDb = createMonitoredThreadsDatabase(db);
 const metadataDb = createMetadataDatabase(db);
 const iterationsDb = createIterationsDatabase(db);
+const certsDb = createCertsDatabase(db);
+const profilesDb = createProfilesDatabase(db);
 
 // Initialize IPFS and metadata services
 const ipfsService = new IPFSService();
@@ -107,6 +111,23 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'PATCH' && url.pathname.startsWith('/api/admin/threads/')) {
     await handleUpdateThread(req, res, url);
+    return;
+  }
+
+  // Cert endpoints
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/certs\/\d+\/iteration\/\d+$/)) {
+    await handleGetCertsForIteration(req, res, url);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/certs\/\d+\/0x[a-fA-F0-9]{40}$/)) {
+    await handleGetCertsForAccount(req, res, url);
+    return;
+  }
+
+  // Profile endpoints
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/profile\/\d+\/0x[a-fA-F0-9]{40}$/)) {
+    await handleGetProfile(req, res, url);
     return;
   }
 
@@ -625,6 +646,158 @@ async function handleBatchGetMetadata(
     logger.error('Failed to batch fetch metadata', error);
     sendJson(res, 500, { success: false, error: 'Failed to fetch metadata' });
   }
+}
+
+// ========== Cert & Profile Handlers ==========
+
+async function handleGetCertsForAccount(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  const parts = url.pathname.replace('/api/certs/', '').split('/');
+  if (parts.length !== 2) {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/certs/:chainId/:address' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+  const address = parts[1];
+
+  if (isNaN(chainId)) {
+    sendJson(res, 400, { error: 'Invalid chainId format' });
+    return;
+  }
+
+  if (!ethers.isAddress(address)) {
+    sendJson(res, 400, { error: 'Invalid address format' });
+    return;
+  }
+
+  const rows = certsDb.getCertsForAccount(chainId, address);
+  const certs = rows.map((row) => {
+    const api = certsDb.toAPI(row);
+
+    // Inline IPFS metadata from cache
+    let infoMetadata: Record<string, unknown> | null = null;
+    if (row.info_cid) {
+      const cached = metadataDb.getCachedIPFSContent(row.info_cid);
+      if (cached) {
+        try { infoMetadata = JSON.parse(cached.content); } catch { /* ignore */ }
+      }
+    }
+
+    return { ...api, infoMetadata };
+  });
+
+  sendJson(res, 200, { certs });
+}
+
+async function handleGetCertsForIteration(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // Parse URL: /api/certs/:chainId/iteration/:iterationId
+  const parts = url.pathname.replace('/api/certs/', '').split('/');
+  if (parts.length !== 3 || parts[1] !== 'iteration') {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/certs/:chainId/iteration/:iterationId' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+  const iterationId = parseInt(parts[2], 10);
+
+  if (isNaN(chainId) || isNaN(iterationId)) {
+    sendJson(res, 400, { error: 'Invalid chainId or iterationId format' });
+    return;
+  }
+
+  const rows = certsDb.getCertsForIteration(chainId, iterationId);
+  // Only return minted certs for public iteration view
+  const mintedRows = rows.filter((r) => r.status === 'minted');
+  const certs = mintedRows.map((row) => {
+    const api = certsDb.toAPI(row);
+
+    let infoMetadata: Record<string, unknown> | null = null;
+    if (row.info_cid) {
+      const cached = metadataDb.getCachedIPFSContent(row.info_cid);
+      if (cached) {
+        try { infoMetadata = JSON.parse(cached.content); } catch { /* ignore */ }
+      }
+    }
+
+    return { ...api, infoMetadata };
+  });
+
+  sendJson(res, 200, { certs });
+}
+
+async function handleGetProfile(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // Parse URL: /api/profile/:chainId/:address
+  const parts = url.pathname.replace('/api/profile/', '').split('/');
+  if (parts.length !== 2) {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/profile/:chainId/:address' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+  const address = parts[1];
+
+  if (isNaN(chainId)) {
+    sendJson(res, 400, { error: 'Invalid chainId format' });
+    return;
+  }
+
+  if (!ethers.isAddress(address)) {
+    sendJson(res, 400, { error: 'Invalid address format' });
+    return;
+  }
+
+  const row = profilesDb.getProfile(chainId, address);
+
+  if (!row) {
+    sendJson(res, 200, { profile: null });
+    return;
+  }
+
+  const profile = profilesDb.toAPI(row);
+
+  // Inline IPFS metadata from cache
+  let pictureMetadata: Record<string, unknown> | null = null;
+  let bioMetadata: Record<string, unknown> | null = null;
+
+  if (row.picture_cid) {
+    const cached = metadataDb.getCachedIPFSContent(row.picture_cid);
+    if (cached) {
+      try { pictureMetadata = JSON.parse(cached.content); } catch { /* ignore */ }
+    }
+  }
+
+  if (row.bio_cid) {
+    const cached = metadataDb.getCachedIPFSContent(row.bio_cid);
+    if (cached) {
+      try { bioMetadata = JSON.parse(cached.content); } catch { /* ignore */ }
+    }
+  }
+
+  // Get cert count and iteration participation count
+  const userCerts = certsDb.getCertsForAccount(chainId, address);
+  const iterationSet = new Set(userCerts.map((c) => c.iteration));
+
+  sendJson(res, 200, {
+    profile: {
+      ...profile,
+      pictureMetadata,
+      bioMetadata,
+      certCount: userCerts.filter((c) => c.status !== 'cancelled').length,
+      iterationCount: iterationSet.size,
+    },
+  });
 }
 
 // ========== Helpers ==========

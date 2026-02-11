@@ -890,4 +890,89 @@ describe("PoBRegistry", function () {
       ).to.be.revertedWith("Max rounds reached");
     });
   });
+
+  // ========== PROFILE STORAGE TESTS ==========
+
+  describe("Profile Storage (v2)", function () {
+    const PICTURE_CID = "QmProfilePicture123456789";
+    const BIO_CID = "QmProfileBio123456789";
+
+    describe("setProfilePicture", function () {
+      it("Should allow any user to set their own profile picture", async function () {
+        await expect(registry.connect(user1).setProfilePicture(PICTURE_CID))
+          .to.emit(registry, "ProfilePictureSet")
+          .withArgs(user1.address, PICTURE_CID);
+
+        expect(await registry.profilePictureCID(user1.address)).to.equal(PICTURE_CID);
+      });
+
+      it("Should allow updating profile picture", async function () {
+        await registry.connect(user1).setProfilePicture(PICTURE_CID);
+        const newCID = "QmNewPicture";
+        await registry.connect(user1).setProfilePicture(newCID);
+
+        expect(await registry.profilePictureCID(user1.address)).to.equal(newCID);
+      });
+
+      it("Should allow clearing profile picture with empty CID", async function () {
+        await registry.connect(user1).setProfilePicture(PICTURE_CID);
+        await registry.connect(user1).setProfilePicture("");
+
+        expect(await registry.profilePictureCID(user1.address)).to.equal("");
+      });
+
+      it("Should revert with CID too long", async function () {
+        const longCID = "Q" + "m".repeat(100);
+        await expect(
+          registry.connect(user1).setProfilePicture(longCID)
+        ).to.be.revertedWith("CID too long");
+      });
+
+      it("Should isolate profile pictures between users", async function () {
+        await registry.connect(user1).setProfilePicture("QmUser1Pic");
+        await registry.connect(user2).setProfilePicture("QmUser2Pic");
+
+        expect(await registry.profilePictureCID(user1.address)).to.equal("QmUser1Pic");
+        expect(await registry.profilePictureCID(user2.address)).to.equal("QmUser2Pic");
+      });
+    });
+
+    describe("setProfileBio", function () {
+      it("Should allow any user to set their own bio", async function () {
+        await expect(registry.connect(user1).setProfileBio(BIO_CID))
+          .to.emit(registry, "ProfileBioSet")
+          .withArgs(user1.address, BIO_CID);
+
+        expect(await registry.profileBioCID(user1.address)).to.equal(BIO_CID);
+      });
+
+      it("Should allow updating bio", async function () {
+        await registry.connect(user1).setProfileBio(BIO_CID);
+        const newCID = "QmNewBio";
+        await registry.connect(user1).setProfileBio(newCID);
+
+        expect(await registry.profileBioCID(user1.address)).to.equal(newCID);
+      });
+
+      it("Should revert with CID too long", async function () {
+        const longCID = "Q" + "m".repeat(100);
+        await expect(
+          registry.connect(user1).setProfileBio(longCID)
+        ).to.be.revertedWith("CID too long");
+      });
+    });
+
+    describe("Upgrade preserves profile state", function () {
+      it("Should preserve profile data after upgrade", async function () {
+        await registry.connect(user1).setProfilePicture(PICTURE_CID);
+        await registry.connect(user1).setProfileBio(BIO_CID);
+
+        const PoBRegistryV2 = await ethers.getContractFactory("PoBRegistry");
+        const upgraded = await upgrades.upgradeProxy(await registry.getAddress(), PoBRegistryV2);
+
+        expect(await upgraded.profilePictureCID(user1.address)).to.equal(PICTURE_CID);
+        expect(await upgraded.profileBioCID(user1.address)).to.equal(BIO_CID);
+      });
+    });
+  });
 });

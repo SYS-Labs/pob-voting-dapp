@@ -22,6 +22,8 @@
   import IterationMetadataPage from '~/pages/IterationMetadataPage.svelte';
   import IterationEditPage from '~/pages/IterationEditPage.svelte';
   import BadgesPage from '~/pages/BadgesPage.svelte';
+  import CertsPage from '~/pages/CertsPage.svelte';
+  import ProfilePage from '~/pages/ProfilePage.svelte';
   import FaqPage from '~/pages/FaqPage.svelte';
   import ForumPage from '~/pages/ForumPage.svelte';
   import NotFoundPage from '~/pages/NotFoundPage.svelte';
@@ -75,6 +77,13 @@
     retryLoadIteration,
   } from '~/stores/contractState';
 
+  // Cert store
+  import {
+    certStateStore,
+    loadCertState,
+    resetCertState,
+  } from '~/stores/certState';
+
   // ABIs and constants
   import { JurySC_01ABI } from '~/abis';
   import { SYS_COIN_ID, SYS_TESTNET_ID, HARDHAT_ID, NETWORKS } from '~/constants/networks';
@@ -120,6 +129,8 @@
     if (pathname.match(/^\/iteration\/\d+\/project\//)) return 'project';
     if (pathname.startsWith('/iteration/')) return 'iteration';
     if (pathname === '/badges') return 'badges';
+    if (pathname === '/certs') return 'certs';
+    if (pathname.startsWith('/profile/')) return 'profile';
     if (pathname === '/faq') return 'faq';
     if (pathname.startsWith('/forum')) return 'forum';
     return 'iterations';
@@ -179,6 +190,11 @@
   const pendingRemovalProject = $derived($modalsStore.pendingRemovalProject);
   const errorModalOpen = $derived($modalsStore.errorModalOpen);
   const errorMessage = $derived($modalsStore.errorMessage);
+
+  // Cert state
+  const certCerts = $derived($certStateStore.certs);
+  const certEligibility = $derived($certStateStore.eligibility);
+  const certLoading = $derived($certStateStore.loading);
 
   // Admin panel state
   const openAdminSection = $derived($adminPanelStore);
@@ -404,6 +420,7 @@
       }}
       showIterationTab={Boolean(selectedIteration)}
       showBadgesTab={walletAddress !== null && !isOwner}
+      showCertsTab={walletAddress !== null && !isOwner}
       currentIteration={selectedIteration?.iteration ?? null}
     />
 
@@ -611,6 +628,36 @@
         <BadgesPage
           {badges}
           {walletAddress}
+          {loading}
+        />
+      </Route>
+
+      <!-- Certs page -->
+      <Route path="/certs">
+        <CertsPage
+          certs={certCerts}
+          eligibility={certEligibility}
+          {walletAddress}
+          loading={certLoading}
+          {chainId}
+          {signer}
+          onRefresh={() => {
+            if (walletAddress && chainId && publicProvider) {
+              const iters = filteredIterations.map(i => i.iteration);
+              loadCertState(chainId, walletAddress, iters, publicProvider);
+            }
+          }}
+        />
+      </Route>
+
+      <!-- Profile page -->
+      <Route path="/profile/:address" let:params>
+        <ProfilePage
+          address={params.address}
+          certs={certCerts}
+          {badges}
+          {walletAddress}
+          {chainId}
           {loading}
         />
       </Route>

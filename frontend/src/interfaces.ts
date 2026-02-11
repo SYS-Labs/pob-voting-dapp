@@ -1,6 +1,6 @@
 export type IterationStatus = 'upcoming' | 'active' | 'ended';
 
-export type PageType = 'iterations' | 'iteration' | 'project' | 'badges' | 'faq' | 'forum';
+export type PageType = 'iterations' | 'iteration' | 'project' | 'badges' | 'certs' | 'profile' | 'faq' | 'forum';
 
 export interface PreviousRound {
   round: number;
@@ -112,4 +112,38 @@ export interface IterationMetadata {
     votingMode: number;
     metadataCID?: string; // CID of previous round metadata
   }>;
+}
+
+// ========== Certificate Types ==========
+
+export type CertType = 'participant' | 'winner' | 'organizer' | 'speaker' | string;
+
+export type CertStatus = 'Pending' | 'Minted' | 'Cancelled';
+
+export interface Cert {
+  tokenId: string;
+  iteration: number;
+  account: string;
+  certType: CertType;
+  infoCID: string;
+  status: CertStatus;
+  requestTime: number; // Unix timestamp
+}
+
+export interface CertEligibility {
+  eligible: boolean;
+  certType: CertType;
+}
+
+// ========== Profile Types ==========
+
+export interface UserProfile {
+  address: string;
+  pictureCID: string;
+  bioCID: string;
+}
+
+export interface ProfileBio {
+  name?: string;
+  bio?: string;
 }

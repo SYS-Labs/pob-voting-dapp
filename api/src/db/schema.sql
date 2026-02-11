@@ -221,3 +221,38 @@ CREATE TABLE IF NOT EXISTS retry_tracker (
 );
 
 CREATE INDEX IF NOT EXISTS idx_retry_tracker_next ON retry_tracker(next_retry_at);
+
+-- Cached cert data from CertNFT contract
+CREATE TABLE IF NOT EXISTS cert_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chain_id INTEGER NOT NULL,
+  cert_nft_address TEXT NOT NULL,
+  token_id INTEGER NOT NULL,
+  iteration INTEGER NOT NULL,
+  account TEXT NOT NULL,
+  cert_type TEXT NOT NULL,
+  info_cid TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  request_time INTEGER NOT NULL DEFAULT 0,
+  middleware_address TEXT,
+  template_cid TEXT,
+  last_updated_at INTEGER NOT NULL,
+  UNIQUE(chain_id, token_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cert_account ON cert_snapshots(chain_id, account);
+CREATE INDEX IF NOT EXISTS idx_cert_iteration ON cert_snapshots(chain_id, iteration);
+CREATE INDEX IF NOT EXISTS idx_cert_status ON cert_snapshots(chain_id, status);
+
+-- Cached profile data from PoBRegistry
+CREATE TABLE IF NOT EXISTS profile_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chain_id INTEGER NOT NULL,
+  account TEXT NOT NULL,
+  picture_cid TEXT DEFAULT '',
+  bio_cid TEXT DEFAULT '',
+  last_updated_at INTEGER NOT NULL,
+  UNIQUE(chain_id, account)
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_account ON profile_snapshots(chain_id, account);

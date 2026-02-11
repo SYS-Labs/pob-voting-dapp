@@ -32,36 +32,6 @@
       "inputs": []
     },
     {
-      "name": "DaoHicCannotBeCommunity",
-      "signature": "DaoHicCannotBeCommunity()",
-      "inputs": []
-    },
-    {
-      "name": "DaoHicCannotBeDevRel",
-      "signature": "DaoHicCannotBeDevRel()",
-      "inputs": []
-    },
-    {
-      "name": "DaoHicCannotBeProject",
-      "signature": "DaoHicCannotBeProject()",
-      "inputs": []
-    },
-    {
-      "name": "DevRelCannotBeCommunity",
-      "signature": "DevRelCannotBeCommunity()",
-      "inputs": []
-    },
-    {
-      "name": "DevRelCannotBeDaoHic",
-      "signature": "DevRelCannotBeDaoHic()",
-      "inputs": []
-    },
-    {
-      "name": "DevRelCannotBeProject",
-      "signature": "DevRelCannotBeProject()",
-      "inputs": []
-    },
-    {
       "name": "ERC1967InvalidImplementation",
       "signature": "ERC1967InvalidImplementation(address)",
       "inputs": [
@@ -160,16 +130,6 @@
       ]
     },
     {
-      "name": "ProjectCannotBeDaoHic",
-      "signature": "ProjectCannotBeDaoHic()",
-      "inputs": []
-    },
-    {
-      "name": "ProjectCannotBeDevRel",
-      "signature": "ProjectCannotBeDevRel()",
-      "inputs": []
-    },
-    {
       "name": "ProjectCannotVote",
       "signature": "ProjectCannotVote()",
       "inputs": []
@@ -210,16 +170,6 @@
     {
       "name": "AlreadyClaimed",
       "signature": "AlreadyClaimed()",
-      "inputs": []
-    },
-    {
-      "name": "CannotMintAsDaoHic",
-      "signature": "CannotMintAsDaoHic()",
-      "inputs": []
-    },
-    {
-      "name": "CannotMintAsDevRel",
-      "signature": "CannotMintAsDevRel()",
       "inputs": []
     },
     {
@@ -390,11 +340,6 @@
     {
       "name": "ReentrancyGuardReentrantCall",
       "signature": "ReentrancyGuardReentrantCall()",
-      "inputs": []
-    },
-    {
-      "name": "TransferDuringVotingNotAllowed",
-      "signature": "TransferDuringVotingNotAllowed()",
       "inputs": []
     },
     {
@@ -897,6 +842,275 @@
           "type": "bytes32"
         }
       ]
+    }
+  ],
+  "CertNFT": [
+    {
+      "name": "AddressEmptyCode",
+      "signature": "AddressEmptyCode(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "target",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "AlreadyHasCert",
+      "signature": "AlreadyHasCert()",
+      "inputs": []
+    },
+    {
+      "name": "CIDTooLong",
+      "signature": "CIDTooLong()",
+      "inputs": []
+    },
+    {
+      "name": "ERC1967InvalidImplementation",
+      "signature": "ERC1967InvalidImplementation(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "implementation",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC1967NonPayable",
+      "signature": "ERC1967NonPayable()",
+      "inputs": []
+    },
+    {
+      "name": "ERC721IncorrectOwner",
+      "signature": "ERC721IncorrectOwner(address,uint256,address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InsufficientApproval",
+      "signature": "ERC721InsufficientApproval(address,uint256)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidApprover",
+      "signature": "ERC721InvalidApprover(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "approver",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidOperator",
+      "signature": "ERC721InvalidOperator(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidOwner",
+      "signature": "ERC721InvalidOwner(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidReceiver",
+      "signature": "ERC721InvalidReceiver(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "receiver",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721InvalidSender",
+      "signature": "ERC721InvalidSender(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ERC721NonexistentToken",
+      "signature": "ERC721NonexistentToken(uint256)",
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "tokenId",
+          "type": "uint256"
+        }
+      ]
+    },
+    {
+      "name": "EmptyCID",
+      "signature": "EmptyCID()",
+      "inputs": []
+    },
+    {
+      "name": "FailedCall",
+      "signature": "FailedCall()",
+      "inputs": []
+    },
+    {
+      "name": "InvalidInitialization",
+      "signature": "InvalidInitialization()",
+      "inputs": []
+    },
+    {
+      "name": "InvalidToken",
+      "signature": "InvalidToken()",
+      "inputs": []
+    },
+    {
+      "name": "NoMiddleware",
+      "signature": "NoMiddleware()",
+      "inputs": []
+    },
+    {
+      "name": "NotEligible",
+      "signature": "NotEligible()",
+      "inputs": []
+    },
+    {
+      "name": "NotInitializing",
+      "signature": "NotInitializing()",
+      "inputs": []
+    },
+    {
+      "name": "NotPending",
+      "signature": "NotPending()",
+      "inputs": []
+    },
+    {
+      "name": "OwnableInvalidOwner",
+      "signature": "OwnableInvalidOwner(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "OwnableUnauthorizedAccount",
+      "signature": "OwnableUnauthorizedAccount(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "ReentrancyGuardReentrantCall",
+      "signature": "ReentrancyGuardReentrantCall()",
+      "inputs": []
+    },
+    {
+      "name": "UUPSUnauthorizedCallContext",
+      "signature": "UUPSUnauthorizedCallContext()",
+      "inputs": []
+    },
+    {
+      "name": "UUPSUnsupportedProxiableUUID",
+      "signature": "UUPSUnsupportedProxiableUUID(bytes32)",
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "slot",
+          "type": "bytes32"
+        }
+      ]
+    }
+  ],
+  "CertMiddleware_001": [
+    {
+      "name": "ArrayLengthMismatch",
+      "signature": "ArrayLengthMismatch()",
+      "inputs": []
+    },
+    {
+      "name": "EmptyArrays",
+      "signature": "EmptyArrays()",
+      "inputs": []
+    },
+    {
+      "name": "NotParticipant",
+      "signature": "NotParticipant()",
+      "inputs": []
+    },
+    {
+      "name": "OwnableInvalidOwner",
+      "signature": "OwnableInvalidOwner(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "OwnableUnauthorizedAccount",
+      "signature": "OwnableUnauthorizedAccount(address)",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ]
+    },
+    {
+      "name": "VotingNotEnded",
+      "signature": "VotingNotEnded()",
+      "inputs": []
     }
   ]
 }

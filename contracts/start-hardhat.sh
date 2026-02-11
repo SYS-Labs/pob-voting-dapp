@@ -95,6 +95,9 @@ fi
 if [[ "${NETWORK}" == "localhost" || "${NETWORK}" == "hardhat" ]]; then
   echo "Seeding local iteration data via scripts/seed-local.js..."
   npx hardhat run scripts/seed-local.js --network "${NETWORK}"
+
+  echo "Deploying CertNFT + middleware via scripts/deploy-certs-local.js..."
+  npx hardhat run scripts/deploy-certs-local.js --network "${NETWORK}"
 fi
 
 echo "Hardhat node is running. Logs are streaming to ${LOG_FILE}."

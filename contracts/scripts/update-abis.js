@@ -22,7 +22,9 @@ const CONTRACTS = [
   { name: "PoB_01", path: "contracts/PoB_01.sol" },
   { name: "JurySC_02", path: "contracts/JurySC_02.sol", outputName: "JurySC_02_v001" },
   { name: "PoB_02", path: "contracts/PoB_02.sol", outputName: "PoB_02_v001" },
-  { name: "PoBRegistry", path: "contracts/PoBRegistry.sol" }
+  { name: "PoBRegistry", path: "contracts/PoBRegistry.sol" },
+  { name: "CertNFT", path: "contracts/CertNFT.sol" },
+  { name: "CertMiddleware_001", path: "contracts/CertMiddleware_001.sol" }
 ];
 
 function extractABI(contractName, contractPath) {

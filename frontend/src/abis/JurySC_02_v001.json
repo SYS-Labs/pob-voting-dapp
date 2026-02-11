@@ -1116,7 +1116,7 @@
     "name": "pob",
     "outputs": [
       {
-        "internalType": "contract PoB_01",
+        "internalType": "contract PoB_02",
         "name": "",
         "type": "address"
       }

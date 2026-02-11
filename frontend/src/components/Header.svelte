@@ -16,6 +16,7 @@
     onNavigate: (page: PageType) => void;
     showIterationTab: boolean;
     showBadgesTab: boolean;
+    showCertsTab: boolean;
     currentIteration: number | null;
   }
 
@@ -31,6 +32,7 @@
     onNavigate,
     showIterationTab,
     showBadgesTab,
+    showCertsTab,
     currentIteration,
   }: Props = $props();
 
@@ -50,6 +52,7 @@
     { id: 'iteration' as const, label: iterationLabel, show: showIterationTab, path: currentIteration ? `/iteration/${currentIteration}` : '/iteration/1' },
     { id: 'forum' as const, label: 'Forum', show: true, path: '/forum' },
     { id: 'badges' as const, label: 'Badges', show: showBadgesTab, path: '/badges' },
+    { id: 'certs' as const, label: 'Certs', show: showCertsTab, path: '/certs' },
     { id: 'faq' as const, label: 'FAQ', show: true, path: '/faq' },
   ]);
 
@@ -62,7 +65,7 @@
     return false;
   }
 
-  function handleNavigate(tabId: 'iterations' | 'iteration' | 'badges' | 'faq' | 'forum') {
+  function handleNavigate(tabId: 'iterations' | 'iteration' | 'badges' | 'certs' | 'faq' | 'forum') {
     onNavigate(tabId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
