@@ -135,6 +135,16 @@ export interface CertEligibility {
   certType: CertType;
 }
 
+// ========== Team Member Types ==========
+
+export type MemberStatus = 'Proposed' | 'Approved' | 'Rejected';
+
+export interface TeamMember {
+  memberAddress: string;
+  status: MemberStatus;
+  fullName: string;
+}
+
 // ========== Profile Types ==========
 
 export interface UserProfile {

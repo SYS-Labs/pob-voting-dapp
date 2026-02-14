@@ -19,4 +19,11 @@ interface ICertMiddleware {
      * @return The template CID string
      */
     function templateCID() external view returns (string memory);
+
+    /**
+     * @notice Check if an account is a registered project in any round
+     * @param account The address to check
+     * @return Whether the account is a project in any round
+     */
+    function isProjectInAnyRound(address account) external view returns (bool);
 }

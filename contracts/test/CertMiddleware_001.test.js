@@ -246,6 +246,38 @@ describe("CertMiddleware_001", function () {
     });
   });
 
+  describe("isProjectInAnyRound", function () {
+    it("returns true if registered project in round 1", async function () {
+      await mockJury1.setIsRegisteredProject(project1.address, true);
+
+      expect(await middleware.isProjectInAnyRound(project1.address)).to.be.true;
+    });
+
+    it("returns true if registered project in round 2 only", async function () {
+      await mockJury2.setIsRegisteredProject(project1.address, true);
+
+      expect(await middleware.isProjectInAnyRound(project1.address)).to.be.true;
+    });
+
+    it("returns true if registered project in both rounds", async function () {
+      await mockJury1.setIsRegisteredProject(project1.address, true);
+      await mockJury2.setIsRegisteredProject(project1.address, true);
+
+      expect(await middleware.isProjectInAnyRound(project1.address)).to.be.true;
+    });
+
+    it("returns false if not a project in any round", async function () {
+      expect(await middleware.isProjectInAnyRound(devRel.address)).to.be.false;
+    });
+
+    it("returns false for devrel account (not a project)", async function () {
+      await mockJury1.setIsDevRelAccount(devRel.address, true);
+      await mockJury2.setIsDevRelAccount(devRel.address, true);
+
+      expect(await middleware.isProjectInAnyRound(devRel.address)).to.be.false;
+    });
+  });
+
   describe("owner functions", function () {
     it("owner can set templateCID", async function () {
       const cid = "QmNewTemplate";

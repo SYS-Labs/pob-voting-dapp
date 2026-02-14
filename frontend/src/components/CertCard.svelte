@@ -4,9 +4,10 @@
 
   interface Props {
     cert: Cert;
+    teamMemberNames?: string[];
   }
 
-  let { cert }: Props = $props();
+  let { cert, teamMemberNames = [] }: Props = $props();
 
   const STATUS_COLORS: Record<CertStatus, string> = {
     Minted: 'border border-green-500/40 bg-green-500/10 text-green-400',
@@ -80,4 +81,18 @@
       </span>
     {/if}
   </div>
+
+  <!-- Team Members -->
+  {#if teamMemberNames.length > 0}
+    <div class="pt-2 border-t border-white/10">
+      <p class="text-xs text-[var(--pob-text-muted)] mb-1">Team</p>
+      <div class="flex flex-wrap gap-1">
+        {#each teamMemberNames as name}
+          <span class="text-xs text-[var(--pob-text-secondary)] bg-white/5 rounded px-1.5 py-0.5">
+            {name}
+          </span>
+        {/each}
+      </div>
+    </div>
+  {/if}
 </div>

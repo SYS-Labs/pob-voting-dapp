@@ -23,10 +23,13 @@ contract CertNFT is
 
     uint256 public constant PENDING_PERIOD = 48 hours;
     uint256 public constant MAX_CID_LENGTH = 100;
+    uint256 public constant MAX_TEAM_MEMBERS = 20;
+    uint256 public constant MAX_NAME_LENGTH = 64;
 
     // ========== Enums & Structs ==========
 
     enum CertStatus { Pending, Minted, Cancelled }
+    enum MemberStatus { Proposed, Approved, Rejected }
 
     struct CertData {
         uint256 iteration;
@@ -35,6 +38,12 @@ contract CertNFT is
         string infoCID;
         CertStatus status;
         uint256 requestTime;
+    }
+
+    struct TeamMember {
+        address memberAddress;
+        MemberStatus status;
+        string fullName;
     }
 
     // ========== State ==========
@@ -51,11 +60,28 @@ contract CertNFT is
     /// @notice Next token ID to mint (starts at 1)
     uint256 public nextTokenId;
 
+    /// @notice Iteration => project => team members array
+    mapping(uint256 => mapping(address => TeamMember[])) internal _teamMembers;
+
+    /// @notice Iteration => project => member address => index+1 (0 means not found)
+    mapping(uint256 => mapping(address => mapping(address => uint256))) public teamMemberIndex;
+
+    /// @notice Iteration => project => count of approved members
+    mapping(uint256 => mapping(address => uint256)) public approvedMemberCount;
+
+    /// @notice Iteration => project => count of approved members with name set
+    mapping(uint256 => mapping(address => uint256)) public namedMemberCount;
+
     // ========== Events ==========
 
     event CertRequested(uint256 indexed tokenId, uint256 indexed iteration, address indexed account, string certType);
     event CertCancelled(uint256 indexed tokenId);
     event MiddlewareSet(uint256 indexed iteration, address indexed addr);
+
+    event TeamMemberProposed(uint256 indexed iteration, address indexed project, address indexed member);
+    event TeamMemberApproved(uint256 indexed iteration, address indexed project, address indexed member);
+    event TeamMemberRejected(uint256 indexed iteration, address indexed project, address indexed member);
+    event TeamMemberNameSet(uint256 indexed iteration, address indexed project, address indexed member, string fullName);
 
     // ========== Errors ==========
 
@@ -66,6 +92,18 @@ contract CertNFT is
     error CIDTooLong();
     error InvalidToken();
     error NotPending();
+
+    error NotProjectForIteration();
+    error MemberAlreadyExists();
+    error TooManyMembers();
+    error InvalidMemberIndex();
+    error MemberNotApproved();
+    error NameAlreadySet();
+    error EmptyName();
+    error NameTooLong();
+    error NoNamedTeamMembers();
+    error NotTeamMember();
+    error CertAlreadyRequested();
 
     // ========== Initialization ==========
 
@@ -100,6 +138,11 @@ contract CertNFT is
 
         (bool eligible, string memory certType) = ICertMiddleware(mw).validate(msg.sender);
         if (!eligible) revert NotEligible();
+
+        // Only enforce team member requirement for project addresses
+        if (ICertMiddleware(mw).isProjectInAnyRound(msg.sender)) {
+            if (namedMemberCount[iteration][msg.sender] == 0) revert NoNamedTeamMembers();
+        }
 
         uint256 tokenId = nextTokenId++;
         _mint(msg.sender, tokenId);
@@ -147,6 +190,7 @@ contract CertNFT is
         CertData storage cert = certs[tokenId];
         string memory statusStr = _statusString(certStatus(tokenId));
         string memory templatePart = _templatePart(cert.iteration);
+        string memory teamPart = _teamMembersPart(cert.iteration, cert.account);
 
         // Build JSON in two halves to avoid stack-too-deep
         string memory part1 = string(abi.encodePacked(
@@ -161,6 +205,7 @@ contract CertNFT is
             '{"trait_type":"Status","value":"', statusStr, '"}',
             ']',
             templatePart,
+            teamPart,
             ',"infoCID":"', cert.infoCID, '"}'
         ));
 
@@ -182,6 +227,177 @@ contract CertNFT is
             }
         } catch {}
         return "";
+    }
+
+    /**
+     * @dev Build a JSON array of approved team member names for tokenURI
+     */
+    function _teamMembersPart(uint256 iteration, address project) internal view returns (string memory) {
+        TeamMember[] storage members = _teamMembers[iteration][project];
+        if (members.length == 0) return "";
+
+        // Count approved members with names
+        uint256 count = 0;
+        for (uint256 i = 0; i < members.length; i++) {
+            if (members[i].status == MemberStatus.Approved && bytes(members[i].fullName).length > 0) {
+                count++;
+            }
+        }
+        if (count == 0) return "";
+
+        bytes memory result = ',"teamMembers":[';
+        bool first = true;
+        for (uint256 i = 0; i < members.length; i++) {
+            if (members[i].status == MemberStatus.Approved && bytes(members[i].fullName).length > 0) {
+                if (!first) {
+                    result = abi.encodePacked(result, ',');
+                }
+                result = abi.encodePacked(result, '"', members[i].fullName, '"');
+                first = false;
+            }
+        }
+        result = abi.encodePacked(result, ']');
+
+        return string(result);
+    }
+
+    // ========== Team Member Functions ==========
+
+    /**
+     * @notice Propose a new team member for a project iteration
+     * @param iteration The iteration number
+     * @param member The address of the team member to propose
+     */
+    function proposeTeamMember(uint256 iteration, address member) external {
+        address mw = middleware[iteration];
+        if (mw == address(0)) revert NoMiddleware();
+        if (!ICertMiddleware(mw).isProjectInAnyRound(msg.sender)) revert NotProjectForIteration();
+        if (certOf[msg.sender][iteration] != 0) revert CertAlreadyRequested();
+        if (teamMemberIndex[iteration][msg.sender][member] != 0) revert MemberAlreadyExists();
+        if (_teamMembers[iteration][msg.sender].length >= MAX_TEAM_MEMBERS) revert TooManyMembers();
+
+        _teamMembers[iteration][msg.sender].push(TeamMember({
+            memberAddress: member,
+            status: MemberStatus.Proposed,
+            fullName: ""
+        }));
+        teamMemberIndex[iteration][msg.sender][member] = _teamMembers[iteration][msg.sender].length; // index+1
+
+        emit TeamMemberProposed(iteration, msg.sender, member);
+    }
+
+    /**
+     * @notice Approve a proposed team member (owner only)
+     * @param iteration The iteration number
+     * @param project The project address
+     * @param member The team member address to approve
+     */
+    function approveTeamMember(uint256 iteration, address project, address member) external onlyOwner {
+        if (certOf[project][iteration] != 0) revert CertAlreadyRequested();
+
+        uint256 idx = teamMemberIndex[iteration][project][member];
+        if (idx == 0) revert InvalidMemberIndex();
+
+        TeamMember storage tm = _teamMembers[iteration][project][idx - 1];
+        if (tm.status != MemberStatus.Proposed) revert InvalidMemberIndex();
+
+        tm.status = MemberStatus.Approved;
+        approvedMemberCount[iteration][project]++;
+
+        emit TeamMemberApproved(iteration, project, member);
+    }
+
+    /**
+     * @notice Reject a proposed team member (owner only)
+     * @param iteration The iteration number
+     * @param project The project address
+     * @param member The team member address to reject
+     */
+    function rejectTeamMember(uint256 iteration, address project, address member) external onlyOwner {
+        if (certOf[project][iteration] != 0) revert CertAlreadyRequested();
+
+        uint256 idx = teamMemberIndex[iteration][project][member];
+        if (idx == 0) revert InvalidMemberIndex();
+
+        TeamMember storage tm = _teamMembers[iteration][project][idx - 1];
+        if (tm.status != MemberStatus.Proposed) revert InvalidMemberIndex();
+
+        tm.status = MemberStatus.Rejected;
+
+        emit TeamMemberRejected(iteration, project, member);
+    }
+
+    /**
+     * @notice Set own full name as an approved team member
+     * @param iteration The iteration number
+     * @param project The project address
+     * @param fullName The full name to set (immutable once set)
+     */
+    function setTeamMemberName(uint256 iteration, address project, string calldata fullName) external {
+        if (certOf[project][iteration] != 0) revert CertAlreadyRequested();
+
+        uint256 idx = teamMemberIndex[iteration][project][msg.sender];
+        if (idx == 0) revert NotTeamMember();
+
+        TeamMember storage tm = _teamMembers[iteration][project][idx - 1];
+        if (tm.status != MemberStatus.Approved) revert MemberNotApproved();
+        if (bytes(tm.fullName).length > 0) revert NameAlreadySet();
+        if (bytes(fullName).length == 0) revert EmptyName();
+        if (bytes(fullName).length > MAX_NAME_LENGTH) revert NameTooLong();
+
+        tm.fullName = fullName;
+        namedMemberCount[iteration][project]++;
+
+        emit TeamMemberNameSet(iteration, project, msg.sender, fullName);
+    }
+
+    // ========== Team Member View Functions ==========
+
+    /**
+     * @notice Get all team members for a project iteration
+     * @param iteration The iteration number
+     * @param project The project address
+     * @return Array of TeamMember structs
+     */
+    function getTeamMembers(uint256 iteration, address project) external view returns (TeamMember[] memory) {
+        return _teamMembers[iteration][project];
+    }
+
+    /**
+     * @notice Get the number of team members for a project iteration
+     * @param iteration The iteration number
+     * @param project The project address
+     * @return The number of team members
+     */
+    function getTeamMemberCount(uint256 iteration, address project) external view returns (uint256) {
+        return _teamMembers[iteration][project].length;
+    }
+
+    /**
+     * @notice Get a single team member by index
+     * @param iteration The iteration number
+     * @param project The project address
+     * @param index The array index
+     * @return memberAddress The member's address
+     * @return status The member's status
+     * @return fullName The member's name
+     */
+    function getTeamMember(uint256 iteration, address project, uint256 index) external view
+        returns (address memberAddress, MemberStatus status, string memory fullName)
+    {
+        if (index >= _teamMembers[iteration][project].length) revert InvalidMemberIndex();
+        TeamMember storage tm = _teamMembers[iteration][project][index];
+        return (tm.memberAddress, tm.status, tm.fullName);
+    }
+
+    /**
+     * @notice Check if a project has at least one approved member with a name set
+     * @param iteration The iteration number
+     * @param project The project address
+     * @return Whether the project has named team members
+     */
+    function hasNamedTeamMembers(uint256 iteration, address project) external view returns (bool) {
+        return namedMemberCount[iteration][project] > 0;
     }
 
     // ========== Admin Functions ==========
@@ -221,6 +437,12 @@ contract CertNFT is
             revert("CertNFT: soulbound, transfers blocked");
         }
         return super._update(to, tokenId, auth);
+    }
+
+    // ========== Version ==========
+
+    function version() external pure returns (string memory) {
+        return "1";
     }
 
     // ========== UUPS ==========

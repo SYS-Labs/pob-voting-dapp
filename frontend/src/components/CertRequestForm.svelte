@@ -8,6 +8,8 @@
     chainId: number;
     signer: JsonRpcSigner | null;
     onRequestComplete: () => void;
+    isProject?: boolean;
+    hasNamedTeamMembers?: boolean;
   }
 
   let {
@@ -16,14 +18,18 @@
     chainId,
     signer,
     onRequestComplete,
+    isProject = false,
+    hasNamedTeamMembers = true,
   }: Props = $props();
 
   let infoCID = $state('');
   let loading = $state(false);
   let error = $state('');
 
+  let teamMemberBlocked: boolean = $derived(isProject && !hasNamedTeamMembers);
+
   let canSubmit: boolean = $derived(
-    infoCID.trim().length > 0 && signer !== null && !loading
+    infoCID.trim().length > 0 && signer !== null && !loading && !teamMemberBlocked
   );
 
   async function handleSubmit() {
@@ -94,6 +100,14 @@
         IPFS CID of your participant info JSON
       </p>
     </div>
+
+    {#if teamMemberBlocked}
+      <div class="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3">
+        <p class="text-sm text-yellow-400">
+          You must add at least one team member who has been approved and filled in their name before requesting a certificate.
+        </p>
+      </div>
+    {/if}
 
     <button
       class="pob-button w-full justify-center"

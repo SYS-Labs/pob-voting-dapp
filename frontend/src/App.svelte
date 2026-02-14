@@ -641,6 +641,9 @@
           loading={certLoading}
           {chainId}
           {signer}
+          {isOwner}
+          {publicProvider}
+          iterations={filteredIterations.map(i => i.iteration)}
           onRefresh={() => {
             if (walletAddress && chainId && publicProvider) {
               const iters = filteredIterations.map(i => i.iteration);

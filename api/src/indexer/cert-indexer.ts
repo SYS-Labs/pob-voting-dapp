@@ -15,6 +15,7 @@ import { createProfilesDatabase } from '../db/profiles.js';
 import { createMetadataDatabase } from '../db/metadata.js';
 import { createRetryTracker } from '../db/retry-tracker.js';
 import { createIterationsDatabase } from '../db/iterations.js';
+import { createTeamMembersDatabase, type TeamMemberStatus } from '../db/teamMembers.js';
 import { IPFSService } from '../services/ipfs.js';
 import { NETWORKS } from '../constants/networks.js';
 
@@ -30,6 +31,11 @@ const CERT_MIDDLEWARE_ABI = [
   'function templateCID() view returns (string)',
 ];
 
+const CERT_NFT_TEAM_ABI = [
+  'function getTeamMemberCount(uint256 iteration, address project) view returns (uint256)',
+  'function getTeamMember(uint256 iteration, address project, uint256 index) view returns (address memberAddress, uint8 status, string fullName)',
+];
+
 const REGISTRY_PROFILE_ABI = [
   'function profilePictureCID(address) view returns (string)',
   'function profileBioCID(address) view returns (string)',
@@ -40,6 +46,13 @@ const STATUS_MAP: Record<number, CertStatus> = {
   0: 'pending',
   1: 'minted',
   2: 'cancelled',
+};
+
+// Team member status enum mapping (matches CertNFT.MemberStatus)
+const MEMBER_STATUS_MAP: Record<number, TeamMemberStatus> = {
+  0: 'proposed',
+  1: 'approved',
+  2: 'rejected',
 };
 
 // Poll interval: 37 seconds (configurable via env)
@@ -56,6 +69,7 @@ class CertIndexer {
   private profilesDb: ReturnType<typeof createProfilesDatabase>;
   private metadataDb: ReturnType<typeof createMetadataDatabase>;
   private iterationsDb: ReturnType<typeof createIterationsDatabase>;
+  private teamMembersDb: ReturnType<typeof createTeamMembersDatabase>;
   private retryTracker: ReturnType<typeof createRetryTracker>;
   private ipfsService: IPFSService;
   private providers: Map<number, JsonRpcProvider> = new Map();
@@ -68,6 +82,7 @@ class CertIndexer {
     this.profilesDb = createProfilesDatabase(this.db);
     this.metadataDb = createMetadataDatabase(this.db);
     this.iterationsDb = createIterationsDatabase(this.db);
+    this.teamMembersDb = createTeamMembersDatabase(this.db);
     this.retryTracker = createRetryTracker(this.db);
     this.ipfsService = new IPFSService();
 
@@ -260,6 +275,74 @@ class CertIndexer {
   }
 
   /**
+   * Index team members for known projects from iteration snapshots
+   */
+  private async indexChainTeamMembers(chainId: number): Promise<void> {
+    const config = NETWORKS[chainId];
+    if (!config.certNFTAddress) return;
+
+    const provider = this.providers.get(chainId);
+    if (!provider) return;
+
+    const certNFT = new Contract(config.certNFTAddress, [...CERT_NFT_ABI, ...CERT_NFT_TEAM_ABI], provider);
+
+    // Collect project addresses from iteration snapshots
+    const projectsByIteration = new Map<number, string[]>();
+    try {
+      const snapshots = this.iterationsDb.getSnapshotsByChain(chainId);
+      for (const snapshot of snapshots) {
+        if (snapshot.projects) {
+          try {
+            const projects: { address: string }[] = JSON.parse(snapshot.projects);
+            const addresses = projects.map((p) => p.address);
+            if (addresses.length > 0) {
+              projectsByIteration.set(snapshot.iteration_id, addresses);
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      }
+    } catch {
+      // Iteration data might not be indexed yet
+    }
+
+    if (projectsByIteration.size === 0) return;
+
+    let totalIndexed = 0;
+    for (const [iteration, projectAddresses] of projectsByIteration) {
+      for (const projectAddress of projectAddresses) {
+        try {
+          const count = Number(await certNFT.getTeamMemberCount(iteration, projectAddress));
+          for (let i = 0; i < count; i++) {
+            try {
+              const [memberAddress, statusRaw, fullName] = await certNFT.getTeamMember(iteration, projectAddress, i);
+              const status = MEMBER_STATUS_MAP[Number(statusRaw)] || 'proposed';
+
+              this.teamMembersDb.upsertTeamMember({
+                chain_id: chainId,
+                iteration,
+                project_address: projectAddress,
+                member_address: memberAddress,
+                status,
+                full_name: fullName || '',
+                last_updated_at: Date.now(),
+              });
+              totalIndexed++;
+            } catch (error) {
+              logger.warn('Failed to index team member', { chainId, iteration, projectAddress, index: i, error });
+            }
+          }
+        } catch (error) {
+          logger.warn('Failed to get team member count', { chainId, iteration, projectAddress, error });
+        }
+      }
+    }
+
+    if (totalIndexed > 0) {
+      logger.debug('Team member indexing complete for chain', { chainId, totalIndexed });
+    }
+  }
+
+  /**
    * Index profiles for accounts seen in certs and iteration snapshots
    */
   private async indexChainProfiles(chainId: number): Promise<void> {
@@ -359,9 +442,10 @@ class CertIndexer {
 
     const chainIds = Array.from(this.providers.keys());
 
-    // Index certs and profiles for all chains
+    // Index certs, team members, and profiles for all chains
     for (const chainId of chainIds) {
       await this.indexChainCerts(chainId);
+      await this.indexChainTeamMembers(chainId);
       await this.indexChainProfiles(chainId);
     }
 

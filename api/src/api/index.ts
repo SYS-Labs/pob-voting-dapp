@@ -18,6 +18,7 @@ import { createMetadataDatabase } from '../db/metadata.js';
 import { createIterationsDatabase } from '../db/iterations.js';
 import { createCertsDatabase } from '../db/certs.js';
 import { createProfilesDatabase } from '../db/profiles.js';
+import { createTeamMembersDatabase } from '../db/teamMembers.js';
 import { IPFSService } from '../services/ipfs.js';
 import { MetadataService } from '../services/metadata.js';
 import { logger } from '../utils/logger.js';
@@ -33,6 +34,7 @@ const metadataDb = createMetadataDatabase(db);
 const iterationsDb = createIterationsDatabase(db);
 const certsDb = createCertsDatabase(db);
 const profilesDb = createProfilesDatabase(db);
+const teamMembersDb = createTeamMembersDatabase(db);
 
 // Initialize IPFS and metadata services
 const ipfsService = new IPFSService();
@@ -122,6 +124,22 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname.match(/^\/api\/certs\/\d+\/0x[a-fA-F0-9]{40}$/)) {
     await handleGetCertsForAccount(req, res, url);
+    return;
+  }
+
+  // Team member endpoints
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/team-members\/\d+\/\d+\/0x[a-fA-F0-9]{40}$/)) {
+    await handleGetTeamMembersForProject(req, res, url);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/team-members\/\d+\/member\/0x[a-fA-F0-9]{40}$/)) {
+    await handleGetTeamMembersForMember(req, res, url);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/team-members\/\d+\/pending$/)) {
+    await handleGetPendingTeamMembers(req, res, url);
     return;
   }
 
@@ -731,6 +749,96 @@ async function handleGetCertsForIteration(
   });
 
   sendJson(res, 200, { certs });
+}
+
+// ========== Team Member Handlers ==========
+
+async function handleGetTeamMembersForProject(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // Parse URL: /api/team-members/:chainId/:iteration/:projectAddress
+  const parts = url.pathname.replace('/api/team-members/', '').split('/');
+  if (parts.length !== 3) {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/team-members/:chainId/:iteration/:projectAddress' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+  const iteration = parseInt(parts[1], 10);
+  const projectAddress = parts[2];
+
+  if (isNaN(chainId) || isNaN(iteration)) {
+    sendJson(res, 400, { error: 'Invalid chainId or iteration format' });
+    return;
+  }
+
+  if (!ethers.isAddress(projectAddress)) {
+    sendJson(res, 400, { error: 'Invalid address format' });
+    return;
+  }
+
+  const rows = teamMembersDb.getTeamMembersForProject(chainId, iteration, projectAddress);
+  const members = rows.map((row) => teamMembersDb.toAPI(row));
+
+  sendJson(res, 200, { members });
+}
+
+async function handleGetTeamMembersForMember(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // Parse URL: /api/team-members/:chainId/member/:memberAddress
+  const parts = url.pathname.replace('/api/team-members/', '').split('/');
+  if (parts.length !== 3 || parts[1] !== 'member') {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/team-members/:chainId/member/:memberAddress' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+  const memberAddress = parts[2];
+
+  if (isNaN(chainId)) {
+    sendJson(res, 400, { error: 'Invalid chainId format' });
+    return;
+  }
+
+  if (!ethers.isAddress(memberAddress)) {
+    sendJson(res, 400, { error: 'Invalid address format' });
+    return;
+  }
+
+  const rows = teamMembersDb.getTeamMembersForMember(chainId, memberAddress);
+  const memberships = rows.map((row) => teamMembersDb.toAPI(row));
+
+  sendJson(res, 200, { memberships });
+}
+
+async function handleGetPendingTeamMembers(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // Parse URL: /api/team-members/:chainId/pending
+  const parts = url.pathname.replace('/api/team-members/', '').split('/');
+  if (parts.length !== 2 || parts[1] !== 'pending') {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/team-members/:chainId/pending' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+
+  if (isNaN(chainId)) {
+    sendJson(res, 400, { error: 'Invalid chainId format' });
+    return;
+  }
+
+  const rows = teamMembersDb.getPendingMembers(chainId);
+  const members = rows.map((row) => teamMembersDb.toAPI(row));
+
+  sendJson(res, 200, { members });
 }
 
 async function handleGetProfile(

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "./ICertMiddleware.sol";
+
 /**
  * @title MockPoB
  * @notice Mock PoB badge contract for testing CertMiddleware
@@ -65,6 +67,42 @@ contract MockJurySCForCert {
     }
 
     function isRegisteredProject(address account) external view returns (bool) {
+        return _isProject[account];
+    }
+}
+
+/**
+ * @title MockCertMiddleware
+ * @notice Mock middleware for testing CertNFT team member features
+ */
+contract MockCertMiddleware is ICertMiddleware {
+    mapping(address => bool) private _eligible;
+    mapping(address => string) private _certType;
+    mapping(address => bool) private _isProject;
+    string private _templateCID;
+
+    function setEligible(address account, bool eligible_, string calldata certType_) external {
+        _eligible[account] = eligible_;
+        _certType[account] = certType_;
+    }
+
+    function setIsProject(address account, bool value) external {
+        _isProject[account] = value;
+    }
+
+    function setTemplateCID(string calldata cid) external {
+        _templateCID = cid;
+    }
+
+    function validate(address account) external view override returns (bool eligible, string memory certType) {
+        return (_eligible[account], _certType[account]);
+    }
+
+    function templateCID() external view override returns (string memory) {
+        return _templateCID;
+    }
+
+    function isProjectInAnyRound(address account) external view override returns (bool) {
         return _isProject[account];
     }
 }

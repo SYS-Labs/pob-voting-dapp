@@ -157,6 +157,18 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
         return pobContracts.length;
     }
 
+    /**
+     * @notice Check if an account is a registered project in any round
+     * @param account The address to check
+     * @return Whether the account is a project in any round
+     */
+    function isProjectInAnyRound(address account) external view override returns (bool) {
+        for (uint256 i = 0; i < jurySCContracts.length; i++) {
+            if (IJurySCForCert(jurySCContracts[i]).isRegisteredProject(account)) return true;
+        }
+        return false;
+    }
+
     // ========== Owner Functions ==========
 
     /**

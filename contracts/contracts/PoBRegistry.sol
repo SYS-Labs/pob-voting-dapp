@@ -100,6 +100,14 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Profile bio CID for an address
     mapping(address => string) public profileBioCID;
 
+    // ========== Adapter Routing (v3) ==========
+
+    /// @notice Version ID => adapter contract address
+    mapping(uint256 => address) public versionAdapters;
+
+    /// @notice Iteration ID => round ID => version number
+    mapping(uint256 => mapping(uint256 => uint256)) public roundVersion;
+
     // ========== Events ==========
 
     event IterationRegistered(
@@ -137,6 +145,9 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     event ProfilePictureSet(address indexed account, string cid);
     event ProfileBioSet(address indexed account, string cid);
+
+    event AdapterSet(uint256 indexed versionId, address indexed adapter);
+    event RoundVersionSet(uint256 indexed iterationId, uint256 indexed roundId, uint256 indexed versionId);
 
     // ========== Initialization ==========
 
@@ -500,6 +511,61 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
         profileBioCID[msg.sender] = cid;
         emit ProfileBioSet(msg.sender, cid);
+    }
+
+    // ========== Adapter Routing Functions ==========
+
+    /**
+     * @notice Set adapter contract for a version (owner only)
+     * @param versionId Version number (1, 2, ...)
+     * @param adapter Adapter contract address implementing IVersionAdapter
+     */
+    function setAdapter(uint256 versionId, address adapter) external onlyOwner {
+        require(versionId > 0, "Invalid version ID");
+        require(adapter != address(0), "Invalid adapter address");
+        versionAdapters[versionId] = adapter;
+        emit AdapterSet(versionId, adapter);
+    }
+
+    /**
+     * @notice Set the version for a specific round (owner only)
+     * @param iterationId Iteration number
+     * @param roundId Round number within iteration
+     * @param versionId Version number (must have adapter set)
+     */
+    function setRoundVersion(uint256 iterationId, uint256 roundId, uint256 versionId) external onlyOwner {
+        require(rounds[iterationId][roundId].exists, "Round not found");
+        require(versionId > 0, "Invalid version ID");
+        require(versionAdapters[versionId] != address(0), "Adapter not set for version");
+        roundVersion[iterationId][roundId] = versionId;
+        emit RoundVersionSet(iterationId, roundId, versionId);
+    }
+
+    /**
+     * @notice Get the JurySC address and adapter for a specific round
+     * @param iterationId Iteration number
+     * @param roundId Round number within iteration
+     * @return jurySC The JurySC contract address for this round
+     * @return adapter The adapter contract address for this round's version
+     */
+    function getAdapterConfig(uint256 iterationId, uint256 roundId) external view returns (
+        address jurySC,
+        address adapter
+    ) {
+        require(rounds[iterationId][roundId].exists, "Round not found");
+        uint256 versionId = roundVersion[iterationId][roundId];
+        require(versionId > 0, "Version not set for round");
+        adapter = versionAdapters[versionId];
+        require(adapter != address(0), "Adapter not set for version");
+        jurySC = rounds[iterationId][roundId].jurySC;
+    }
+
+    /**
+     * @notice Get contract version string
+     * @return Version string
+     */
+    function version() external pure returns (string memory) {
+        return "3";
     }
 
     // ========== UUPS Upgrade Authorization ==========

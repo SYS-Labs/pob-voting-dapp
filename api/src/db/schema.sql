@@ -256,3 +256,20 @@ CREATE TABLE IF NOT EXISTS profile_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_profile_account ON profile_snapshots(chain_id, account);
+
+-- Cached team member data from CertNFT
+CREATE TABLE IF NOT EXISTS team_member_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chain_id INTEGER NOT NULL,
+  iteration INTEGER NOT NULL,
+  project_address TEXT NOT NULL,
+  member_address TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'proposed',
+  full_name TEXT DEFAULT '',
+  last_updated_at INTEGER NOT NULL,
+  UNIQUE(chain_id, iteration, project_address, member_address)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_member_project ON team_member_snapshots(chain_id, iteration, project_address);
+CREATE INDEX IF NOT EXISTS idx_team_member_member ON team_member_snapshots(chain_id, member_address);
+CREATE INDEX IF NOT EXISTS idx_team_member_status ON team_member_snapshots(chain_id, status);
