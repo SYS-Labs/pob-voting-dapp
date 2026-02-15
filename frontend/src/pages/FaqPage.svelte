@@ -28,9 +28,9 @@
             <p class="font-semibold text-white text-base">How it works:</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <ol class="pob-markdown-list">
-                <li>Join anytime (no deadlines!)</li>
+                <li>Teams onboard at monthly in-person events, then continue through a competition cycle that typically lasts about 3 weeks</li>
                 <li>Everything is open and verifiable</li>
-                <li>Follow these phases: Register → Share your idea → Build a demo → Get evaluated → Launch your MVP</li>
+                <li>Follow these phases: Register → Validate the idea → Build the solution → Get evaluated → Mature the product</li>
                 <li>Grow alongside Syscoin's community</li>
               </ol>
             </div>
@@ -39,11 +39,11 @@
           <hr class="border-[var(--pob-border)]" />
 
           <div class="space-y-3">
-            <p class="font-semibold text-white text-base">How do I join the program?</p>
+            <p class="font-semibold text-white text-base">How do teams join the program?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Attend a Syscoin in-person event (Phase 0) where you'll register your NEVM wallet and Telegram username.
-                You'll receive an airdrop of gas and an accreditation NFT to get started.
+                Attend a monthly Syscoin in-person onboarding event (Phase 0), where each team registers a NEVM wallet following the provided instructions.
+                Teams receive TSYS (test-token) gas to get started and may be eligible for a participation certificate during the competition.
               </p>
             </div>
           </div>
@@ -55,10 +55,23 @@
             <div class="text-sm text-[var(--pob-text-muted)]">
               <ul class="pob-markdown-list">
                 <li><strong class="text-white">Phase 0:</strong> In-person registration</li>
-                <li><strong class="text-white">Phase 1:</strong> Submit your idea (max 2 pages)</li>
-                <li><strong class="text-white">Phase 2:</strong> Present your demo (video + live presentation)</li>
-                <li><strong class="text-white">Phase 3:</strong> Community evaluation via voting + MVP development for winners</li>
+                <li><strong class="text-white">Phase 1:</strong> Team idea validation</li>
+                <li><strong class="text-white">Phase 2:</strong> Project build and progress sharing</li>
+                <li><strong class="text-white">Phase 3:</strong> Evaluation via voting + product maturation</li>
               </ul>
+            </div>
+          </div>
+
+          <hr class="border-[var(--pob-border)]" />
+
+          <div class="space-y-3">
+            <p class="font-semibold text-white text-base">What do participating teams get?</p>
+            <div class="text-sm text-[var(--pob-text-muted)]">
+              <p>
+                All participating teams build through a guided process with Syscoin and receive mentoring throughout the program.
+                They also join the Syscoin Builders community, with access to a global Web3 network for professional development.
+                Selected projects may also receive the same support track as winning teams, as determined by the Syscoin Foundation based on project potential and program priorities.
+              </p>
             </div>
           </div>
 
@@ -68,8 +81,8 @@
             <p class="font-semibold text-white text-base">What do winners get?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Winners receive funding split into 30% at award ceremony and 70% upon completing deliverables (within 3 weeks).
-                They also get technical support, mentorship, and visibility from Syscoin and its community.
+                Winning teams are eligible for milestone-based hackathon rewards after voting is finalized.
+                Rewards are generally structured as 30% at the award ceremony and 70% after milestone verification (typically around 3 weeks, but timelines may vary).
               </p>
             </div>
           </div>
@@ -83,8 +96,8 @@
             <p class="font-semibold text-white text-base">Who votes on projects?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Three entities: DAO HIC Committee (collective vote), Community (mint voting NFTs by locking a {tokenSymbol} deposit during the voting period),
-                and SMT (individual vote). All entities have equal weight (⅓ each) and all votes are recorded on-chain.
+                Three entities vote: DAO HIC Committee (collective vote), Community (minting voting NFTs by locking a {tokenSymbol} deposit during the voting period),
+                and SMT. All entities have equal weight (⅓ each), and all votes are recorded on-chain.
               </p>
             </div>
           </div>
@@ -95,7 +108,7 @@
             <p class="font-semibold text-white text-base">How does voting work?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Each voting round lasts 48 hours. Community members lock a {tokenSymbol} deposit to mint a voting NFT during the active voting period.
+                Each voting round lasts 48 hours. Community members lock a {tokenSymbol} deposit to mint a voting NFT during the active period.
                 After voting ends, they can claim their full deposit back. Results are determined automatically by the smart contract.
                 If no winner is determined, a new 48-hour round begins.
               </p>
@@ -116,11 +129,8 @@
               </p>
               <p>
                 <strong class="text-white">Weighted Mode:</strong> Each entity's ⅓ weight is distributed proportionally across projects based on how that entity's voters split their votes.
-                SMT gives their full ⅓ to one project (binary). DAO HIC and Community distribute their ⅓ proportionally (e.g., if 60% vote for Project A, it gets 60% of that entity's ⅓ weight).
+                SMT allocates its full ⅓ to one project. DAO HIC and Community distribute their ⅓ proportionally (e.g., if 60% vote for Project A, it gets 60% of that entity's ⅓ weight).
                 The project with the highest cumulative score wins. Ties result in no winner.
-              </p>
-              <p class="mt-3 text-xs opacity-75">
-                If no winner is determined, a new 48-hour voting round begins.
               </p>
             </div>
           </div>
@@ -128,11 +138,11 @@
           <hr class="border-[var(--pob-border)]" />
 
           <div class="space-y-3">
-            <p class="font-semibold text-white text-base">Can I change my vote?</p>
+            <p class="font-semibold text-white text-base">Can a vote be changed?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
                 Yes, all voters (DAO HIC, Community, and SMT) can change their vote during the active 48-hour voting period.
-                Simply submit a new vote transaction for a different project, and your previous vote will be updated.
+                Simply submit a new vote transaction for a different project, and the previous vote from that wallet will be updated.
                 Once voting ends, votes become final and cannot be changed.
               </p>
             </div>
@@ -144,11 +154,17 @@
           <h3 class="text-lg font-semibold text-[var(--pob-primary)]">💬 Support</h3>
 
           <div class="space-y-3">
-            <p class="font-semibold text-white text-base">Who can I contact for help?</p>
+            <p class="font-semibold text-white text-base">Who can teams contact for help?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Reach out through official Syscoin channels (Telegram, Discord, X). For disputes, Syscoin Foundation
-                has final authority to resolve them.
+                For program support, teams should use the official
+                <a
+                  href="https://discord.org/invite/syscoin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-[var(--pob-primary)] transition-colors underline decoration-transparent hover:decoration-inherit"
+                >Syscoin Discord support channel</a>.
+                For disputes, the Syscoin Foundation has final authority to resolve them.
               </p>
             </div>
           </div>
