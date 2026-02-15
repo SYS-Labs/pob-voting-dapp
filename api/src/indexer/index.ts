@@ -17,8 +17,6 @@ import { createMonitoredThreadsDatabase } from '../db/monitored-threads.js';
 import { createXApiClient } from './x-api-client.js';
 import { createCustomThreadBuilder } from './thread-builder-custom.js';
 import { RateLimiter } from '../utils/rate-limiter.js';
-import { Post } from '../types/post.js';
-
 class XIndexer {
   private db: Database.Database;
   private postDb: ReturnType<typeof createPostDatabase>;
@@ -174,18 +172,6 @@ class XIndexer {
     logger.info('X indexer stopped');
   }
 
-  /**
-   * Get the newest post from a list
-   * Currently unused but kept for potential future use
-   */
-  // @ts-expect-error - Reserved for future use
-  private getNewestPost(posts: Post[]): Post | null {
-    if (posts.length === 0) return null;
-
-    return posts.reduce((newest, post) =>
-      post.timestamp > newest.timestamp ? post : newest
-    );
-  }
 }
 
 // Start the indexer (will run when this file is executed)

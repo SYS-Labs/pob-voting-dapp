@@ -53,20 +53,3 @@ export function postToRecord(post: Post): Omit<PostRecord, 'content_hash' | 'ind
   };
 }
 
-export function recordToPost(record: PostRecord): Post {
-  return {
-    id: record.id,
-    authorUsername: record.author_username,
-    authorDisplayName: record.author_display_name,
-    content: record.content,
-    parentId: record.parent_id,
-    conversationId: record.conversation_id,
-    depth: record.depth,
-    timestamp: new Date(record.timestamp),
-    likes: record.likes,
-    retweets: record.retweets,
-    replies: record.replies_count,
-    mediaUrls: [],  // TODO: Parse from content or fetch separately
-    isTrusted: record.is_trusted
-  };
-}
