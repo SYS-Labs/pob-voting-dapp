@@ -23,7 +23,7 @@
 
   interface RoleStatuses {
     community: boolean;
-    devrel: boolean;
+    smt: boolean;
     dao_hic: boolean;
     project: boolean;
   }
@@ -44,13 +44,13 @@
   }
 
   interface VoteCounts {
-    devRel: number;
+    smt: number;
     daoHic: number;
     community: number;
   }
 
   interface EntityVotes {
-    devRel: string | null;
+    smt: string | null;
     daoHic: string | null;
     community: string | null;
   }
@@ -68,7 +68,7 @@
     statusFlags: StatusFlags;
     communityBadges: CommunityBadge[];
     badges: Badge[];
-    devRelVote: string | null;
+    smtVote: string | null;
     daoHicVote: string | null;
     entityVotes: EntityVotes;
     pendingAction: string | null;
@@ -76,7 +76,7 @@
     chainId: number | null;
     projectsLocked: boolean;
     contractLocked: boolean;
-    devRelAccount: string | null;
+    smtVoters: string[];
     daoHicVoters: string[];
     daoHicIndividualVotes: Record<string, string>;
     winner: Winner;
@@ -87,7 +87,6 @@
     openAdminSection: string | null;
     signer: any;
     publicProvider: any;
-    JurySC_01ABI: any;
     getProjectLabel: (address: string | null) => string | null;
     executeMint: (role: ParticipantRole, refreshCallback?: () => Promise<void>) => Promise<void>;
     executeVote: (role: ParticipantRole, projectAddress: string, tokenId?: string, refreshCallback?: () => Promise<void>) => void;
@@ -119,7 +118,7 @@
     statusFlags,
     communityBadges,
     badges,
-    devRelVote,
+    smtVote,
     daoHicVote,
     entityVotes,
     pendingAction,
@@ -127,7 +126,7 @@
     chainId,
     projectsLocked,
     contractLocked,
-    devRelAccount,
+    smtVoters,
     daoHicVoters,
     daoHicIndividualVotes,
     winner,
@@ -138,7 +137,6 @@
     openAdminSection,
     signer,
     publicProvider,
-    JurySC_01ABI,
     getProjectLabel,
     executeMint,
     executeVote,
@@ -220,8 +218,8 @@
       ? null
       : roles.project
         ? null
-        : roles.devrel
-          ? 'devrel'
+        : roles.smt
+          ? 'smt'
           : roles.dao_hic
             ? 'dao_hic'
             : 'community';
@@ -356,15 +354,15 @@
                   ? null
                   : roles.project
                     ? null
-                    : roles.devrel
-                      ? 'devrel'
+                    : roles.smt
+                      ? 'smt'
                       : roles.dao_hic
                         ? 'dao_hic'
                         : 'community'}
 
               {@const hasVotedForThisProject =
-                votingRole === 'devrel'
-                  ? devRelVote?.toLowerCase() === project.address.toLowerCase()
+                votingRole === 'smt'
+                  ? smtVote?.toLowerCase() === project.address.toLowerCase()
                   : votingRole === 'dao_hic'
                     ? daoHicVote?.toLowerCase() === project.address.toLowerCase()
                     : votingRole === 'community'
@@ -372,8 +370,8 @@
                       : false}
 
               {@const hasVotedAnywhere =
-                votingRole === 'devrel'
-                  ? devRelVote !== null
+                votingRole === 'smt'
+                  ? smtVote !== null
                   : votingRole === 'dao_hic'
                     ? daoHicVote !== null
                     : votingRole === 'community'
@@ -438,7 +436,7 @@
         {statusFlags}
         communityBadges={currentIterationCommunityBadges}
         badges={currentIterationBadges}
-        {devRelVote}
+        {smtVote}
         {daoHicVote}
         {pendingAction}
         {walletAddress}
@@ -456,6 +454,7 @@
         onClaim={handleClaim}
         {pendingAction}
         {voteCounts}
+        {smtVoters}
         {daoHicVoters}
         {totalCommunityVoters}
       />
@@ -467,13 +466,12 @@
         {statusFlags}
         {projectsLocked}
         {contractLocked}
-        {devRelAccount}
+        {smtVoters}
         {daoHicVoters}
         {winner}
         {pendingAction}
         {openAdminSection}
         {signer}
-        {JurySC_01ABI}
         {votingMode}
         {setVotingMode}
         {getProjectLabel}
@@ -498,7 +496,6 @@
     {chainId}
     {isOwner}
     {roles}
-    {devRelVote}
     {daoHicVote}
     communityVoted={currentIterationCommunityBadges.some(b => b.hasVoted)}
     hasBadge={currentIterationBadges.length > 0}
@@ -515,8 +512,8 @@
     ? null
     : roles.project
       ? null
-      : roles.devrel
-        ? 'devrel'
+      : roles.smt
+        ? 'smt'
         : roles.dao_hic
           ? 'dao_hic'
           : 'community'}
@@ -526,8 +523,8 @@
   {@const tokenSymbol = network?.tokenSymbol ?? 'TSYS'}
 
   {@const projectAddress = pendingVote.project.address.toLowerCase()}
-  {@const hasVotedForThisProject = votingRole === 'devrel'
-    ? devRelVote?.toLowerCase() === projectAddress
+  {@const hasVotedForThisProject = votingRole === 'smt'
+    ? smtVote?.toLowerCase() === projectAddress
     : votingRole === 'dao_hic'
       ? daoHicVote?.toLowerCase() === projectAddress
       : votingRole === 'community'

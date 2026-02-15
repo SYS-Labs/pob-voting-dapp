@@ -1,11 +1,9 @@
 import { writable, derived, get } from 'svelte/store';
 import { Contract, Interface, JsonRpcProvider, type JsonRpcSigner, ethers } from 'ethers';
-import { PoB_01ABI, PoB_02ABI } from '~/abis';
-import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
-import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
-import JurySC_02_v001_ABI from '~/abis/JurySC_02_v001.json';
+import { PoB_01ABI, IVersionAdapterABI } from '~/abis';
 import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
 import { batchGetProjectMetadataCIDs, VOTING_MODE_OVERRIDES } from '~/utils/registry';
+import { resolveAdapter } from '~/utils/adapterResolver';
 import { metadataAPI } from '~/utils/metadata-api';
 import { iterationsAPI, type IterationSnapshot } from '~/utils/iterations-api';
 import { getTransactionContext } from './registry';
@@ -23,14 +21,14 @@ import type {
 // ============================================================================
 
 interface EntityVotes {
-  devRel: string | null;
+  smt: string | null;
   daoHic: string | null;
   community: string | null;
 }
 
 interface RoleStatuses {
   community: boolean;
-  devrel: boolean;
+  smt: boolean;
   dao_hic: boolean;
   project: boolean;
 }
@@ -45,17 +43,18 @@ interface ContractState {
   rolesLoading: boolean;
   isOwner: boolean;
   projects: Project[];
-  devRelAccount: string | null;
+  smtVoters: string[];
+  smtIndividualVotes: Record<string, string>;
   daoHicVoters: string[];
   daoHicIndividualVotes: Record<string, string>;
   projectsLocked: boolean;
   contractLocked: boolean;
-  voteCounts: { devRel: number; daoHic: number; community: number };
+  voteCounts: { smt: number; daoHic: number; community: number };
   totalCommunityVoters: number;
   entityVotes: EntityVotes;
   badges: Badge[];
   communityBadges: CommunityBadgeState[];
-  devRelVote: string | null;
+  smtVote: string | null;
   daoHicVote: string | null;
   winner: { projectAddress: string | null; hasWinner: boolean };
   votingMode: number;
@@ -70,17 +69,9 @@ interface ContractState {
 // Helper Functions
 // ============================================================================
 
-function getJurySCABI(iteration: Iteration | null) {
-  if (!iteration) return JurySC_02_v001_ABI;
-  if (iteration.version === '001') return JurySC_01_v001_ABI;
-  if (iteration.version === '002') return JurySC_01_v002_ABI;
-  return JurySC_02_v001_ABI;
-}
-
-function getPoBContractABI(version: string | undefined) {
-  if (version === '001' || version === '002') return PoB_01ABI;
-  return PoB_02ABI;
-}
+// Entity IDs for IVersionAdapter
+const ENTITY_SMT = 0;
+const ENTITY_DAO_HIC = 1;
 
 function normalizeAddress(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -89,26 +80,44 @@ function normalizeAddress(value: unknown): string | null {
   return value;
 }
 
+/**
+ * Resolve IVersionAdapter for a given iteration.
+ * Returns the adapter Contract and jurySC address, or null if resolution fails.
+ */
+async function getAdapter(
+  currentIteration: Iteration,
+  provider: JsonRpcProvider
+): Promise<{ adapter: Contract; jurySC: string } | null> {
+  const roundId = currentIteration.round ?? 1;
+  return resolveAdapter(
+    currentIteration.chainId,
+    currentIteration.iteration,
+    roundId,
+    provider
+  );
+}
+
 // ============================================================================
 // Store
 // ============================================================================
 
 const initialState: ContractState = {
-  roles: { community: false, devrel: false, dao_hic: false, project: false },
+  roles: { community: false, smt: false, dao_hic: false, project: false },
   rolesLoading: false,
   isOwner: false,
   projects: [],
-  devRelAccount: null,
+  smtVoters: [],
+  smtIndividualVotes: {},
   daoHicVoters: [],
   daoHicIndividualVotes: {},
   projectsLocked: false,
   contractLocked: false,
-  voteCounts: { devRel: 0, daoHic: 0, community: 0 },
+  voteCounts: { smt: 0, daoHic: 0, community: 0 },
   totalCommunityVoters: 0,
-  entityVotes: { devRel: null, daoHic: null, community: null },
+  entityVotes: { smt: null, daoHic: null, community: null },
   badges: [],
   communityBadges: [],
-  devRelVote: null,
+  smtVote: null,
   daoHicVote: null,
   winner: { projectAddress: null, hasWinner: false },
   votingMode: 0,
@@ -126,7 +135,8 @@ export const roles = derived(contractStateStore, $s => $s.roles);
 export const rolesLoading = derived(contractStateStore, $s => $s.rolesLoading);
 export const isOwner = derived(contractStateStore, $s => $s.isOwner);
 export const projects = derived(contractStateStore, $s => $s.projects);
-export const devRelAccount = derived(contractStateStore, $s => $s.devRelAccount);
+export const smtVoters = derived(contractStateStore, $s => $s.smtVoters);
+export const smtIndividualVotes = derived(contractStateStore, $s => $s.smtIndividualVotes);
 export const daoHicVoters = derived(contractStateStore, $s => $s.daoHicVoters);
 export const daoHicIndividualVotes = derived(contractStateStore, $s => $s.daoHicIndividualVotes);
 export const projectsLocked = derived(contractStateStore, $s => $s.projectsLocked);
@@ -136,7 +146,7 @@ export const totalCommunityVoters = derived(contractStateStore, $s => $s.totalCo
 export const entityVotes = derived(contractStateStore, $s => $s.entityVotes);
 export const badges = derived(contractStateStore, $s => $s.badges);
 export const communityBadges = derived(contractStateStore, $s => $s.communityBadges);
-export const devRelVote = derived(contractStateStore, $s => $s.devRelVote);
+export const smtVote = derived(contractStateStore, $s => $s.smtVote);
 export const daoHicVote = derived(contractStateStore, $s => $s.daoHicVote);
 export const winner = derived(contractStateStore, $s => $s.winner);
 export const votingMode = derived(contractStateStore, $s => $s.votingMode);
@@ -186,13 +196,20 @@ async function loadFromAPI(currentIteration: Iteration): Promise<IterationSnapsh
     const isActive = snapshot.juryState === 'active';
     const votingEnded = snapshot.juryState === 'ended' || snapshot.juryState === 'locked';
 
+    // Translate devRel→smt at the API boundary
+    const apiSmtVoters: string[] = (snapshot as any).smtVoters ?? [];
+    const devRelAccount = snapshot.devRelAccount;
+    const resolvedSmtVoters = apiSmtVoters.length > 0
+      ? apiSmtVoters
+      : (devRelAccount ? [devRelAccount] : []);
+
     contractStateStore.update(s => ({
       ...s,
       projects: apiProjects,
       projectsLocked: snapshot.projectsLocked,
       contractLocked: snapshot.contractLocked,
       entityVotes: {
-        devRel: snapshot.entityVotes.devRel,
+        smt: (snapshot.entityVotes as any).smt ?? snapshot.entityVotes.devRel ?? null,
         daoHic: snapshot.entityVotes.daoHic,
         community: snapshot.entityVotes.community,
       },
@@ -208,11 +225,12 @@ async function loadFromAPI(currentIteration: Iteration): Promise<IterationSnapsh
       },
       statusFlags: { isActive, votingEnded },
       voteCounts: {
-        devRel: snapshot.totals.devRel,
+        smt: (snapshot.totals as any).smt ?? snapshot.totals.devRel ?? 0,
         daoHic: snapshot.totals.daoHic,
         community: snapshot.totals.community,
       },
-      devRelAccount: snapshot.devRelAccount,
+      smtVoters: resolvedSmtVoters,
+      smtIndividualVotes: (snapshot as any).smtIndividualVotes ?? {},
       daoHicVoters: snapshot.daoHicVoters,
       daoHicIndividualVotes: snapshot.daoHicIndividualVotes || {},
       totalCommunityVoters: 0,
@@ -227,7 +245,8 @@ async function loadFromAPI(currentIteration: Iteration): Promise<IterationSnapsh
 }
 
 async function loadProjects(
-  contract: Contract,
+  adapter: Contract,
+  jurySC: string,
   currentIteration: Iteration,
   publicProvider: JsonRpcProvider,
   selectedChainId: number
@@ -237,8 +256,8 @@ async function loadProjects(
 
   try {
     const [projectsLockedFlag, contractLockedFlag] = await cachedPromiseAll(publicProvider, selectedChainId, [
-      { key: `iteration:${iterationNum}:projectsLocked`, promise: contract.projectsLocked().catch(() => false) },
-      { key: `iteration:${iterationNum}:locked`, promise: contract.locked().catch(() => false) },
+      { key: `iteration:${iterationNum}:projectsLocked`, promise: adapter.projectsLocked(jurySC).catch(() => false) },
+      { key: `iteration:${iterationNum}:locked`, promise: adapter.locked(jurySC).catch(() => false) },
     ]);
 
     contractStateStore.update(s => ({
@@ -247,21 +266,7 @@ async function loadProjects(
       contractLocked: Boolean(contractLockedFlag),
     }));
 
-    let addresses: string[] = [];
-    try {
-      addresses = await contract.getProjectAddresses();
-    } catch (err) {
-      const countRaw = await contract.projectCount();
-      const count = Number(countRaw);
-      const projectAddressCalls = [];
-      for (let index = 1; index <= count; index += 1) {
-        projectAddressCalls.push({
-          key: `iteration:${iterationNum}:projectAddress:${index}`,
-          promise: contract.projectAddress(index),
-        });
-      }
-      addresses = await cachedPromiseAll(publicProvider, selectedChainId, projectAddressCalls);
-    }
+    const addresses: string[] = await adapter.getProjectAddresses(jurySC).catch(() => [] as string[]);
 
     if (addresses.length === 0) {
       contractStateStore.update(s => ({ ...s, projects: [] }));
@@ -302,7 +307,8 @@ async function loadProjects(
 }
 
 async function loadOwnerData(
-  contract: Contract,
+  adapter: Contract,
+  jurySC: string,
   currentIteration: Iteration,
   publicProvider: JsonRpcProvider,
   selectedChainId: number
@@ -310,22 +316,22 @@ async function loadOwnerData(
   console.log('[loadOwnerData] Starting...');
   const iterationNum = currentIteration.iteration;
   try {
-    const [devRelAddress, daoHicAddressesResponse] = await cachedPromiseAll(publicProvider, selectedChainId, [
-      { key: `iteration:${iterationNum}:devRelAccount`, promise: contract.devRelAccount().catch(() => ethers.ZeroAddress) },
-      { key: `iteration:${iterationNum}:getDaoHicVoters`, promise: contract.getDaoHicVoters().catch(() => [] as string[]) },
-    ]);
+    const normalizeVoterArray = (arr: unknown) =>
+      (Array.isArray(arr) ? arr : []).filter(
+        (addr): addr is string =>
+          typeof addr === 'string' && addr.length > 0 && addr !== ethers.ZeroAddress
+      );
 
-    const normalizedDevRel =
-      typeof devRelAddress === 'string' && devRelAddress !== ethers.ZeroAddress ? devRelAddress : null;
-    const normalizedDaoHic = (Array.isArray(daoHicAddressesResponse) ? daoHicAddressesResponse : []).filter(
-      (addr): addr is string =>
-        typeof addr === 'string' && addr.length > 0 && addr !== ethers.ZeroAddress
-    );
+    // Adapter unifies getSmtVoters/devRelAccount via getEntityVoters(jurySC, entityId)
+    const [smtVotersResponse, daoHicVotersResponse] = await cachedPromiseAll(publicProvider, selectedChainId, [
+      { key: `iteration:${iterationNum}:getEntityVoters:${ENTITY_SMT}`, promise: adapter.getEntityVoters(jurySC, ENTITY_SMT).catch(() => [] as string[]) },
+      { key: `iteration:${iterationNum}:getEntityVoters:${ENTITY_DAO_HIC}`, promise: adapter.getEntityVoters(jurySC, ENTITY_DAO_HIC).catch(() => [] as string[]) },
+    ]);
 
     contractStateStore.update(s => ({
       ...s,
-      devRelAccount: normalizedDevRel,
-      daoHicVoters: normalizedDaoHic,
+      smtVoters: normalizeVoterArray(smtVotersResponse),
+      daoHicVoters: normalizeVoterArray(daoHicVotersResponse),
     }));
 
     console.log('[loadOwnerData] Complete.');
@@ -333,15 +339,17 @@ async function loadOwnerData(
     console.error('[loadOwnerData] Error:', error);
     contractStateStore.update(s => ({
       ...s,
-      devRelAccount: null,
+      smtVoters: [],
       daoHicVoters: [],
+      smtIndividualVotes: {},
       daoHicIndividualVotes: {},
     }));
   }
 }
 
 async function loadEntityVotes(
-  contract: Contract,
+  adapter: Contract,
+  jurySC: string,
   currentIteration: Iteration,
   publicProvider: JsonRpcProvider,
   selectedChainId: number,
@@ -355,51 +363,32 @@ async function loadEntityVotes(
     if (!isActive && !votingEnded) {
       contractStateStore.update(s => ({
         ...s,
-        entityVotes: { devRel: null, daoHic: null, community: null },
+        entityVotes: { smt: null, daoHic: null, community: null },
         winner: { projectAddress: null, hasWinner: false },
       }));
       return;
     }
 
+    // Adapter handles voting mode uniformly (V1Adapter returns 0 for v001)
     const jurySCAddress = currentIteration.jurySC?.toLowerCase() || '';
     const votingModeOverride = VOTING_MODE_OVERRIDES[jurySCAddress];
 
-    const version = currentIteration.version || '003';
-    let detectedMode = 0;
-    let winnerRaw: [string, boolean] = [ethers.ZeroAddress, false];
-
+    let detectedMode: number;
     if (votingModeOverride !== undefined) {
       detectedMode = votingModeOverride;
-      winnerRaw = detectedMode === 0
-        ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
-        : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-    } else if (version === '001') {
-      detectedMode = 0;
-      winnerRaw = await contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-    } else if (version === '002') {
-      const [consensusWinner, weightedWinner] = await Promise.all([
-        contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
-        contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
-      ]) as [[string, boolean], [string, boolean]];
-
-      if (weightedWinner[1] && !consensusWinner[1]) {
-        detectedMode = 1;
-        winnerRaw = weightedWinner;
-      } else {
-        detectedMode = 0;
-        winnerRaw = consensusWinner;
-      }
     } else {
-      detectedMode = Number(await contract.votingMode().catch(() => 0));
-      winnerRaw = detectedMode === 0
-        ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
-        : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+      detectedMode = Number(await adapter.votingMode(jurySC).catch(() => 0));
     }
 
-    const [devRelRaw, daoHicRaw, communityRaw] = await cachedPromiseAll(publicProvider, selectedChainId, [
-      { key: `iteration:${iterationNum}:getDevRelEntityVote`, promise: contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress) },
-      { key: `iteration:${iterationNum}:getDaoHicEntityVote`, promise: contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress) },
-      { key: `iteration:${iterationNum}:getCommunityEntityVote`, promise: contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress) },
+    const winnerRaw = detectedMode === 0
+      ? await adapter.getWinnerConsensus(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
+      : await adapter.getWinnerWeighted(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+
+    // Entity votes via adapter (unified for all versions)
+    const [smtRaw, daoHicRaw, communityRaw] = await cachedPromiseAll(publicProvider, selectedChainId, [
+      { key: `iteration:${iterationNum}:getEntityVote:${ENTITY_SMT}`, promise: adapter.getEntityVote(jurySC, ENTITY_SMT).catch(() => ethers.ZeroAddress) },
+      { key: `iteration:${iterationNum}:getEntityVote:${ENTITY_DAO_HIC}`, promise: adapter.getEntityVote(jurySC, ENTITY_DAO_HIC).catch(() => ethers.ZeroAddress) },
+      { key: `iteration:${iterationNum}:getCommunityEntityVote`, promise: adapter.getCommunityEntityVote(jurySC).catch(() => ethers.ZeroAddress) },
     ]);
 
     const [winnerAddressRaw, hasWinnerRaw] = Array.isArray(winnerRaw) ? winnerRaw : [ethers.ZeroAddress, false];
@@ -407,7 +396,7 @@ async function loadEntityVotes(
     let newProjectScores = null;
     if (votingEnded && detectedMode === 1) {
       try {
-        const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
+        const [addresses, scores, totalPossible] = await adapter.getWinnerWithScores(jurySC);
         newProjectScores = {
           addresses: addresses as string[],
           scores: (scores as bigint[]).map(s => s.toString()),
@@ -422,7 +411,7 @@ async function loadEntityVotes(
       ...s,
       votingMode: detectedMode,
       entityVotes: {
-        devRel: normalizeAddress(devRelRaw),
+        smt: normalizeAddress(smtRaw),
         daoHic: normalizeAddress(daoHicRaw),
         community: normalizeAddress(communityRaw),
       },
@@ -438,14 +427,15 @@ async function loadEntityVotes(
     console.error('[loadEntityVotes] Error:', error);
     contractStateStore.update(s => ({
       ...s,
-      entityVotes: { devRel: null, daoHic: null, community: null },
+      entityVotes: { smt: null, daoHic: null, community: null },
       winner: { projectAddress: null, hasWinner: false },
     }));
   }
 }
 
 async function loadRoles(
-  contract: Contract,
+  adapter: Contract,
+  jurySC: string,
   currentIteration: Iteration,
   publicProvider: JsonRpcProvider,
   selectedChainId: number,
@@ -456,24 +446,24 @@ async function loadRoles(
 
   try {
     const iterationNum = currentIteration.iteration;
-    const [isDevRel, isDaoHic, isProject, owner] = await cachedPromiseAll(publicProvider, selectedChainId, [
-      { key: `iteration:${iterationNum}:isDevRelAccount:${address}`, promise: contract.isDevRelAccount(address) },
-      { key: `iteration:${iterationNum}:isDaoHicVoter:${address}`, promise: contract.isDaoHicVoter(address) },
-      { key: `iteration:${iterationNum}:isRegisteredProject:${address}`, promise: contract.isRegisteredProject(address) },
-      { key: `iteration:${iterationNum}:owner`, promise: contract.owner() },
-    ]);
 
-    const ownerStatus = owner.toLowerCase() === address.toLowerCase();
+    // Adapter unifies isSmtVoter/isDevRelAccount via isEntityVoter(jurySC, entityId, addr)
+    const [isSmt, isDaoHic, isProject, ownerAddr] = await cachedPromiseAll(publicProvider, selectedChainId, [
+      { key: `iteration:${iterationNum}:isEntityVoter:${ENTITY_SMT}:${address}`, promise: adapter.isEntityVoter(jurySC, ENTITY_SMT, address) },
+      { key: `iteration:${iterationNum}:isEntityVoter:${ENTITY_DAO_HIC}:${address}`, promise: adapter.isEntityVoter(jurySC, ENTITY_DAO_HIC, address) },
+      { key: `iteration:${iterationNum}:isRegisteredProject:${address}`, promise: adapter.isRegisteredProject(jurySC, address) },
+      { key: `iteration:${iterationNum}:owner`, promise: adapter.owner(jurySC) },
+    ]);
 
     contractStateStore.update(s => ({
       ...s,
       roles: {
         community: false,
-        devrel: Boolean(isDevRel),
+        smt: Boolean(isSmt),
         dao_hic: Boolean(isDaoHic),
         project: Boolean(isProject),
       },
-      isOwner: ownerStatus,
+      isOwner: ownerAddr.toLowerCase() === address.toLowerCase(),
     }));
 
     console.log('[loadRoles] Complete.');
@@ -483,7 +473,8 @@ async function loadRoles(
 }
 
 async function loadUserVotes(
-  contract: Contract,
+  adapter: Contract,
+  jurySC: string,
   currentIteration: Iteration,
   publicProvider: JsonRpcProvider,
   selectedChainId: number,
@@ -492,16 +483,18 @@ async function loadUserVotes(
   console.log('[loadUserVotes] Starting...');
   const iterationNum = currentIteration.iteration;
 
-  const [devRelVoted, devRelVoteValue, daoVote, daoVoted] = await cachedPromiseAll(publicProvider, selectedChainId, [
-    { key: `iteration:${iterationNum}:devRelHasVoted`, promise: contract.devRelHasVoted() },
-    { key: `iteration:${iterationNum}:devRelVote`, promise: contract.devRelVote() },
-    { key: `iteration:${iterationNum}:daoHicVoteOf:${address}`, promise: address ? contract.daoHicVoteOf(address) : Promise.resolve(null) },
-    { key: `iteration:${iterationNum}:daoHicHasVoted:${address}`, promise: address ? contract.daoHicHasVoted(address) : Promise.resolve(false) },
+  // Adapter unifies smtVoteOf/devRelVote via entityVoteOf(jurySC, entityId, voter)
+  // and smtHasVoted/devRelHasVoted via entityHasVoted(jurySC, entityId, voter)
+  const [smtVoteValue, smtVoted, daoVote, daoVoted] = await cachedPromiseAll(publicProvider, selectedChainId, [
+    { key: `iteration:${iterationNum}:entityVoteOf:${ENTITY_SMT}:${address}`, promise: address ? adapter.entityVoteOf(jurySC, ENTITY_SMT, address) : Promise.resolve(null) },
+    { key: `iteration:${iterationNum}:entityHasVoted:${ENTITY_SMT}:${address}`, promise: address ? adapter.entityHasVoted(jurySC, ENTITY_SMT, address) : Promise.resolve(false) },
+    { key: `iteration:${iterationNum}:entityVoteOf:${ENTITY_DAO_HIC}:${address}`, promise: address ? adapter.entityVoteOf(jurySC, ENTITY_DAO_HIC, address) : Promise.resolve(null) },
+    { key: `iteration:${iterationNum}:entityHasVoted:${ENTITY_DAO_HIC}:${address}`, promise: address ? adapter.entityHasVoted(jurySC, ENTITY_DAO_HIC, address) : Promise.resolve(false) },
   ]);
 
   contractStateStore.update(s => ({
     ...s,
-    devRelVote: Boolean(devRelVoted) ? normalizeAddress(devRelVoteValue) : null,
+    smtVote: Boolean(smtVoted) ? normalizeAddress(smtVoteValue) : null,
     daoHicVote: Boolean(daoVoted) ? normalizeAddress(daoVote) : null,
   }));
 
@@ -509,7 +502,8 @@ async function loadUserVotes(
 }
 
 async function loadVoteCounts(
-  juryContract: Contract,
+  adapter: Contract,
+  jurySC: string,
   currentIteration: Iteration,
   publicProvider: JsonRpcProvider,
   selectedChainId: number
@@ -518,12 +512,12 @@ async function loadVoteCounts(
   const iterationNum = currentIteration.iteration;
 
   try {
-    const [[devRelCount, daoHicCount, communityCount], daoHicAddressesResponse] = await cachedPromiseAll(publicProvider, selectedChainId, [
-      { key: `iteration:${iterationNum}:getVoteParticipationCounts`, promise: juryContract.getVoteParticipationCounts() },
-      { key: `iteration:${iterationNum}:getDaoHicVoters`, promise: juryContract.getDaoHicVoters().catch(() => [] as string[]) },
+    const [[firstCount, daoHicCount, communityCount], daoHicVotersResponse] = await cachedPromiseAll(publicProvider, selectedChainId, [
+      { key: `iteration:${iterationNum}:getVoteParticipationCounts`, promise: adapter.getVoteParticipationCounts(jurySC) },
+      { key: `iteration:${iterationNum}:getEntityVoters:${ENTITY_DAO_HIC}`, promise: adapter.getEntityVoters(jurySC, ENTITY_DAO_HIC).catch(() => [] as string[]) },
     ]);
 
-    const normalizedDaoHic = (Array.isArray(daoHicAddressesResponse) ? daoHicAddressesResponse : []).filter(
+    const normalizedDaoHic = (Array.isArray(daoHicVotersResponse) ? daoHicVotersResponse : []).filter(
       (addr): addr is string =>
         typeof addr === 'string' && addr.length > 0 && addr !== ethers.ZeroAddress
     );
@@ -531,7 +525,7 @@ async function loadVoteCounts(
     contractStateStore.update(s => ({
       ...s,
       voteCounts: {
-        devRel: Number(devRelCount),
+        smt: Number(firstCount),
         daoHic: Number(daoHicCount),
         community: Number(communityCount),
       },
@@ -544,7 +538,7 @@ async function loadVoteCounts(
     console.error('[loadVoteCounts] Error:', error);
     contractStateStore.update(s => ({
       ...s,
-      voteCounts: { devRel: 0, daoHic: 0, community: 0 },
+      voteCounts: { smt: 0, daoHic: 0, community: 0 },
       daoHicVoters: [],
       daoHicIndividualVotes: {},
       totalCommunityVoters: 0,
@@ -568,7 +562,6 @@ async function loadBadgesMinimal(
     pob: string;
     chainId: number;
     deployBlockHint?: number;
-    version?: string;
   }> = [];
 
   for (const iteration of allIterations) {
@@ -578,7 +571,6 @@ async function loadBadgesMinimal(
       pob: iteration.pob,
       chainId: iteration.chainId,
       deployBlockHint: iteration.deployBlockHint,
-      version: iteration.version,
     });
 
     if (iteration.prev_rounds && iteration.prev_rounds.length > 0) {
@@ -589,7 +581,6 @@ async function loadBadgesMinimal(
           pob: prevRound.pob,
           chainId: iteration.chainId,
           deployBlockHint: prevRound.deployBlockHint,
-          version: prevRound.version,
         });
       }
     }
@@ -597,7 +588,8 @@ async function loadBadgesMinimal(
 
   const contractPromises = contractsToQuery.map(async (contract) => {
     try {
-      const pobABI = getPoBContractABI(contract.version);
+      // Use PoB_01ABI for badge discovery — Transfer, roleOf, claimed are the same across all versions
+      const pobABI = PoB_01ABI;
       const iface = new Interface(pobABI);
       const transferTopic = iface.getEvent('Transfer')?.topicHash;
       if (!transferTopic) return [];
@@ -692,6 +684,8 @@ async function loadBadgesMinimal(
 }
 
 async function loadBadgesVotingData(
+  adapter: Contract,
+  jurySC: string,
   rpcProvider: JsonRpcProvider,
   badgeList: Badge[],
   currentIteration: Iteration
@@ -711,20 +705,14 @@ async function loadBadgesVotingData(
   }
 
   try {
-    const iterationJuryContract = new Contract(
-      currentIteration.jurySC,
-      getJurySCABI(currentIteration),
-      rpcProvider
-    );
-
     const votingCalls = [
       ...currentIterationCommunityBadges.map(badge => ({
-        key: `communityHasVoted:${currentIteration.jurySC}:${badge.tokenId}`,
-        promise: iterationJuryContract.communityHasVoted(badge.tokenId)
+        key: `communityHasVoted:${jurySC}:${badge.tokenId}`,
+        promise: adapter.communityHasVoted(jurySC, badge.tokenId)
       })),
       ...currentIterationCommunityBadges.map(badge => ({
-        key: `communityVoteOf:${currentIteration.jurySC}:${badge.tokenId}`,
-        promise: iterationJuryContract.communityVoteOf(badge.tokenId)
+        key: `communityVoteOf:${jurySC}:${badge.tokenId}`,
+        promise: adapter.communityVoteOf(jurySC, badge.tokenId)
       })),
     ];
 
@@ -774,7 +762,13 @@ export async function loadIterationState(
   contractStateStore.update(s => ({ ...s, loading: true, hasLoadError: false }));
 
   try {
-    const juryContract = new Contract(currentIteration.jurySC, getJurySCABI(currentIteration), publicProvider);
+    // Resolve adapter for this iteration/round
+    const adapterConfig = await getAdapter(currentIteration, publicProvider);
+    if (!adapterConfig) {
+      throw new Error(`Failed to resolve adapter for iteration ${currentIteration.iteration}`);
+    }
+    const { adapter, jurySC } = adapterConfig;
+
     const isIterationLikePage = currentPage === 'iteration' || currentPage === 'project';
 
     // Phase 1: Try API
@@ -784,14 +778,14 @@ export async function loadIterationState(
     const loadTasks: Promise<unknown>[] = [];
 
     if (walletAddress) {
-      loadTasks.push(loadRoles(juryContract, currentIteration, publicProvider, selectedChainId, walletAddress));
+      loadTasks.push(loadRoles(adapter, jurySC, currentIteration, publicProvider, selectedChainId, walletAddress));
     }
 
     if (apiSnapshot) {
       console.log('[loadIterationState] API data loaded');
 
       if (walletAddress) {
-        loadTasks.push(loadUserVotes(juryContract, currentIteration, publicProvider, selectedChainId, walletAddress));
+        loadTasks.push(loadUserVotes(adapter, jurySC, currentIteration, publicProvider, selectedChainId, walletAddress));
       }
 
       if (currentPage === 'badges' && walletAddress) {
@@ -799,7 +793,7 @@ export async function loadIterationState(
       } else if (isIterationLikePage && walletAddress) {
         const badgesPromise = loadBadgesMinimal(walletAddress, publicProvider, allIterations, currentIteration).then(badgeList => {
           if (badgeList && badgeList.length > 0) {
-            return loadBadgesVotingData(publicProvider, badgeList, currentIteration);
+            return loadBadgesVotingData(adapter, jurySC, publicProvider, badgeList, currentIteration);
           }
         });
         loadTasks.push(badgesPromise);
@@ -809,14 +803,14 @@ export async function loadIterationState(
       contractStateStore.update(s => ({ ...s, hasLoadError: true }));
 
       if (walletAddress) {
-        loadTasks.push(loadUserVotes(juryContract, currentIteration, publicProvider, selectedChainId, walletAddress));
+        loadTasks.push(loadUserVotes(adapter, jurySC, currentIteration, publicProvider, selectedChainId, walletAddress));
       }
       if (currentPage === 'badges' && walletAddress) {
         loadTasks.push(loadBadgesMinimal(walletAddress, publicProvider, allIterations, currentIteration));
       } else if (isIterationLikePage && walletAddress) {
         const badgesPromise = loadBadgesMinimal(walletAddress, publicProvider, allIterations, currentIteration).then(badgeList => {
           if (badgeList && badgeList.length > 0) {
-            return loadBadgesVotingData(publicProvider, badgeList, currentIteration);
+            return loadBadgesVotingData(adapter, jurySC, publicProvider, badgeList, currentIteration);
           }
         });
         loadTasks.push(badgesPromise);
@@ -839,18 +833,20 @@ export async function refreshProjects(): Promise<void> {
   const ctx = getTransactionContext();
   if (!ctx.signer || !ctx.selectedIteration) return;
   console.log('[refreshProjects] Refreshing...');
-  const contract = new Contract(ctx.selectedIteration.jurySC, getJurySCABI(ctx.selectedIteration), ctx.signer);
   const provider = ctx.signer.provider as JsonRpcProvider;
-  await loadProjects(contract, ctx.selectedIteration, provider, ctx.selectedIteration.chainId);
+  const adapterConfig = await getAdapter(ctx.selectedIteration, provider);
+  if (!adapterConfig) return;
+  await loadProjects(adapterConfig.adapter, adapterConfig.jurySC, ctx.selectedIteration, provider, ctx.selectedIteration.chainId);
 }
 
 export async function refreshOwnerData(): Promise<void> {
   const ctx = getTransactionContext();
   if (!ctx.signer || !ctx.selectedIteration) return;
   console.log('[refreshOwnerData] Refreshing...');
-  const contract = new Contract(ctx.selectedIteration.jurySC, getJurySCABI(ctx.selectedIteration), ctx.signer);
   const provider = ctx.signer.provider as JsonRpcProvider;
-  await loadOwnerData(contract, ctx.selectedIteration, provider, ctx.selectedIteration.chainId);
+  const adapterConfig = await getAdapter(ctx.selectedIteration, provider);
+  if (!adapterConfig) return;
+  await loadOwnerData(adapterConfig.adapter, adapterConfig.jurySC, ctx.selectedIteration, provider, ctx.selectedIteration.chainId);
 }
 
 export async function refreshVotingData(): Promise<void> {
@@ -858,41 +854,45 @@ export async function refreshVotingData(): Promise<void> {
   if (!ctx.signer || !ctx.selectedIteration || !ctx.walletAddress || !ctx.publicProvider) return;
   console.log('[refreshVotingData] Refreshing...');
 
-  const juryContract = new Contract(ctx.selectedIteration.jurySC, getJurySCABI(ctx.selectedIteration), ctx.signer);
+  const adapterConfig = await getAdapter(ctx.selectedIteration, ctx.publicProvider);
+  if (!adapterConfig) return;
+  const { adapter, jurySC } = adapterConfig;
+
   const selectedChainId = ctx.selectedIteration.chainId;
   const iterationNum = ctx.selectedIteration.iteration;
 
-  const [isActive, votingEnded, devRelVoted, devRelVoteValue, daoVote, daoVoted, startTime, endTime] =
+  // All reads through adapter — no version branching
+  const [isActive, votingEndedFlag, smtVoteValue, smtVoted, daoVote, daoVoted, startTime, endTime] =
     await cachedPromiseAll(ctx.publicProvider, selectedChainId, [
-      { key: `iteration:${iterationNum}:isActive`, promise: juryContract.isActive(), skipCache: true },
-      { key: `iteration:${iterationNum}:votingEnded`, promise: juryContract.votingEnded(), skipCache: true },
-      { key: `iteration:${iterationNum}:devRelHasVoted`, promise: juryContract.devRelHasVoted(), skipCache: true },
-      { key: `iteration:${iterationNum}:devRelVote`, promise: juryContract.devRelVote(), skipCache: true },
-      { key: `iteration:${iterationNum}:daoHicVoteOf:${ctx.walletAddress}`, promise: juryContract.daoHicVoteOf(ctx.walletAddress), skipCache: true },
-      { key: `iteration:${iterationNum}:daoHicHasVoted:${ctx.walletAddress}`, promise: juryContract.daoHicHasVoted(ctx.walletAddress), skipCache: true },
-      { key: `iteration:${iterationNum}:startTime`, promise: juryContract.startTime(), skipCache: true },
-      { key: `iteration:${iterationNum}:endTime`, promise: juryContract.endTime(), skipCache: true },
+      { key: `iteration:${iterationNum}:isActive`, promise: adapter.isActive(jurySC), skipCache: true },
+      { key: `iteration:${iterationNum}:votingEnded`, promise: adapter.votingEnded(jurySC), skipCache: true },
+      { key: `iteration:${iterationNum}:entityVoteOf:${ENTITY_SMT}:${ctx.walletAddress}`, promise: adapter.entityVoteOf(jurySC, ENTITY_SMT, ctx.walletAddress), skipCache: true },
+      { key: `iteration:${iterationNum}:entityHasVoted:${ENTITY_SMT}:${ctx.walletAddress}`, promise: adapter.entityHasVoted(jurySC, ENTITY_SMT, ctx.walletAddress), skipCache: true },
+      { key: `iteration:${iterationNum}:entityVoteOf:${ENTITY_DAO_HIC}:${ctx.walletAddress}`, promise: adapter.entityVoteOf(jurySC, ENTITY_DAO_HIC, ctx.walletAddress), skipCache: true },
+      { key: `iteration:${iterationNum}:entityHasVoted:${ENTITY_DAO_HIC}:${ctx.walletAddress}`, promise: adapter.entityHasVoted(jurySC, ENTITY_DAO_HIC, ctx.walletAddress), skipCache: true },
+      { key: `iteration:${iterationNum}:startTime`, promise: adapter.startTime(jurySC), skipCache: true },
+      { key: `iteration:${iterationNum}:endTime`, promise: adapter.endTime(jurySC), skipCache: true },
     ]);
 
-  const flags = { isActive: Boolean(isActive), votingEnded: Boolean(votingEnded) };
+  const flags = { isActive: Boolean(isActive), votingEnded: Boolean(votingEndedFlag) };
 
   contractStateStore.update(s => ({
     ...s,
     statusFlags: flags,
-    devRelVote: Boolean(devRelVoted) ? normalizeAddress(devRelVoteValue) : null,
+    smtVote: Boolean(smtVoted) ? normalizeAddress(smtVoteValue) : null,
     daoHicVote: Boolean(daoVoted) ? normalizeAddress(daoVote) : null,
     iterationTimes: { startTime: Number(startTime), endTime: Number(endTime) },
   }));
 
-  await loadEntityVotes(juryContract, ctx.selectedIteration, ctx.publicProvider, selectedChainId, flags.isActive, flags.votingEnded);
+  await loadEntityVotes(adapter, jurySC, ctx.selectedIteration, ctx.publicProvider, selectedChainId, flags.isActive, flags.votingEnded);
 
   if (flags.isActive || flags.votingEnded) {
-    await loadVoteCounts(juryContract, ctx.selectedIteration, ctx.publicProvider, selectedChainId);
+    await loadVoteCounts(adapter, jurySC, ctx.selectedIteration, ctx.publicProvider, selectedChainId);
   }
 
   const badgeList = await loadBadgesMinimal(ctx.walletAddress, ctx.publicProvider, ctx.allIterations, ctx.selectedIteration);
   if (badgeList && badgeList.length > 0) {
-    await loadBadgesVotingData(ctx.publicProvider, badgeList, ctx.selectedIteration);
+    await loadBadgesVotingData(adapter, jurySC, ctx.publicProvider, badgeList, ctx.selectedIteration);
   }
 }
 
@@ -902,7 +902,10 @@ export async function refreshBadges(): Promise<void> {
   console.log('[refreshBadges] Refreshing...');
   const badgeList = await loadBadgesMinimal(ctx.walletAddress, ctx.publicProvider, ctx.allIterations, ctx.selectedIteration);
   if (badgeList && badgeList.length > 0) {
-    await loadBadgesVotingData(ctx.publicProvider, badgeList, ctx.selectedIteration);
+    const adapterConfig = await getAdapter(ctx.selectedIteration, ctx.publicProvider);
+    if (adapterConfig) {
+      await loadBadgesVotingData(adapterConfig.adapter, adapterConfig.jurySC, ctx.publicProvider, badgeList, ctx.selectedIteration);
+    }
   }
 }
 

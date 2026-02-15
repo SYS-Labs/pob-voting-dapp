@@ -496,6 +496,34 @@ async function main() {
       console.log(`- Round ${roundId} already registered`);
     }
 
+    // Deploy and wire version adapters
+    console.log("\nDeploying version adapters...");
+
+    const V1Adapter = await ethers.getContractFactory("V1Adapter");
+    const v1Adapter = await V1Adapter.deploy();
+    await v1Adapter.waitForDeployment();
+    const v1Address = await v1Adapter.getAddress();
+    console.log(`- V1Adapter deployed at: ${v1Address}`);
+
+    const V2Adapter = await ethers.getContractFactory("V2Adapter");
+    const v2Adapter = await V2Adapter.deploy();
+    await v2Adapter.waitForDeployment();
+    const v2Address = await v2Adapter.getAddress();
+    console.log(`- V2Adapter deployed at: ${v2Address}`);
+
+    const txA1 = await registry.setAdapter(1, v1Address);
+    await txA1.wait();
+    console.log(`- setAdapter(1, ${v1Address})`);
+
+    const txA2 = await registry.setAdapter(2, v2Address);
+    await txA2.wait();
+    console.log(`- setAdapter(2, ${v2Address})`);
+
+    // Local dev uses _02 contracts → version 2
+    const txRV = await registry.setRoundVersion(iteration, roundId, 2);
+    await txRV.wait();
+    console.log(`- setRoundVersion(${iteration}, ${roundId}, 2)`);
+
     if (SKIP_IPFS) {
       console.log("Skipping IPFS metadata seeding (SKIP_IPFS=true).");
     } else {

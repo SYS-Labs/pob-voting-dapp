@@ -225,9 +225,3 @@ export async function cachedPromiseAll(
   }
 }
 
-/**
- * Force refresh cache by invalidating current block
- */
-export function invalidateCache(chainId?: number): void {
-  rpcCache.clear(chainId);
-}

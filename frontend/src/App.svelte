@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { Router, Route, navigate } from 'svelte-routing';
-  import { Contract, JsonRpcProvider } from 'ethers';
+  import { Router, Route } from 'svelte-routing';
   import '~/App.css';
 
   // Components
@@ -84,8 +83,8 @@
     resetCertState,
   } from '~/stores/certState';
 
-  // ABIs and constants
-  import { JurySC_01ABI } from '~/abis';
+  // Write dispatcher and constants
+  import { createWriteDispatcher } from '~/utils/writeDispatch';
   import { SYS_COIN_ID, SYS_TESTNET_ID, HARDHAT_ID, NETWORKS } from '~/constants/networks';
   import { formatAddress } from '~/utils';
   import type { IterationStatus, PageType, Project } from '~/interfaces';
@@ -157,7 +156,7 @@
   const rolesLoading = $derived($contractStateStore.rolesLoading);
   const isOwner = $derived($contractStateStore.isOwner);
   const projects = $derived($contractStateStore.projects);
-  const devRelAccount = $derived($contractStateStore.devRelAccount);
+  const smtVoters = $derived($contractStateStore.smtVoters);
   const daoHicVoters = $derived($contractStateStore.daoHicVoters);
   const daoHicIndividualVotes = $derived($contractStateStore.daoHicIndividualVotes);
   const projectsLocked = $derived($contractStateStore.projectsLocked);
@@ -166,7 +165,7 @@
   const totalCommunityVoters = $derived($contractStateStore.totalCommunityVoters);
   const badges = $derived($contractStateStore.badges);
   const communityBadges = $derived($contractStateStore.communityBadges);
-  const devRelVote = $derived($contractStateStore.devRelVote);
+  const smtVote = $derived($contractStateStore.smtVote);
   const daoHicVote = $derived($contractStateStore.daoHicVote);
   const entityVotes = $derived($contractStateStore.entityVotes);
   const winner = $derived($contractStateStore.winner);
@@ -296,10 +295,10 @@
   // Confirm removal handlers
   async function handleConfirmRemoveVoter() {
     if (!pendingRemovalVoter || !signer || !selectedIteration) return;
-    const contract = new Contract(selectedIteration.jurySC, JurySC_01ABI, signer);
+    const writer = createWriteDispatcher(selectedIteration, signer);
     await runTransaction(
       'Remove DAO HIC Voter',
-      () => contract.removeDaoHicVoter(pendingRemovalVoter),
+      () => writer.removeDaoHicVoter(pendingRemovalVoter),
       () => refreshOwnerData()
     );
     setPendingRemovalVoter(null);
@@ -307,10 +306,10 @@
 
   async function handleConfirmRemoveProject() {
     if (!pendingRemovalProject || !signer || !selectedIteration) return;
-    const contract = new Contract(selectedIteration.jurySC, JurySC_01ABI, signer);
+    const writer = createWriteDispatcher(selectedIteration, signer);
     await runTransaction(
       'Remove Project',
-      () => contract.removeProject(pendingRemovalProject.address),
+      () => writer.removeProject(pendingRemovalProject.address),
       () => refreshProjects()
     );
     setPendingRemovalProject(null);
@@ -462,7 +461,7 @@
             {statusFlags}
             {communityBadges}
             {badges}
-            {devRelVote}
+            {smtVote}
             {daoHicVote}
             {entityVotes}
             {pendingAction}
@@ -470,7 +469,7 @@
             {chainId}
             {projectsLocked}
             {contractLocked}
-            {devRelAccount}
+            {smtVoters}
             {daoHicVoters}
             {daoHicIndividualVotes}
             {winner}
@@ -479,7 +478,6 @@
             {openAdminSection}
             {signer}
             {publicProvider}
-            {JurySC_01ABI}
             {getProjectLabel}
             {executeMint}
             {executeVote}
@@ -551,7 +549,7 @@
             {statusFlags}
             {communityBadges}
             {badges}
-            {devRelVote}
+            {smtVote}
             {daoHicVote}
             {pendingAction}
             {walletAddress}

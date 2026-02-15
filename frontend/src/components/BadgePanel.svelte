@@ -16,7 +16,8 @@
     statusFlags: { isActive: boolean; votingEnded: boolean };
     onClaim: (tokenId: string) => void;
     pendingAction: string | null;
-    voteCounts?: { devRel: number; daoHic: number; community: number };
+    voteCounts?: { smt: number; daoHic: number; community: number };
+    smtVoters?: string[];
     daoHicVoters?: string[];
     totalCommunityVoters?: number;
   }
@@ -29,6 +30,7 @@
     onClaim,
     pendingAction,
     voteCounts,
+    smtVoters = [],
     daoHicVoters = [],
     totalCommunityVoters = 0,
   }: Props = $props();
@@ -40,11 +42,12 @@
     if (!voteCounts) return [];
     const communityCap =
       Number.isFinite(totalCommunityVoters) && totalCommunityVoters > 0 ? totalCommunityVoters.toString() : '\u221E';
-    return [
+    const rows = [
       { label: 'Community', value: `${voteCounts.community}/${communityCap}` },
       { label: 'DAO HIC', value: `${voteCounts.daoHic}/${daoHicVoters.length}` },
-      { label: 'DevRel', value: `${voteCounts.devRel}/1` },
-    ].sort((a, b) => a.label.localeCompare(b.label));
+      { label: 'SMT', value: `${voteCounts.smt}/${Math.max(smtVoters.length, 1)}` },
+    ];
+    return rows.sort((a, b) => a.label.localeCompare(b.label));
   });
 </script>
 

@@ -4,7 +4,7 @@
 
   interface RoleStatuses {
     community: boolean;
-    devrel: boolean;
+    smt: boolean;
     dao_hic: boolean;
     project: boolean;
   }

@@ -1,16 +1,10 @@
 <script lang="ts">
-  import { Contract } from 'ethers';
   import type { PreviousRound, ParticipantRole, Badge } from '~/interfaces';
-  import { PoB_01ABI, PoB_02ABI } from '~/abis';
   import { formatDate } from '~/utils';
+  import { createWriteDispatcher } from '~/utils/writeDispatch';
   import { createPreviousRoundDataStore } from '~/stores/previousRoundData';
   import FinalResultsPanel from './FinalResultsPanel.svelte';
   import ContractAddress from './ContractAddress.svelte';
-
-  function getPoBContractABI(version: string | undefined) {
-    if (version === '001' || version === '002') return PoB_01ABI;
-    return PoB_02ABI;
-  }
 
   interface Props {
     round: PreviousRound;
@@ -48,7 +42,7 @@
   const canMintEagerly = $derived.by(() => {
     if (!walletAddress || userBadges.length > 0) return false;
     const w = walletAddress.toLowerCase();
-    if (round.devRelAccount?.toLowerCase() === w) return true;
+    if (round.smtVoters?.some(v => v.toLowerCase() === w)) return true;
     if (round.daoHicVoters?.some(v => v.toLowerCase() === w)) return true;
     if (round.projects?.some(p => p.address.toLowerCase() === w)) return true;
     return false;
@@ -56,7 +50,7 @@
 
   // Reactive store that loads when expanded
   const { loading, roundData } = $derived(
-    createPreviousRoundDataStore(round, chainId, publicProvider, isExpanded, walletAddress)
+    createPreviousRoundDataStore(round, chainId, iterationNumber ?? 0, publicProvider, isExpanded, walletAddress)
   );
 
   // Create local getProjectLabel that uses round's project metadata
@@ -77,7 +71,7 @@
   function getUserRole(): ParticipantRole | null {
     if (!walletAddress) return null;
     const w = walletAddress.toLowerCase();
-    if (round.devRelAccount?.toLowerCase() === w) return 'devrel';
+    if (round.smtVoters?.some(v => v.toLowerCase() === w)) return 'smt';
     if (round.daoHicVoters?.some(v => v.toLowerCase() === w)) return 'dao_hic';
     if (round.projects?.some(p => p.address.toLowerCase() === w)) return 'project';
     return null;
@@ -88,22 +82,21 @@
     const role = getUserRole();
     if (!role) return;
 
-    const pobABI = getPoBContractABI(round.version);
-    const contract = new Contract(round.pob, pobABI, signer);
+    const writer = createWriteDispatcher(round, signer);
     let tx: () => Promise<unknown>;
     let label: string;
 
     switch (role) {
-      case 'devrel':
-        tx = () => contract.mintDevRel();
-        label = `Mint DevRel Badge (Round ${round.round})`;
+      case 'smt':
+        tx = () => writer.mintSmt();
+        label = `Mint SMT Badge (Round ${round.round})`;
         break;
       case 'dao_hic':
-        tx = () => contract.mintDaoHic();
+        tx = () => writer.mintDaoHic();
         label = `Mint DAO HIC Badge (Round ${round.round})`;
         break;
       case 'project':
-        tx = () => contract.mintProject();
+        tx = () => writer.mintProject();
         label = `Mint Project Badge (Round ${round.round})`;
         break;
       default:
@@ -115,11 +108,10 @@
 
   async function handleClaimDeposit(tokenId: string) {
     if (!signer) return;
-    const pobABI = getPoBContractABI(round.version);
-    const contract = new Contract(round.pob, pobABI, signer);
+    const writer = createWriteDispatcher(round, signer);
     await runTransaction(
       `Claim deposit for token ${tokenId} (Round ${round.round})`,
-      () => contract.claim(tokenId),
+      () => writer.claim(tokenId),
       refreshBadges,
     );
   }

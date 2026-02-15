@@ -12,9 +12,10 @@ export interface PreviousRound {
   // Full round data from API (optional - populated when available from indexer)
   juryState?: 'deployed' | 'activated' | 'active' | 'ended' | 'locked';
   winner?: { projectAddress: string | null; hasWinner: boolean };
-  entityVotes?: { devRel: string | null; daoHic: string | null; community: string | null };
+  entityVotes?: { smt: string | null; daoHic: string | null; community: string | null };
   // Role eligibility data from API (used for badge minting)
-  devRelAccount?: string | null;
+  smtVoters?: string[];
+  smtIndividualVotes?: Record<string, string>;
   daoHicVoters?: string[];
   daoHicIndividualVotes?: Record<string, string>;
   projects?: { address: string; metadataCID: string | null; metadata: Record<string, unknown> | null }[];
@@ -35,7 +36,7 @@ export interface Iteration {
   prev_rounds?: PreviousRound[]; // Array of previous voting rounds for this iteration
 }
 
-export type ParticipantRole = 'community' | 'devrel' | 'dao_hic' | 'project';
+export type ParticipantRole = 'community' | 'dao_hic' | 'smt' | 'project';
 
 export interface ProjectSocials {
   x?: string; // X (formerly Twitter)
@@ -80,7 +81,7 @@ export interface CommunityBadge {
 
 export interface RoleStatuses {
   community: boolean;
-  devrel: boolean;
+  smt: boolean;
   dao_hic: boolean;
   project: boolean;
 }

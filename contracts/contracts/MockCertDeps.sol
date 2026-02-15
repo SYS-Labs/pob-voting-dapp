@@ -26,6 +26,7 @@ contract MockJurySCForCert {
 
     mapping(address => bool) private _isDevRel;
     mapping(address => bool) private _isDaoHic;
+    mapping(address => bool) private _isSmt;
     mapping(address => bool) private _isProject;
 
     function setHasVotingEnded(bool value) external {
@@ -43,6 +44,10 @@ contract MockJurySCForCert {
 
     function setIsDaoHicVoter(address account, bool value) external {
         _isDaoHic[account] = value;
+    }
+
+    function setIsSmtVoter(address account, bool value) external {
+        _isSmt[account] = value;
     }
 
     function setIsRegisteredProject(address account, bool value) external {
@@ -64,6 +69,10 @@ contract MockJurySCForCert {
 
     function isDaoHicVoter(address account) external view returns (bool) {
         return _isDaoHic[account];
+    }
+
+    function isSmtVoter(address account) external view returns (bool) {
+        return _isSmt[account];
     }
 
     function isRegisteredProject(address account) external view returns (bool) {

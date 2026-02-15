@@ -166,7 +166,20 @@ class CertIndexer {
 
     try {
       // Get upper bound of token IDs
-      const nextTokenIdBN = await certNFT.nextTokenId();
+      let nextTokenIdBN;
+      try {
+        nextTokenIdBN = await certNFT.nextTokenId();
+      } catch (err: any) {
+        if (err?.code === 'BAD_DATA') {
+          // Contract not deployed at this address (stale deployment file or node restarted)
+          logger.warn('CertNFT contract not found at configured address, skipping', {
+            chainId,
+            address: config.certNFTAddress,
+          });
+          return;
+        }
+        throw err;
+      }
       const nextTokenId = Number(nextTokenIdBN);
 
       // Get highest token ID we've already indexed

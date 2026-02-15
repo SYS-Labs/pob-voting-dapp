@@ -22,7 +22,7 @@
     statusFlags: StatusFlags;
     communityBadges: CommunityBadge[];
     badges: Badge[];
-    devRelVote: string | null;
+    smtVote: string | null;
     daoHicVote: string | null;
     pendingAction: string | null;
     walletAddress: string | null;
@@ -46,7 +46,7 @@
     statusFlags,
     communityBadges,
     badges,
-    devRelVote,
+    smtVote,
     daoHicVote,
     pendingAction,
     walletAddress,
@@ -223,7 +223,7 @@
     if (!walletAddress) return null;
     if (isOwner) return null;
     if (roles.project) return null;
-    if (roles.devrel) return 'devrel';
+    if (roles.smt) return 'smt';
     if (roles.dao_hic) return 'dao_hic';
     return 'community';
   });
@@ -231,8 +231,8 @@
   // Check if user has voted for this project
   const hasVotedForThisProject = $derived.by(() => {
     if (!project) return false;
-    if (votingRole === 'devrel') {
-      return devRelVote?.toLowerCase() === project.address.toLowerCase();
+    if (votingRole === 'smt') {
+      return smtVote?.toLowerCase() === project.address.toLowerCase();
     }
     if (votingRole === 'dao_hic') {
       return daoHicVote?.toLowerCase() === project.address.toLowerCase();
@@ -247,7 +247,7 @@
 
   // Check if user has voted anywhere
   const hasVotedAnywhere = $derived.by(() => {
-    if (votingRole === 'devrel') return devRelVote !== null;
+    if (votingRole === 'smt') return smtVote !== null;
     if (votingRole === 'dao_hic') return daoHicVote !== null;
     if (votingRole === 'community') return currentIterationCommunityBadges.some(b => b.hasVoted);
     return false;
@@ -274,7 +274,7 @@
     showVoteModal = false;
   }
 
-  // Legacy handleVote for DevRel/DAO HIC (they don't need mint flow)
+  // Legacy handleVote for SMT/DAO HIC (they don't need mint flow)
   async function handleVote() {
     if (!votingRole || !project) return;
     const tokenId = votingRole === 'community' ? currentIterationCommunityBadges[0]?.tokenId : undefined;
@@ -288,7 +288,7 @@
 
   // Determine header role tag
   const headerRoleTag = $derived.by(() => {
-    if (roles.devrel) return { label: ROLE_LABELS.devrel, color: ROLE_COLORS.devrel };
+    if (roles.smt) return { label: ROLE_LABELS.smt, color: ROLE_COLORS.smt };
     if (roles.dao_hic) return { label: ROLE_LABELS.dao_hic, color: ROLE_COLORS.dao_hic };
     if (roles.community || (!roles.project && !isOwner)) {
       return { label: ROLE_LABELS.community, color: ROLE_COLORS.community };
@@ -296,9 +296,9 @@
     return null;
   });
 
-  const hasJuryRole = $derived(roles.devrel || roles.dao_hic || roles.community);
-  const canBecomeCommunity = $derived(!roles.project && !roles.devrel && !roles.dao_hic && !roles.community && !isOwner);
-  const hasDevRelBadge = $derived(currentIterationBadges?.some(badge => badge.role === 'devrel') ?? false);
+  const hasJuryRole = $derived(roles.smt || roles.dao_hic || roles.community);
+  const canBecomeCommunity = $derived(!roles.project && !roles.smt && !roles.dao_hic && !roles.community && !isOwner);
+  const hasSmtBadge = $derived(currentIterationBadges?.some(badge => badge.role === 'smt') ?? false);
   const hasDaoHicBadge = $derived(currentIterationBadges?.some(badge => badge.role === 'dao_hic') ?? false);
 
   const canEditMetadata = $derived.by(() => {
@@ -520,16 +520,16 @@
           </div>
 
           <div class="space-y-3">
-            <!-- DevRel Role -->
-            {#if roles.devrel}
+            <!-- SMT Role (v003) -->
+            {#if roles.smt}
               <p class="text-sm text-[var(--pob-text-muted)]">
-                As DevRel, cast your vote for <span class="font-semibold text-white">{projectName}</span>.
+                As an SMT voter, cast your vote for <span class="font-semibold text-white">{projectName}</span>.
               </p>
-              {#if devRelVote}
+              {#if smtVote}
                 <p class="text-sm text-[var(--pob-text-muted)]">
                   Currently voted for{' '}
                   <span class="italic">
-                    {getProjectLabel(devRelVote) ?? 'Unknown project'}
+                    {getProjectLabel(smtVote) ?? 'Unknown project'}
                   </span>
                 </p>
               {/if}
@@ -543,14 +543,14 @@
                   {hasVotedForThisProject ? 'Voted' : hasVotedAnywhere ? 'Change Vote' : 'Vote'}
                 </button>
               {/if}
-              {#if !hasDevRelBadge && statusFlags.votingEnded}
+              {#if !hasSmtBadge && statusFlags.votingEnded}
                 <button
                   type="button"
-                  onclick={() => void executeMint('devrel', refreshBadges)}
+                  onclick={() => void executeMint('smt', refreshBadges)}
                   class="pob-button pob-button--outline w-full justify-center text-xs"
                   disabled={pendingAction !== null || !walletAddress}
                 >
-                  Mint DevRel badge
+                  Mint SMT badge
                 </button>
               {/if}
             {/if}

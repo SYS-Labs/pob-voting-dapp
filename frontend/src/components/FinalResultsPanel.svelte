@@ -3,7 +3,7 @@
 
   interface Props {
     winner: { projectAddress: string | null; hasWinner: boolean };
-    entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
+    entityVotes: { smt: string | null; daoHic: string | null; community: string | null };
     daoHicIndividualVotes?: Record<string, string>;
     votingMode: number;
     projects: { id: number; address: string; metadata?: any }[];
@@ -29,7 +29,8 @@
   let winnerConsensusWeight = $derived.by(() => {
     if (votingMode !== 0 || !winner.hasWinner || !winner.projectAddress) return { weight: 0, percentage: '0.00' };
     let weight = 0;
-    if (entityVotes.devRel?.toLowerCase() === winner.projectAddress.toLowerCase()) weight++;
+    const firstEntityVote = entityVotes.smt;
+    if (firstEntityVote?.toLowerCase() === winner.projectAddress.toLowerCase()) weight++;
     if (entityVotes.daoHic?.toLowerCase() === winner.projectAddress.toLowerCase()) weight++;
     if (entityVotes.community?.toLowerCase() === winner.projectAddress.toLowerCase()) weight++;
     const percentage = ((weight / 3) * 100).toFixed(2);
@@ -56,7 +57,8 @@
       .filter(p => p.address.toLowerCase() !== winner.projectAddress?.toLowerCase())
       .map(project => {
         let weight = 0;
-        if (entityVotes.devRel?.toLowerCase() === project.address.toLowerCase()) weight++;
+        const firstEntityVote = entityVotes.smt;
+        if (firstEntityVote?.toLowerCase() === project.address.toLowerCase()) weight++;
         if (entityVotes.daoHic?.toLowerCase() === project.address.toLowerCase()) weight++;
         if (entityVotes.community?.toLowerCase() === project.address.toLowerCase()) weight++;
         const percentage = ((weight / 3) * 100).toFixed(2);
@@ -87,18 +89,21 @@
   });
 
   // No-winner: unique projects that received votes (non-owner view)
+  const firstEntityVoteAddr = $derived(entityVotes.smt);
+  const firstEntityLabel = 'SMT';
+
   let votedProjectAddresses = $derived.by(() => {
     return Array.from(new Set(
-      [entityVotes.community, entityVotes.daoHic, entityVotes.devRel].filter(Boolean) as string[]
+      [entityVotes.community, entityVotes.daoHic, firstEntityVoteAddr].filter(Boolean) as string[]
     ));
   });
 
   // No-winner: three-way tie check
   let isThreeWayTie = $derived(
-    entityVotes.devRel && entityVotes.daoHic && entityVotes.community &&
-    entityVotes.devRel !== entityVotes.daoHic &&
+    firstEntityVoteAddr && entityVotes.daoHic && entityVotes.community &&
+    firstEntityVoteAddr !== entityVotes.daoHic &&
     entityVotes.daoHic !== entityVotes.community &&
-    entityVotes.devRel !== entityVotes.community
+    firstEntityVoteAddr !== entityVotes.community
   );
 
   // DAO HIC individual vote unique projects
@@ -268,12 +273,12 @@
           {:else}
             <p>• DAO HIC: Did not vote</p>
           {/if}
-          <!-- DevRel -->
+          <!-- SMT -->
           <p>
-            • DevRel:{' '}
-            {#if entityVotes.devRel}
+            • {firstEntityLabel}:{' '}
+            {#if firstEntityVoteAddr}
               <span class="italic">
-                {@render projectName(entityVotes.devRel, entityVotes.devRel)}
+                {@render projectName(firstEntityVoteAddr, firstEntityVoteAddr)}
               </span>
             {:else}
               Did not vote

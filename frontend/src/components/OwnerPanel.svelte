@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { Contract } from 'ethers';
   import type { Iteration } from '~/interfaces';
   import { formatAddress } from '~/utils';
   import Modal from './Modal.svelte';
+  import { createWriteDispatcher } from '~/utils/writeDispatch';
 
   interface StatusFlags {
     isActive: boolean;
@@ -19,13 +19,12 @@
     statusFlags: StatusFlags;
     projectsLocked: boolean;
     contractLocked: boolean;
-    devRelAccount: string | null;
+    smtVoters: string[];
     daoHicVoters: string[];
     winner: Winner;
     pendingAction: string | null;
     openAdminSection: string | null;
     signer: any;
-    JurySC_01ABI: any;
     votingMode: number;
     setVotingMode: (mode: number, refreshCallback?: () => Promise<void>) => Promise<void>;
     getProjectLabel: (address: string | null) => string | null;
@@ -44,13 +43,12 @@
     statusFlags,
     projectsLocked,
     contractLocked,
-    devRelAccount,
+    smtVoters,
     daoHicVoters,
     winner,
     pendingAction,
     openAdminSection,
     signer,
-    JurySC_01ABI,
     votingMode,
     setVotingMode,
     getProjectLabel,
@@ -70,7 +68,7 @@
   async function handleActivationAction() {
     if (!signer || !currentIteration) return;
 
-    const contract = new Contract(currentIteration.jurySC, JurySC_01ABI, signer);
+    const writer = createWriteDispatcher(currentIteration, signer);
 
     if (activationMode === 'activate') {
       if (statusFlags.isActive || statusFlags.votingEnded) {
@@ -80,7 +78,7 @@
 
       const success = await runTransaction(
         'Activate Program',
-        () => contract.activate(),
+        () => writer.activate(),
         refreshVotingData,
       );
 
@@ -95,7 +93,7 @@
 
       const success = await runTransaction(
         'End Voting Early',
-        () => contract.closeManually(),
+        () => writer.closeManually(),
         async () => {
           await Promise.all([
             refreshVotingData(),
@@ -158,20 +156,20 @@
       setError('Please enter an address');
       return;
     }
-    const contract = new Contract(currentIteration.jurySC, JurySC_01ABI, signer);
-    await runTransaction('Register Project', () => contract.registerProject(address), refreshProjects);
+    const writer = createWriteDispatcher(currentIteration, signer);
+    await runTransaction('Register Project', () => writer.registerProject(address), refreshProjects);
     if (addressInput) addressInput.value = '';
   }
 
-  async function handleSetDevRel() {
-    const input = document.getElementById('devrel-address') as HTMLInputElement;
+  async function handleAddSmtVoter() {
+    const input = document.getElementById('smt-address') as HTMLInputElement;
     const address = input?.value?.trim();
     if (!address || !signer || !currentIteration) {
       setError('Please enter an address');
       return;
     }
-    const contract = new Contract(currentIteration.jurySC, JurySC_01ABI, signer);
-    await runTransaction('Set DevRel Account', () => contract.setDevRelAccount(address), refreshOwnerData);
+    const writer = createWriteDispatcher(currentIteration, signer);
+    await runTransaction('Add SMT Voter', () => writer.addSmtVoter(address), refreshOwnerData);
     if (input) input.value = '';
   }
 
@@ -182,15 +180,15 @@
       setError('Please enter an address');
       return;
     }
-    const contract = new Contract(currentIteration.jurySC, JurySC_01ABI, signer);
-    await runTransaction('Add DAO HIC Voter', () => contract.addDaoHicVoter(address), refreshOwnerData);
+    const writer = createWriteDispatcher(currentIteration, signer);
+    await runTransaction('Add DAO HIC Voter', () => writer.addDaoHicVoter(address), refreshOwnerData);
     if (input) input.value = '';
   }
 
   async function handleLockContract() {
     if (!signer || !currentIteration) return;
-    const contract = new Contract(currentIteration.jurySC, JurySC_01ABI, signer);
-    await runTransaction('Lock Contract for History', () => contract.lockContractForHistory(), refreshProjects);
+    const writer = createWriteDispatcher(currentIteration, signer);
+    await runTransaction('Lock Contract for History', () => writer.lockContractForHistory(), refreshProjects);
   }
 
   async function handleToggleVotingMode() {
@@ -280,7 +278,7 @@
             </p>
             <p class="pob-form-hint" style="margin-top: 0.75rem;">
               {votingMode === 0
-                ? 'Consensus mode: Winner must receive votes from at least 2 out of 3 entities (DevRel, DAO HIC, Community).'
+                ? 'Consensus mode: Winner must receive votes from at least 2 out of 3 entities (SMT, DAO HIC, Community).'
                 : 'Weighted mode: Each entity has 1/3 weight. Winner has the highest proportional score across all entities.'}
             </p>
             <button
@@ -359,19 +357,19 @@
       </article>
     {/if}
 
-    <!-- Set DevRel Account -->
+    <!-- SMT Voters -->
     {#if !statusFlags.votingEnded}
-      <article class="pob-accordion-item{openAdminSection === 'devrel' ? ' is-open' : ''}">
+      <article class="pob-accordion-item{openAdminSection === 'smt' ? ' is-open' : ''}">
         <button
           type="button"
           class="pob-accordion-trigger"
-          onclick={() => handleToggleAdminSection('devrel')}
-          aria-expanded={openAdminSection === 'devrel'}
-          aria-controls="owner-devrel"
+          onclick={() => handleToggleAdminSection('smt')}
+          aria-expanded={openAdminSection === 'smt'}
+          aria-controls="owner-smt"
         >
-          <span>DevRel Account</span>
+          <span>SMT Voters</span>
           <svg
-            class="pob-accordion-icon{openAdminSection === 'devrel' ? ' is-open' : ''}"
+            class="pob-accordion-icon{openAdminSection === 'smt' ? ' is-open' : ''}"
             width="12"
             height="12"
             viewBox="0 0 12 12"
@@ -386,31 +384,57 @@
             />
           </svg>
         </button>
-        {#if openAdminSection === 'devrel'}
-          <div class="pob-accordion-content" id="owner-devrel">
-            <div class="space-y-3">
-              <p class="pob-admin-devrel">
-                <span class="pob-admin-devrel__label">Current DevRel</span>
-                <span class="pob-admin-devrel__value">{devRelAccount ?? 'Not set'}</span>
+        {#if openAdminSection === 'smt'}
+          <div class="pob-accordion-content" id="owner-smt">
+            {#if smtVoters.length}
+              <ul class="pob-admin-voter-list">
+                {#each smtVoters as voter, index (voter)}
+                  <li class="pob-admin-voter">
+                    <div class="pob-admin-voter__info">
+                      <span class="pob-admin-voter__badge">#{index + 1}</span>
+                      <div>
+                        <p class="pob-admin-voter__label">SMT voter</p>
+                        <p class="pob-admin-voter__brief">{formatAddress(voter)}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onclick={() => setPendingRemovalVoter(voter)}
+                      disabled={pendingAction !== null}
+                      class="pob-button pob-button--outline pob-button--small"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
+              <div class="text-sm text-[var(--pob-text-muted)]" style="padding: 0 1.25rem;">
+                No SMT voters registered yet.
+              </div>
+            {/if}
+            {#if currentIteration?.version !== '003' && smtVoters.length >= 1}
+              <p class="pob-form-hint" style="margin-top: 0.75rem; padding: 0 1.25rem;">
+                This iteration supports only 1 SMT voter.
               </p>
-              <div class="pob-fieldset pob-form-group">
-                <p class="pob-form-label">Set DevRel Account</p>
+            {:else}
+              <div class="pob-fieldset pob-form-group" style="margin-top: 1rem;">
                 <input
                   type="text"
-                  placeholder="DevRel address (0x...)"
-                  id="devrel-address"
+                  placeholder="SMT voter address (0x...)"
+                  id="smt-address"
                   class="pob-input"
                 />
                 <button
                   type="button"
-                  onclick={handleSetDevRel}
+                  onclick={handleAddSmtVoter}
                   disabled={pendingAction !== null}
                   class="pob-button pob-button--outline pob-button--full"
                 >
-                  Set DevRel
+                  Add Voter
                 </button>
               </div>
-            </div>
+            {/if}
           </div>
         {/if}
       </article>

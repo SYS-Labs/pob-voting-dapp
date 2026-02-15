@@ -84,7 +84,7 @@
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
                 Three entities: DAO HIC Committee (collective vote), Community (mint voting NFTs by locking a {tokenSymbol} deposit during the voting period),
-                and DevRel (individual vote). All entities have equal weight (⅓ each) and all votes are recorded on-chain.
+                and SMT (individual vote). All entities have equal weight (⅓ each) and all votes are recorded on-chain.
               </p>
             </div>
           </div>
@@ -108,7 +108,7 @@
             <p class="font-semibold text-white text-base">How are winners determined?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p class="mb-3">
-                Each voting entity (DAO HIC, Community, DevRel) has equal weight (⅓ each). The voting contract supports two modes:
+                Each voting entity (DAO HIC, Community, SMT) has equal weight (⅓ each). The voting contract supports two modes:
               </p>
               <p class="mb-2">
                 <strong class="text-white">Consensus Mode:</strong> Each entity votes for a single project. The project with votes from the most entities wins.
@@ -116,7 +116,7 @@
               </p>
               <p>
                 <strong class="text-white">Weighted Mode:</strong> Each entity's ⅓ weight is distributed proportionally across projects based on how that entity's voters split their votes.
-                DevRel gives their full ⅓ to one project (binary). DAO HIC and Community distribute their ⅓ proportionally (e.g., if 60% vote for Project A, it gets 60% of that entity's ⅓ weight).
+                SMT gives their full ⅓ to one project (binary). DAO HIC and Community distribute their ⅓ proportionally (e.g., if 60% vote for Project A, it gets 60% of that entity's ⅓ weight).
                 The project with the highest cumulative score wins. Ties result in no winner.
               </p>
               <p class="mt-3 text-xs opacity-75">
@@ -131,7 +131,7 @@
             <p class="font-semibold text-white text-base">Can I change my vote?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Yes, all voters (DAO HIC, Community, and DevRel) can change their vote during the active 48-hour voting period.
+                Yes, all voters (DAO HIC, Community, and SMT) can change their vote during the active 48-hour voting period.
                 Simply submit a new vote transaction for a different project, and your previous vote will be updated.
                 Once voting ends, votes become final and cannot be changed.
               </p>

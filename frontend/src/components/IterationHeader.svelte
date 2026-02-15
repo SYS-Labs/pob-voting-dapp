@@ -9,7 +9,7 @@
 
   interface RoleStatuses {
     community: boolean;
-    devrel: boolean;
+    smt: boolean;
     dao_hic: boolean;
     project: boolean;
   }
@@ -21,7 +21,7 @@
     votingEnded?: boolean;
     projectsLocked?: boolean;
     winner?: { projectAddress: string | null; hasWinner: boolean };
-    entityVotes?: { devRel: string | null; daoHic: string | null; community: string | null };
+    entityVotes?: { smt: string | null; daoHic: string | null; community: string | null };
     daoHicIndividualVotes?: Record<string, string>;
     getProjectLabel?: (address: string | null) => string | null;
     isOwner?: boolean;
@@ -81,22 +81,22 @@
   });
 
   // Determine user's role and mint button visibility
-  let hasDevRelBadge = $derived(badges?.some(badge => badge.role === 'devrel') ?? false);
+  let hasSmtBadge = $derived(badges?.some(badge => badge.role === 'smt') ?? false);
   let hasDaoHicBadge = $derived(badges?.some(badge => badge.role === 'dao_hic') ?? false);
   let hasProjectBadge = $derived(badges?.some(badge => badge.role === 'project') ?? false);
 
   // Has the user already minted their non-community badge?
   let hasMintedBadge = $derived(
-    (roles?.devrel && hasDevRelBadge) ||
+    (roles?.smt && hasSmtBadge) ||
     (roles?.dao_hic && hasDaoHicBadge) ||
     (roles?.project && hasProjectBadge)
   );
 
   // Determine which mint button to show (non-community roles only)
-  let mintButtonType = $derived.by((): 'devrel' | 'dao_hic' | 'project' | null => {
+  let mintButtonType = $derived.by((): 'smt' | 'dao_hic' | 'project' | null => {
     if (!walletAddress || !executeMint || isOwner) return null;
 
-    if (roles?.devrel && !hasDevRelBadge && votingEnded) return 'devrel';
+    if (roles?.smt && !hasSmtBadge && votingEnded) return 'smt';
     if (roles?.dao_hic && !hasDaoHicBadge && votingEnded) return 'dao_hic';
     if (roles?.project && !hasProjectBadge && projectsLocked) return 'project';
 
@@ -205,14 +205,14 @@
           {/if}
         </div>
 
-        {#if mintButtonType === 'devrel'}
+        {#if mintButtonType === 'smt'}
           <button
             type="button"
             onclick={handleMint}
             class="pob-button pob-button--compact"
             disabled={pendingAction !== null}
           >
-            {pendingAction === 'Mint DevRel Badge' ? 'Minting...' : 'Mint DevRel badge'}
+            {pendingAction === 'Mint SMT Badge' ? 'Minting...' : 'Mint SMT badge'}
           </button>
         {:else if mintButtonType === 'dao_hic'}
           <button

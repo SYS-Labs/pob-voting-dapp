@@ -1,17 +1,20 @@
 import { writable, get } from 'svelte/store';
-import { Contract, ethers } from 'ethers';
+import { ethers } from 'ethers';
 import type { PreviousRound, ProjectMetadata } from '~/interfaces';
-import JurySC_01_v001_ABI from '~/abis/JurySC_01_v001.json';
-import JurySC_01_v002_ABI from '~/abis/JurySC_01_v002.json';
 import { loadBadgesFromContract, type Badge } from '~/utils/loadBadgesFromContract';
 import { batchGetProjectMetadataCIDs, VOTING_MODE_OVERRIDES } from '~/utils/registry';
+import { resolveAdapter } from '~/utils/adapterResolver';
 import { metadataAPI } from '~/utils/metadata-api';
+
+// Entity IDs for IVersionAdapter
+const ENTITY_SMT = 0;
+const ENTITY_DAO_HIC = 1;
 
 export interface RoundData {
   startTime: number | null;
   endTime: number | null;
   winner: { projectAddress: string | null; hasWinner: boolean };
-  entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
+  entityVotes: { smt: string | null; daoHic: string | null; community: string | null };
   daoHicIndividualVotes: Record<string, string>;
   userBadges: Badge[];
   canMint: boolean; // User is eligible to mint a badge for this round
@@ -33,6 +36,7 @@ const normalizeAddress = (addr: string): string | null => {
 export function createPreviousRoundDataStore(
   round: PreviousRound,
   chainId: number,
+  iterationId: number,
   publicProvider: any,
   isExpanded: boolean,
   walletAddress: string | null,
@@ -53,45 +57,48 @@ export function createPreviousRoundDataStore(
     const loadRoundData = async () => {
       loading.set(true);
       try {
-        // Select ABI based on version
-        const abiToUse = round.version === '001' ? JurySC_01_v001_ABI : JurySC_01_v002_ABI;
-        const contract = new Contract(round.jurySC, abiToUse, publicProvider);
+        // Resolve adapter for this previous round
+        const adapterConfig = await resolveAdapter(chainId, iterationId, round.round, publicProvider);
+        if (!adapterConfig) {
+          console.error(`[previousRoundData] Failed to resolve adapter for round ${round.round}`);
+          loading.set(false);
+          return;
+        }
+        const { adapter, jurySC } = adapterConfig;
 
         console.log(`[previousRoundData] Loading data for Round #${round.round}`, {
-          jurySC: round.jurySC,
+          jurySC,
           pob: round.pob,
           version: round.version,
-          abiVersion: round.version === '001' ? 'v001' : 'v002',
           walletAddress,
           hasAPIData,
         });
-
-        const version = round.version || '003';
-        const isV001 = version === '001';
 
         // If API provided full data, use it instead of fetching via RPC
         if (hasAPIData) {
           console.log(`[previousRoundData] Round #${round.round}: Using API data (skipping RPC calls)`);
 
           // Only fetch user-specific data that API doesn't provide
-          const [userBadges, devRelAccount, daoHicVoters, isRegisteredProject, startTime, endTime] = await Promise.all([
+          const [userBadges, startTime, endTime] = await Promise.all([
             walletAddress
               ? loadBadgesFromContract(round.pob, chainId, walletAddress, publicProvider, round.deployBlockHint, round.round)
               : Promise.resolve([]),
-            contract.devRelAccount().catch(() => ethers.ZeroAddress),
-            contract.getDaoHicVoters().catch(() => [] as string[]),
-            walletAddress ? contract.isRegisteredProject(walletAddress).catch(() => false) : Promise.resolve(false),
-            contract.startTime().catch(() => 0),
-            contract.endTime().catch(() => 0),
+            adapter.startTime(jurySC).catch(() => 0),
+            adapter.endTime(jurySC).catch(() => 0),
           ]);
 
-          // Check if user can mint a badge
+          // Check if user can mint a badge (via adapter — version-agnostic)
           let canMint = false;
           if (walletAddress && userBadges.length === 0) {
             const walletLower = walletAddress.toLowerCase();
-            const isDevRel = devRelAccount && devRelAccount.toLowerCase() === walletLower;
+            const [smtVoters, daoHicVoters, isRegisteredProject] = await Promise.all([
+              adapter.getEntityVoters(jurySC, ENTITY_SMT).catch(() => [] as string[]),
+              adapter.getEntityVoters(jurySC, ENTITY_DAO_HIC).catch(() => [] as string[]),
+              adapter.isRegisteredProject(jurySC, walletAddress).catch(() => false),
+            ]);
+            const isSmt = Array.isArray(smtVoters) && smtVoters.some((v: string) => v.toLowerCase() === walletLower);
             const isDaoHic = Array.isArray(daoHicVoters) && daoHicVoters.some((v: string) => v.toLowerCase() === walletLower);
-            canMint = isDevRel || isDaoHic || Boolean(isRegisteredProject);
+            canMint = isSmt || isDaoHic || Boolean(isRegisteredProject);
           }
 
           // Build projects array from API data (cast metadata type)
@@ -106,9 +113,9 @@ export function createPreviousRoundDataStore(
 
           // Load project scores if in weighted mode (need RPC for this)
           let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
-          if (votingMode === 1 && !isV001) {
+          if (votingMode === 1) {
             try {
-              const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
+              const [addresses, scores, totalPossible] = await adapter.getWinnerWithScores(jurySC);
               projectScores = {
                 addresses: addresses as string[],
                 scores: (scores as bigint[]).map(s => s.toString()),
@@ -123,7 +130,11 @@ export function createPreviousRoundDataStore(
             startTime: Number(startTime) || null,
             endTime: Number(endTime) || null,
             winner: round.winner!,
-            entityVotes: round.entityVotes!,
+            entityVotes: {
+              smt: round.entityVotes?.smt ?? (round.entityVotes as any)?.devRel ?? null,
+              daoHic: round.entityVotes?.daoHic ?? null,
+              community: round.entityVotes?.community ?? null,
+            },
             daoHicIndividualVotes: round.daoHicIndividualVotes || {},
             userBadges,
             canMint,
@@ -144,77 +155,50 @@ export function createPreviousRoundDataStore(
         const jurySCAddress = round.jurySC.toLowerCase();
         const votingModeOverride = VOTING_MODE_OVERRIDES[jurySCAddress];
 
-        // Detect voting mode based on contract version
-        // v001: Always CONSENSUS, use getWinner()
-        // v002: Dual mode - detect by checking which winner function returns a result
-        // v003+: Trust votingMode() from contract (or override)
+        // Adapter handles voting mode uniformly across all versions
         let votingMode = 0;
         let winnerRaw: [string, boolean] = [ethers.ZeroAddress, false];
 
         if (votingModeOverride !== undefined) {
-          // Hardcoded override - skip RPC call for votingMode, use correct winner function directly
           votingMode = votingModeOverride;
           winnerRaw = votingMode === 0
-            ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
-            : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+            ? await adapter.getWinnerConsensus(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
+            : await adapter.getWinnerWeighted(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
           console.log(`[previousRoundData] Round #${round.round}: Using hardcoded override - votingMode: ${votingMode}`);
-        } else if (version === '001') {
-          // v001: Always CONSENSUS
-          votingMode = 0;
-          winnerRaw = await contract.getWinner().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-          console.log(`[previousRoundData] Round #${round.round}: v001 - CONSENSUS mode`);
-        } else if (version === '002') {
-          // v002: Dual mode - detect by checking which has a winner
-          const [consensusWinner, weightedWinner] = await Promise.all([
-            contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
-            contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]),
-          ]) as [[string, boolean], [string, boolean]];
-
-          if (weightedWinner[1] && !consensusWinner[1]) {
-            votingMode = 1;
-            winnerRaw = weightedWinner;
-            console.log(`[previousRoundData] Round #${round.round}: v002 dual - detected WEIGHTED mode`);
-          } else {
-            votingMode = 0;
-            winnerRaw = consensusWinner;
-            console.log(`[previousRoundData] Round #${round.round}: v002 dual - detected CONSENSUS mode`);
-          }
         } else {
-          // v003+: Trust votingMode() from contract
-          votingMode = Number(await contract.votingMode().catch(() => 0));
+          votingMode = Number(await adapter.votingMode(jurySC).catch(() => 0));
           winnerRaw = votingMode === 0
-            ? await contract.getWinnerConsensus().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
-            : await contract.getWinnerWeighted().catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-          console.log(`[previousRoundData] Round #${round.round}: v003+ - using votingMode(): ${votingMode}`);
+            ? await adapter.getWinnerConsensus(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
+            : await adapter.getWinnerWeighted(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+          console.log(`[previousRoundData] Round #${round.round}: adapter votingMode(): ${votingMode}`);
         }
 
-        // Load contract data and badges in parallel
-        const [devRelRaw, daoHicRaw, communityRaw, startTime, endTime, projectCount, userBadges, devRelAccount, daoHicVoters, isRegisteredProject] = await Promise.all([
-          contract.getDevRelEntityVote().catch(() => ethers.ZeroAddress),
-          contract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress),
-          contract.getCommunityEntityVote().catch(() => ethers.ZeroAddress),
-          contract.startTime().catch(() => 0),
-          contract.endTime().catch(() => 0),
-          contract.projectCount().catch(() => 0),
+        // Load contract data and badges via adapter (version-agnostic)
+        const [
+          smtRaw, daoHicRaw, communityRaw,
+          startTime, endTime,
+          userBadges,
+          smtVoters, daoHicVoters, isRegisteredProject
+        ] = await Promise.all([
+          adapter.getEntityVote(jurySC, ENTITY_SMT).catch(() => ethers.ZeroAddress),
+          adapter.getEntityVote(jurySC, ENTITY_DAO_HIC).catch(() => ethers.ZeroAddress),
+          adapter.getCommunityEntityVote(jurySC).catch(() => ethers.ZeroAddress),
+          adapter.startTime(jurySC).catch(() => 0),
+          adapter.endTime(jurySC).catch(() => 0),
           walletAddress
             ? loadBadgesFromContract(round.pob, chainId, walletAddress, publicProvider, round.deployBlockHint, round.round)
             : Promise.resolve([]),
-          contract.devRelAccount().catch(() => ethers.ZeroAddress),
-          contract.getDaoHicVoters().catch(() => [] as string[]),
-          walletAddress ? contract.isRegisteredProject(walletAddress).catch(() => false) : Promise.resolve(false),
+          adapter.getEntityVoters(jurySC, ENTITY_SMT).catch(() => [] as string[]),
+          adapter.getEntityVoters(jurySC, ENTITY_DAO_HIC).catch(() => [] as string[]),
+          walletAddress ? adapter.isRegisteredProject(jurySC, walletAddress).catch(() => false) : Promise.resolve(false),
         ]);
 
         const [winnerAddressRaw, hasWinnerRaw] = Array.isArray(winnerRaw)
           ? winnerRaw
           : [ethers.ZeroAddress, false];
 
-        // Load project addresses
-        const count = Number(projectCount);
-        const projectAddressCalls = [];
-        for (let index = 1; index <= count; index += 1) {
-          projectAddressCalls.push(contract.projectAddress(index));
-        }
-        const projectAddresses: string[] = count > 0 ? await Promise.all(projectAddressCalls) : [];
+        // Load project addresses via adapter
+        const projectAddresses: string[] = await adapter.getProjectAddresses(jurySC).catch(() => [] as string[]);
 
         // Fetch project metadata from PoBRegistry using this round's JurySC
         let metadataMap: Record<string, ProjectMetadata> = {};
@@ -248,11 +232,11 @@ export function createPreviousRoundDataStore(
           metadata: metadataMap[addr.toLowerCase()],
         }));
 
-        // Load project scores if in weighted mode (v002+ contracts have getWinnerWithScores)
+        // Load project scores if in weighted mode (adapter handles version differences)
         let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
-        if (votingMode === 1 && !isV001) {
+        if (votingMode === 1) {
           try {
-            const [addresses, scores, totalPossible] = await contract.getWinnerWithScores();
+            const [addresses, scores, totalPossible] = await adapter.getWinnerWithScores(jurySC);
             projectScores = {
               addresses: addresses as string[],
               scores: (scores as bigint[]).map(s => s.toString()),
@@ -263,24 +247,22 @@ export function createPreviousRoundDataStore(
           }
         }
 
-        // Check if user can mint a badge (participated in this round)
+        // Check if user can mint a badge (via adapter — version-agnostic)
         let canMint = false;
         if (walletAddress && userBadges.length === 0) {
-          // No badge minted yet - check eligibility
           const walletLower = walletAddress.toLowerCase();
-          const isDevRel = devRelAccount && devRelAccount.toLowerCase() === walletLower;
+          const isSmt = Array.isArray(smtVoters) && smtVoters.some((v: string) => v.toLowerCase() === walletLower);
           const isDaoHic = Array.isArray(daoHicVoters) && daoHicVoters.some((v: string) => v.toLowerCase() === walletLower);
-
-          canMint = isDevRel || isDaoHic || Boolean(isRegisteredProject);
+          canMint = isSmt || isDaoHic || Boolean(isRegisteredProject);
         }
 
         // Use API data for daoHicIndividualVotes if available, otherwise fetch via RPC
         let daoHicIndividualVotes: Record<string, string> = round.daoHicIndividualVotes || {};
         if (Object.keys(daoHicIndividualVotes).length === 0 && Array.isArray(daoHicVoters) && daoHicVoters.length > 0) {
-          // Fallback: fetch individual votes via RPC
+          // Fallback: fetch individual votes via RPC (daoHicVoteOf is the same across all versions)
           const votePromises = daoHicVoters.map(async (voter: string) => {
             try {
-              const vote = await contract.daoHicVoteOf(voter);
+              const vote = await adapter.entityVoteOf(jurySC, ENTITY_DAO_HIC, voter);
               if (vote && vote !== ethers.ZeroAddress) {
                 daoHicIndividualVotes[voter] = vote;
               }
@@ -299,7 +281,7 @@ export function createPreviousRoundDataStore(
             hasWinner: Boolean(hasWinnerRaw),
           },
           entityVotes: {
-            devRel: normalizeAddress(devRelRaw),
+            smt: normalizeAddress(smtRaw),
             daoHic: normalizeAddress(daoHicRaw),
             community: normalizeAddress(communityRaw),
           },
@@ -320,7 +302,7 @@ export function createPreviousRoundDataStore(
           startTime: null,
           endTime: null,
           winner: { projectAddress: null, hasWinner: false },
-          entityVotes: { devRel: null, daoHic: null, community: null },
+          entityVotes: { smt: null, daoHic: null, community: null },
           daoHicIndividualVotes: {},
           userBadges: [],
           canMint: false,

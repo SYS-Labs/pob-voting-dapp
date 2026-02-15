@@ -4,7 +4,7 @@
 
   interface RoleStatuses {
     community: boolean;
-    devrel: boolean;
+    smt: boolean;
     dao_hic: boolean;
     project: boolean;
   }
@@ -16,7 +16,6 @@
     chainId?: number | null;
     isOwner?: boolean;
     roles?: RoleStatuses;
-    devRelVote?: string | null;
     daoHicVote?: string | null;
     communityVoted?: boolean;
     hasBadge?: boolean;
@@ -45,7 +44,7 @@
   function getPrimaryRole() {
     if (isOwner) return { label: 'Owner', color: 'pob-pill--admin', key: 'owner' };
     if (!roles) return null;
-    if (roles.devrel) return { label: ROLE_LABELS.devrel, color: ROLE_COLORS.devrel, key: 'devrel' };
+    if (roles.smt) return { label: ROLE_LABELS.smt, color: ROLE_COLORS.smt, key: 'smt' };
     if (roles.dao_hic) return { label: ROLE_LABELS.dao_hic, color: ROLE_COLORS.dao_hic, key: 'dao_hic' };
     if (roles.project) return { label: ROLE_LABELS.project, color: ROLE_COLORS.project, key: 'project' };
     if (walletAddress) return { label: ROLE_LABELS.community, color: ROLE_COLORS.community, key: 'community' };

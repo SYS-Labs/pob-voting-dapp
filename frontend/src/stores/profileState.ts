@@ -11,7 +11,7 @@ const PROFILE_ABI = [
 ];
 
 // Per-chain PoBRegistry addresses (fill after deploy)
-export const REGISTRY_ADDRESSES: Record<number, string> = {
+const REGISTRY_ADDRESSES: Record<number, string> = {
   // 57: '0x...', // Mainnet
   // 5700: '0x...', // Testnet
   // 31337: '0x...', // Hardhat

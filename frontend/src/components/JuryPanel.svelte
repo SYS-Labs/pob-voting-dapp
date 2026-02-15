@@ -12,7 +12,7 @@
 
   interface RoleStatuses {
     community: boolean;
-    devrel: boolean;
+    smt: boolean;
     dao_hic: boolean;
     project: boolean;
   }
@@ -27,7 +27,7 @@
     statusFlags: StatusFlags;
     communityBadges: CommunityBadge[];
     badges: Badge[];
-    devRelVote: string | null;
+    smtVote: string | null;
     daoHicVote: string | null;
     pendingAction: string | null;
     walletAddress: string | null;
@@ -40,7 +40,7 @@
     statusFlags,
     communityBadges,
     badges,
-    devRelVote,
+    smtVote,
     daoHicVote,
     pendingAction,
     walletAddress,
@@ -48,8 +48,8 @@
     getProjectLabel,
   }: Props = $props();
 
-  const hasJuryRole = $derived(roles.devrel || roles.dao_hic || roles.community);
-  const canBecomeCommunity = $derived(!roles.project && !roles.devrel && !roles.dao_hic && !roles.community);
+  const hasJuryRole = $derived(roles.smt || roles.dao_hic || roles.community);
+  const canBecomeCommunity = $derived(!roles.project && !roles.smt && !roles.dao_hic && !roles.community);
 
   const showPanel = $derived(hasJuryRole || canBecomeCommunity);
 
@@ -58,7 +58,7 @@
   const tokenSymbol = $derived(network?.tokenSymbol ?? 'TSYS');
 
   const headerRoleTag = $derived.by(() => {
-    if (roles.devrel) return { label: ROLE_LABELS.devrel, color: ROLE_COLORS.devrel };
+    if (roles.smt) return { label: ROLE_LABELS.smt, color: ROLE_COLORS.smt };
     if (roles.dao_hic) return { label: ROLE_LABELS.dao_hic, color: ROLE_COLORS.dao_hic };
     if (roles.community) return { label: ROLE_LABELS.community, color: ROLE_COLORS.community };
     if (canBecomeCommunity) return { label: ROLE_LABELS.community, color: ROLE_COLORS.community };
@@ -78,16 +78,16 @@
     </div>
 
     <div class="space-y-3">
-      <!-- DevRel Role -->
-      {#if roles.devrel}
+      <!-- SMT Role (v003) -->
+      {#if roles.smt}
         <p class="text-sm text-[var(--pob-text-muted)]">
-          As DevRel, you represent the developer relations entity and cast one vote for a project during the active voting period.
+          As an SMT voter, you are part of the SMT entity. Cast your vote during the active voting period. The entity's decision is determined by majority consensus.
         </p>
         <p class="text-sm text-[var(--pob-text-muted)]">
-          {#if devRelVote}
+          {#if smtVote}
             Voted for
             <span class="italic">
-              {getProjectLabel(devRelVote) ?? 'Unknown project'}
+              {getProjectLabel(smtVote) ?? 'Unknown project'}
             </span>
           {:else}
             Not voted yet

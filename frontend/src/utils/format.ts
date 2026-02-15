@@ -103,14 +103,6 @@ export function generateAvatarImage(username: string): string {
 }
 
 /**
- * Format IPFS CID for display (truncate middle)
- */
-export function formatCID(cid: string): string {
-  if (cid.length <= 20) return cid;
-  return `${cid.slice(0, 10)}...${cid.slice(-6)}`;
-}
-
-/**
  * Format transaction hash
  */
 export function formatTxHash(hash: string): string {

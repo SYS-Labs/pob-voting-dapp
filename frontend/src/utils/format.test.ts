@@ -3,7 +3,6 @@ import {
   formatAddress,
   formatContractAddress,
   formatDate,
-  formatCID,
   formatTxHash,
   isValidYouTubeUrl,
   isValidUrl,
@@ -41,20 +40,6 @@ describe('formatDate', () => {
     const timestamp = 1704067200; // 2024-01-01 00:00:00 UTC
     const result = formatDate(timestamp);
     expect(result).toContain('2024');
-  });
-});
-
-describe('formatCID', () => {
-  it('returns short CIDs unchanged', () => {
-    expect(formatCID('short')).toBe('short');
-    expect(formatCID('exactly20charslong!')).toBe('exactly20charslong!');
-  });
-
-  it('truncates long CIDs', () => {
-    const longCID = 'QmYwAPJzv5CZsnANOTaREALlyLongCIDForTesting123456789';
-    const result = formatCID(longCID);
-    expect(result).toMatch(/^.{10}\.\.\..{6}$/);
-    expect(result.length).toBe(19);
   });
 });
 
