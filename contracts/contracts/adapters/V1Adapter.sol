@@ -4,6 +4,14 @@ pragma solidity ^0.8.20;
 import "./IVersionAdapter.sol";
 
 /**
+ * @title IPoBRegistryOverrides
+ * @notice Minimal interface for reading voting mode overrides from PoBRegistry
+ */
+interface IPoBRegistryOverrides {
+    function votingModeOverride(address jurySC) external view returns (uint8);
+}
+
+/**
  * @title IJurySC_01_Base
  * @notice Minimal interface for JurySC_01 functions present in all deployed bytecodes
  */
@@ -71,6 +79,12 @@ interface IPoB_01 {
 contract V1Adapter is IVersionAdapter {
     error InvalidEntityId(uint8 entityId);
 
+    address public immutable registry;
+
+    constructor(address _registry) {
+        registry = _registry;
+    }
+
     // ========== Lifecycle ==========
 
     function iteration(address jurySC) external view override returns (uint256) {
@@ -108,6 +122,13 @@ contract V1Adapter is IVersionAdapter {
     }
 
     function votingMode(address jurySC) external view override returns (uint8) {
+        // Check registry override first
+        if (registry != address(0)) {
+            try IPoBRegistryOverrides(registry).votingModeOverride(jurySC) returns (uint8 override_) {
+                if (override_ > 0) return override_ - 1;
+            } catch {}
+        }
+        // Fallback to contract call
         try IJurySC_01_Extended(jurySC).votingMode() returns (uint8 mode) {
             return mode;
         } catch {
@@ -223,6 +244,16 @@ contract V1Adapter is IVersionAdapter {
     // ========== Results ==========
 
     function getWinner(address jurySC) external view override returns (address, bool) {
+        // Check registry override for voting mode
+        if (registry != address(0)) {
+            try IPoBRegistryOverrides(registry).votingModeOverride(jurySC) returns (uint8 override_) {
+                if (override_ > 0) {
+                    uint8 mode = override_ - 1;
+                    if (mode == 1) return this.getWinnerWeighted(jurySC);
+                    if (mode == 0) return this.getWinnerConsensus(jurySC);
+                }
+            } catch {}
+        }
         return IJurySC_01_Base(jurySC).getWinner();
     }
 

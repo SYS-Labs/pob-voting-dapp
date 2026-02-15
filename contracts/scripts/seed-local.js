@@ -500,7 +500,7 @@ async function main() {
     console.log("\nDeploying version adapters...");
 
     const V1Adapter = await ethers.getContractFactory("V1Adapter");
-    const v1Adapter = await V1Adapter.deploy();
+    const v1Adapter = await V1Adapter.deploy(registryAddress);
     await v1Adapter.waitForDeployment();
     const v1Address = await v1Adapter.getAddress();
     console.log(`- V1Adapter deployed at: ${v1Address}`);

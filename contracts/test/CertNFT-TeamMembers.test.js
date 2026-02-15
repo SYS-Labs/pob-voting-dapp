@@ -97,6 +97,12 @@ describe("CertNFT - Team Members", function () {
       ).to.be.revertedWithCustomError(certNFT, "MemberAlreadyExists");
     });
 
+    it("reverts for address(0) member", async function () {
+      await expect(
+        certNFT.connect(project1).proposeTeamMember(ITERATION, ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(certNFT, "InvalidMemberIndex");
+    });
+
     it("reverts when max members reached", async function () {
       // Propose 20 members (the max)
       const signers = await ethers.getSigners();
@@ -273,6 +279,30 @@ describe("CertNFT - Team Members", function () {
 
       const [, , name] = await certNFT.getTeamMember(ITERATION, project1.address, 0);
       expect(name).to.equal(maxName);
+    });
+
+    it("reverts with name containing double quote", async function () {
+      await expect(
+        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, 'Alice "Builder"')
+      ).to.be.revertedWithCustomError(certNFT, "NameContainsInvalidBytes");
+    });
+
+    it("reverts with name containing backslash", async function () {
+      await expect(
+        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice\\Builder")
+      ).to.be.revertedWithCustomError(certNFT, "NameContainsInvalidBytes");
+    });
+
+    it("reverts with name containing control character", async function () {
+      await expect(
+        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice\nBuilder")
+      ).to.be.revertedWithCustomError(certNFT, "NameContainsInvalidBytes");
+    });
+
+    it("reverts with name containing null byte", async function () {
+      await expect(
+        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice\x00Builder")
+      ).to.be.revertedWithCustomError(certNFT, "NameContainsInvalidBytes");
     });
   });
 

@@ -26,7 +26,7 @@ describe("PoBRegistry - Adapter Routing", function () {
 
     // Deploy adapters
     const V1Adapter = await ethers.getContractFactory("V1Adapter");
-    v1Adapter = await V1Adapter.deploy();
+    v1Adapter = await V1Adapter.deploy(await registry.getAddress());
     await v1Adapter.waitForDeployment();
 
     const V2Adapter = await ethers.getContractFactory("V2Adapter");
@@ -39,8 +39,8 @@ describe("PoBRegistry - Adapter Routing", function () {
   });
 
   describe("version()", function () {
-    it("returns '3'", async function () {
-      expect(await registry.version()).to.equal("3");
+    it("returns '2'", async function () {
+      expect(await registry.version()).to.equal("2");
     });
   });
 

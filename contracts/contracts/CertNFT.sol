@@ -101,6 +101,7 @@ contract CertNFT is
     error NameAlreadySet();
     error EmptyName();
     error NameTooLong();
+    error NameContainsInvalidBytes();
     error NoNamedTeamMembers();
     error NotTeamMember();
     error CertAlreadyRequested();
@@ -269,6 +270,7 @@ contract CertNFT is
      * @param member The address of the team member to propose
      */
     function proposeTeamMember(uint256 iteration, address member) external {
+        if (member == address(0)) revert InvalidMemberIndex();
         address mw = middleware[iteration];
         if (mw == address(0)) revert NoMiddleware();
         if (!ICertMiddleware(mw).isProjectInAnyRound(msg.sender)) revert NotProjectForIteration();
@@ -344,6 +346,12 @@ contract CertNFT is
         if (bytes(tm.fullName).length > 0) revert NameAlreadySet();
         if (bytes(fullName).length == 0) revert EmptyName();
         if (bytes(fullName).length > MAX_NAME_LENGTH) revert NameTooLong();
+
+        bytes memory nameBytes = bytes(fullName);
+        for (uint256 i = 0; i < nameBytes.length; i++) {
+            bytes1 b = nameBytes[i];
+            if (b == 0x22 || b == 0x5C || b < 0x20) revert NameContainsInvalidBytes();
+        }
 
         tm.fullName = fullName;
         namedMemberCount[iteration][project]++;

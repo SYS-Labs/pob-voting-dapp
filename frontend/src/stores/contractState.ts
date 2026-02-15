@@ -2,7 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import { Contract, Interface, JsonRpcProvider, type JsonRpcSigner, ethers } from 'ethers';
 import { PoB_01ABI, IVersionAdapterABI } from '~/abis';
 import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
-import { batchGetProjectMetadataCIDs, VOTING_MODE_OVERRIDES } from '~/utils/registry';
+import { batchGetProjectMetadataCIDs } from '~/utils/registry';
 import { resolveAdapter } from '~/utils/adapterResolver';
 import { metadataAPI } from '~/utils/metadata-api';
 import { iterationsAPI, type IterationSnapshot } from '~/utils/iterations-api';
@@ -369,16 +369,8 @@ async function loadEntityVotes(
       return;
     }
 
-    // Adapter handles voting mode uniformly (V1Adapter returns 0 for v001)
-    const jurySCAddress = currentIteration.jurySC?.toLowerCase() || '';
-    const votingModeOverride = VOTING_MODE_OVERRIDES[jurySCAddress];
-
-    let detectedMode: number;
-    if (votingModeOverride !== undefined) {
-      detectedMode = votingModeOverride;
-    } else {
-      detectedMode = Number(await adapter.votingMode(jurySC).catch(() => 0));
-    }
+    // Adapter handles voting mode uniformly — overrides are resolved on-chain via PoBRegistry
+    const detectedMode = Number(await adapter.votingMode(jurySC).catch(() => 0));
 
     const winnerRaw = detectedMode === 0
       ? await adapter.getWinnerConsensus(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
@@ -801,6 +793,33 @@ export async function loadIterationState(
     } else {
       console.warn('[loadIterationState] API unavailable for iteration', currentIteration.iteration);
       contractStateStore.update(s => ({ ...s, hasLoadError: true }));
+
+      // Load core state via RPC since API is unavailable
+      loadTasks.push(loadProjects(adapter, jurySC, currentIteration, publicProvider, selectedChainId));
+      if (isOwnerFlag) {
+        loadTasks.push(loadOwnerData(adapter, jurySC, currentIteration, publicProvider, selectedChainId));
+      }
+
+      // Load statusFlags + entity votes via RPC
+      const iterationNum = currentIteration.iteration;
+      const statusPromise = cachedPromiseAll(publicProvider, selectedChainId, [
+        { key: `iteration:${iterationNum}:isActive`, promise: adapter.isActive(jurySC).catch(() => false), skipCache: true },
+        { key: `iteration:${iterationNum}:votingEnded`, promise: adapter.votingEnded(jurySC).catch(() => false), skipCache: true },
+        { key: `iteration:${iterationNum}:startTime`, promise: adapter.startTime(jurySC).catch(() => BigInt(0)) },
+        { key: `iteration:${iterationNum}:endTime`, promise: adapter.endTime(jurySC).catch(() => BigInt(0)) },
+      ]).then(async ([isActive, votingEndedFlag, startTime, endTime]) => {
+        const flags = { isActive: Boolean(isActive), votingEnded: Boolean(votingEndedFlag) };
+        contractStateStore.update(s => ({
+          ...s,
+          statusFlags: flags,
+          iterationTimes: { startTime: Number(startTime), endTime: Number(endTime) },
+        }));
+        await loadEntityVotes(adapter, jurySC, currentIteration, publicProvider, selectedChainId, flags.isActive, flags.votingEnded);
+        if (flags.isActive || flags.votingEnded) {
+          await loadVoteCounts(adapter, jurySC, currentIteration, publicProvider, selectedChainId);
+        }
+      });
+      loadTasks.push(statusPromise);
 
       if (walletAddress) {
         loadTasks.push(loadUserVotes(adapter, jurySC, currentIteration, publicProvider, selectedChainId, walletAddress));

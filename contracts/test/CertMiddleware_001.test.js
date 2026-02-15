@@ -308,6 +308,19 @@ describe("CertMiddleware_001", function () {
       ).to.be.revertedWith("Empty role");
     });
 
+    it("rejects role string exceeding MAX_ROLE_LENGTH", async function () {
+      const longRole = "A".repeat(65);
+      await expect(
+        middleware.connect(owner).registerRole(organizer.address, longRole)
+      ).to.be.revertedWith("Role too long");
+    });
+
+    it("accepts role string at exactly MAX_ROLE_LENGTH", async function () {
+      const maxRole = "A".repeat(64);
+      await middleware.connect(owner).registerRole(organizer.address, maxRole);
+      expect(await middleware.registeredRole(organizer.address)).to.equal(maxRole);
+    });
+
     it("non-owner cannot set templateCID", async function () {
       await expect(
         middleware.connect(devRel).setTemplateCID("QmTest")

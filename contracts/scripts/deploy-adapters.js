@@ -21,14 +21,19 @@ async function main() {
   const network = hre.network.name;
   const chainId = (await ethers.provider.getNetwork()).chainId;
 
+  const registryAddress = process.env.POB_REGISTRY;
+  const upgradeRegistry = process.env.UPGRADE_REGISTRY === "true";
+  const dryRun = process.env.DRY_RUN === "true";
+
   console.log(`Deploying adapters on ${network} (chainId: ${chainId})`);
   console.log(`Deployer: ${deployer.address}`);
   console.log();
 
-  // 1. Deploy V1Adapter
-  console.log("Deploying V1Adapter...");
+  // 1. Deploy V1Adapter (needs registry address for voting mode overrides)
+  const v1RegistryAddress = registryAddress || ethers.ZeroAddress;
+  console.log(`Deploying V1Adapter (registry: ${v1RegistryAddress})...`);
   const V1Adapter = await ethers.getContractFactory("V1Adapter");
-  const v1Adapter = await V1Adapter.deploy();
+  const v1Adapter = await V1Adapter.deploy(v1RegistryAddress);
   await v1Adapter.waitForDeployment();
   const v1Address = await v1Adapter.getAddress();
   console.log(`  V1Adapter deployed at: ${v1Address}`);
@@ -40,10 +45,6 @@ async function main() {
   await v2Adapter.waitForDeployment();
   const v2Address = await v2Adapter.getAddress();
   console.log(`  V2Adapter deployed at: ${v2Address}`);
-
-  const registryAddress = process.env.POB_REGISTRY;
-  const upgradeRegistry = process.env.UPGRADE_REGISTRY === "true";
-  const dryRun = process.env.DRY_RUN === "true";
 
   let registry;
 

@@ -100,13 +100,15 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Profile bio CID for an address
     mapping(address => string) public profileBioCID;
 
-    // ========== Adapter Routing (v3) ==========
-
     /// @notice Version ID => adapter contract address
     mapping(uint256 => address) public versionAdapters;
 
     /// @notice Iteration ID => round ID => version number
     mapping(uint256 => mapping(uint256 => uint256)) public roundVersion;
+
+    /// @notice Voting mode override for jurySC contracts with incorrect on-chain values
+    /// @dev Stores mode + 1 (0 = no override, 1 = CONSENSUS override, 2 = WEIGHTED override)
+    mapping(address => uint8) public votingModeOverride;
 
     // ========== Events ==========
 
@@ -148,6 +150,7 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     event AdapterSet(uint256 indexed versionId, address indexed adapter);
     event RoundVersionSet(uint256 indexed iterationId, uint256 indexed roundId, uint256 indexed versionId);
+    event VotingModeOverrideSet(address indexed jurySC, uint8 mode);
 
     // ========== Initialization ==========
 
@@ -188,6 +191,7 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         require(iterationId > 0, "Invalid iteration ID");
         require(chainId > 0, "Invalid chain ID");
         require(!iterations[iterationId].exists, "Iteration already registered");
+        require(iterationId == iterationCount + 1, "Iteration ID must be contiguous");
 
         iterations[iterationId] = IterationInfo({
             iterationId: iterationId,
@@ -215,6 +219,7 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     ) external onlyOwner {
         require(iterations[iterationId].exists, "Iteration not registered");
         require(roundId > 0, "Invalid round ID");
+        require(roundId <= MAX_ROUNDS_PER_ITERATION, "Round ID exceeds max");
         require(jurySC != address(0), "Invalid jurySC address");
         require(!rounds[iterationId][roundId].exists, "Round already exists");
 
@@ -560,12 +565,27 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         jurySC = rounds[iterationId][roundId].jurySC;
     }
 
+    // ========== Voting Mode Override Functions ==========
+
+    /**
+     * @notice Set voting mode override for a jurySC contract (owner only)
+     * @dev Stores mode + 1 internally (0 = no override, 1 = CONSENSUS, 2 = WEIGHTED)
+     * @param jurySC JurySC contract address
+     * @param mode Voting mode (0 = CONSENSUS, 1 = WEIGHTED)
+     */
+    function setVotingModeOverride(address jurySC, uint8 mode) external onlyOwner {
+        require(jurySC != address(0), "Invalid address");
+        require(mode <= 1, "Invalid voting mode");
+        votingModeOverride[jurySC] = mode + 1;
+        emit VotingModeOverrideSet(jurySC, mode);
+    }
+
     /**
      * @notice Get contract version string
      * @return Version string
      */
     function version() external pure returns (string memory) {
-        return "3";
+        return "2";
     }
 
     // ========== UUPS Upgrade Authorization ==========

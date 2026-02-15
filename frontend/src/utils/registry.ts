@@ -15,14 +15,6 @@ export const REGISTRY_ADDRESSES: Record<number, string> = {
   31337: '0xab180957A96821e90C0114292DDAfa9E9B050d65' // Hardhat - Latest deployment
 };
 
-// Hardcoded voting mode overrides for locked contracts that can't be upgraded
-// These contracts have incorrect votingMode() return values but are permanently locked
-// Key: jurySC address (lowercase), Value: votingMode (0=CONSENSUS, 1=WEIGHTED)
-export const VOTING_MODE_OVERRIDES: Record<string, number> = {
-  // Iteration 1 Round 2 (testnet) - contract locked with WEIGHTED mode but returns 0
-  '0x837992ac7b89c148f7e42755816e74e84cf985ad': 1,
-};
-
 // Cached registry contract instances keyed by "chainId:providerUid"
 const registryContractCache = new Map<string, Contract>();
 

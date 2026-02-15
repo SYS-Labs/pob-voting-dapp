@@ -21,7 +21,8 @@ const REGISTRY_ABI = [
   'function getIteration(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 chainId, string name, uint256 roundCount))',
   'function getRounds(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 roundId, address jurySC, uint256 deployBlockHint, bool exists)[])',
   'function getProjectMetadata(uint256 chainId, address jurySC, address project) external view returns (string)',
-  'function batchGetProjectMetadata(uint256 chainId, address jurySC, address[] projects) external view returns (string[])'
+  'function batchGetProjectMetadata(uint256 chainId, address jurySC, address[] projects) external view returns (string[])',
+  'function votingModeOverride(address jurySC) external view returns (uint8)'
 ];
 
 const JURY_ABI = [
@@ -50,14 +51,6 @@ const JURY_ABI = [
 
 // Poll interval: 37 seconds (configurable via env)
 const POLL_INTERVAL = parseInt(process.env.ITERATION_POLL_INTERVAL || '37000', 10);
-
-// Hardcoded voting mode overrides for locked contracts that can't be upgraded
-// These contracts have incorrect votingMode() return values but are permanently locked
-// Key: jurySC address (lowercase), Value: votingMode (0=CONSENSUS, 1=WEIGHTED)
-const VOTING_MODE_OVERRIDES: Record<string, number> = {
-  // Iteration 1 Round 2 (testnet) - contract locked with WEIGHTED mode but returns 0
-  '0x837992ac7b89c148f7e42755816e74e84cf985ad': 1,
-};
 
 // Optional: Force single chain mode (if set, only index this chain)
 const SINGLE_CHAIN_ID = process.env.CHAIN_ID
@@ -210,11 +203,10 @@ class IterationIndexer {
     const jurySC = new Contract(round.jurySC, JURY_ABI, provider);
 
     try {
-      // Check for hardcoded voting mode override
-      const votingModeOverride = VOTING_MODE_OVERRIDES[round.jurySC.toLowerCase()];
+      // Check for voting mode override in registry
+      const votingModeOverrideRaw: number = await registry.votingModeOverride(round.jurySC).catch(() => 0);
 
       // Batch fetch all contract state
-      // Use correct winner function based on override (skip votingMode() call if overridden)
       const [
         pobAddress,
         votingModeRaw,
@@ -234,7 +226,7 @@ class IterationIndexer {
         currentBlock
       ] = await Promise.all([
         jurySC.pob().catch(() => ethers.ZeroAddress),
-        votingModeOverride !== undefined ? Promise.resolve(votingModeOverride) : jurySC.votingMode().catch(() => 0),
+        votingModeOverrideRaw > 0 ? Promise.resolve(votingModeOverrideRaw - 1) : jurySC.votingMode().catch(() => 0),
         jurySC.isActive().catch(() => false),
         jurySC.votingEnded().catch(() => false),
         jurySC.startTime().catch(() => BigInt(0)),
@@ -247,7 +239,7 @@ class IterationIndexer {
         jurySC.getDaoHicEntityVote().catch(() => null),
         jurySC.getCommunityEntityVote().catch(() => null),
         jurySC.getVoteParticipationCounts().catch(() => [BigInt(0), BigInt(0), BigInt(0)]),
-        votingModeOverride === 1 ? jurySC.getWinnerWeighted().catch(() => [null, false]) : jurySC.getWinner().catch(() => [null, false]),
+        votingModeOverrideRaw === 2 ? jurySC.getWinnerWeighted().catch(() => [null, false]) : jurySC.getWinner().catch(() => [null, false]),
         provider.getBlockNumber()
       ]);
 

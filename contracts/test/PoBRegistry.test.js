@@ -153,13 +153,20 @@ describe("PoBRegistry", function () {
         expect(ids.map(id => Number(id))).to.deep.equal([1, 2, 3]);
       });
 
-      it("Should handle non-sequential iteration IDs", async function () {
+      it("Should reject non-contiguous iteration IDs", async function () {
         await registry.registerIteration(1, CHAIN_ID_TESTNET);
-        await registry.registerIteration(5, CHAIN_ID_MAINNET);
-        await registry.registerIteration(10, CHAIN_ID_LOCAL);
+        await expect(
+          registry.registerIteration(5, CHAIN_ID_MAINNET)
+        ).to.be.revertedWith("Iteration ID must be contiguous");
+      });
+
+      it("Should accept sequential contiguous iteration IDs", async function () {
+        await registry.registerIteration(1, CHAIN_ID_TESTNET);
+        await registry.registerIteration(2, CHAIN_ID_MAINNET);
+        await registry.registerIteration(3, CHAIN_ID_LOCAL);
 
         const ids = await registry.getAllIterationIds();
-        expect(ids.map(id => Number(id))).to.deep.equal([1, 5, 10]);
+        expect(ids.map(id => Number(id))).to.deep.equal([1, 2, 3]);
       });
     });
   });
@@ -218,6 +225,12 @@ describe("PoBRegistry", function () {
         await expect(
           registry.addRound(1, 0, mockJurySCAddress, 100)
         ).to.be.revertedWith("Invalid round ID");
+      });
+
+      it("Should revert with round ID exceeding MAX_ROUNDS_PER_ITERATION", async function () {
+        await expect(
+          registry.addRound(1, 101, mockJurySCAddress, 100)
+        ).to.be.revertedWith("Round ID exceeds max");
       });
 
       it("Should revert with zero address jurySC", async function () {
@@ -771,6 +784,61 @@ describe("PoBRegistry", function () {
     });
   });
 
+  // ========== VOTING MODE OVERRIDE TESTS ==========
+
+  describe("Voting Mode Override (v4)", function () {
+    const jurySCAddr = "0x837992aC7b89c148F7e42755816e74E84CF985AD";
+
+    describe("setVotingModeOverride", function () {
+      it("Should store correct value for CONSENSUS (0)", async function () {
+        await registry.setVotingModeOverride(jurySCAddr, 0);
+        // Stored as mode + 1 = 1
+        expect(await registry.votingModeOverride(jurySCAddr)).to.equal(1);
+      });
+
+      it("Should store correct value for WEIGHTED (1)", async function () {
+        await registry.setVotingModeOverride(jurySCAddr, 1);
+        // Stored as mode + 1 = 2
+        expect(await registry.votingModeOverride(jurySCAddr)).to.equal(2);
+      });
+
+      it("Should emit VotingModeOverrideSet event", async function () {
+        await expect(registry.setVotingModeOverride(jurySCAddr, 1))
+          .to.emit(registry, "VotingModeOverrideSet")
+          .withArgs(jurySCAddr, 1);
+      });
+
+      it("Should revert for non-owner", async function () {
+        await expect(
+          registry.connect(user1).setVotingModeOverride(jurySCAddr, 1)
+        ).to.be.revertedWithCustomError(registry, "OwnableUnauthorizedAccount");
+      });
+
+      it("Should revert for invalid mode (> 1)", async function () {
+        await expect(
+          registry.setVotingModeOverride(jurySCAddr, 2)
+        ).to.be.revertedWith("Invalid voting mode");
+      });
+
+      it("Should revert for zero address", async function () {
+        await expect(
+          registry.setVotingModeOverride(ethers.ZeroAddress, 1)
+        ).to.be.revertedWith("Invalid address");
+      });
+    });
+
+    describe("votingModeOverride", function () {
+      it("Should return 0 when not set", async function () {
+        expect(await registry.votingModeOverride(jurySCAddr)).to.equal(0);
+      });
+
+      it("Should return correct value after being set", async function () {
+        await registry.setVotingModeOverride(jurySCAddr, 1);
+        expect(await registry.votingModeOverride(jurySCAddr)).to.equal(2);
+      });
+    });
+  });
+
   // ========== OWNERSHIP TESTS ==========
 
   describe("Ownership", function () {
@@ -883,11 +951,11 @@ describe("PoBRegistry", function () {
       const iteration = await registry.iterations(1);
       expect(iteration.roundCount).to.equal(100);
 
-      // Try to add one more - should fail
+      // Try to add one more - should fail (roundId 101 exceeds max)
       const extraJurySC = await MockJurySC.deploy();
       await expect(
         registry.addRound(1, 101, await extraJurySC.getAddress(), 10100)
-      ).to.be.revertedWith("Max rounds reached");
+      ).to.be.revertedWith("Round ID exceeds max");
     });
   });
 

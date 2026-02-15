@@ -25,6 +25,14 @@ interface IJurySCForCert {
 }
 
 /**
+ * @title IJurySC_V3ForCert
+ * @notice Minimal interface for JurySC_03 which uses isSmtVoter instead of isDevRelAccount
+ */
+interface IJurySC_V3ForCert {
+    function isSmtVoter(address) external view returns (bool);
+}
+
+/**
  * @title CertMiddleware_001
  * @notice Per-iteration certificate validation middleware.
  *         Non-upgradeable. One instance deployed per iteration.
@@ -32,6 +40,10 @@ interface IJurySCForCert {
  *         across ALL rounds of an iteration before granting certificate eligibility.
  */
 contract CertMiddleware_001 is Ownable, ICertMiddleware {
+
+    // ========== Constants ==========
+
+    uint256 public constant MAX_ROLE_LENGTH = 64;
 
     // ========== State ==========
 
@@ -115,11 +127,22 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
                 return (false, "");
             }
 
-            // Must have a non-community role (DevRel, DAO-HIC, or Project)
+            // Must have a non-community role (DevRel/SMT, DAO-HIC, or Project)
             IJurySCForCert jury = IJurySCForCert(jurySCContracts[i]);
-            bool hasNonCommunityRole = jury.isDevRelAccount(account) ||
-                                       jury.isDaoHicVoter(account) ||
-                                       jury.isRegisteredProject(account);
+            bool hasNonCommunityRole;
+            try jury.isDevRelAccount(account) returns (bool result) {
+                hasNonCommunityRole = result;
+            } catch {
+                // v3 contract — try isSmtVoter
+                try IJurySC_V3ForCert(jurySCContracts[i]).isSmtVoter(account) returns (bool result) {
+                    hasNonCommunityRole = result;
+                } catch {
+                    hasNonCommunityRole = false;
+                }
+            }
+            hasNonCommunityRole = hasNonCommunityRole ||
+                                   jury.isDaoHicVoter(account) ||
+                                   jury.isRegisteredProject(account);
             if (!hasNonCommunityRole) {
                 return (false, "");
             }
@@ -187,6 +210,7 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
      */
     function registerRole(address account, string calldata role) external onlyOwner {
         require(bytes(role).length > 0, "Empty role");
+        require(bytes(role).length <= MAX_ROLE_LENGTH, "Role too long");
         registeredRole[account] = role;
         emit RoleRegistered(account, role);
     }

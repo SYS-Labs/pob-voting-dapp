@@ -2,7 +2,7 @@ import { writable, get } from 'svelte/store';
 import { ethers } from 'ethers';
 import type { PreviousRound, ProjectMetadata } from '~/interfaces';
 import { loadBadgesFromContract, type Badge } from '~/utils/loadBadgesFromContract';
-import { batchGetProjectMetadataCIDs, VOTING_MODE_OVERRIDES } from '~/utils/registry';
+import { batchGetProjectMetadataCIDs } from '~/utils/registry';
 import { resolveAdapter } from '~/utils/adapterResolver';
 import { metadataAPI } from '~/utils/metadata-api';
 
@@ -151,27 +151,12 @@ export function createPreviousRoundDataStore(
         // Fallback: fetch all data via RPC (API didn't provide full data)
         console.log(`[previousRoundData] Round #${round.round}: Falling back to RPC (no API data)`);
 
-        // Check for hardcoded voting mode override first
-        const jurySCAddress = round.jurySC.toLowerCase();
-        const votingModeOverride = VOTING_MODE_OVERRIDES[jurySCAddress];
-
-        // Adapter handles voting mode uniformly across all versions
-        let votingMode = 0;
-        let winnerRaw: [string, boolean] = [ethers.ZeroAddress, false];
-
-        if (votingModeOverride !== undefined) {
-          votingMode = votingModeOverride;
-          winnerRaw = votingMode === 0
-            ? await adapter.getWinnerConsensus(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
-            : await adapter.getWinnerWeighted(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-          console.log(`[previousRoundData] Round #${round.round}: Using hardcoded override - votingMode: ${votingMode}`);
-        } else {
-          votingMode = Number(await adapter.votingMode(jurySC).catch(() => 0));
-          winnerRaw = votingMode === 0
-            ? await adapter.getWinnerConsensus(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
-            : await adapter.getWinnerWeighted(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
-          console.log(`[previousRoundData] Round #${round.round}: adapter votingMode(): ${votingMode}`);
-        }
+        // Adapter handles voting mode uniformly — overrides are resolved on-chain via PoBRegistry
+        const votingMode = Number(await adapter.votingMode(jurySC).catch(() => 0));
+        const winnerRaw: [string, boolean] = votingMode === 0
+          ? await adapter.getWinnerConsensus(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean]
+          : await adapter.getWinnerWeighted(jurySC).catch(() => [ethers.ZeroAddress, false] as [string, boolean]) as [string, boolean];
+        console.log(`[previousRoundData] Round #${round.round}: adapter votingMode(): ${votingMode}`);
 
         // Load contract data and badges via adapter (version-agnostic)
         const [

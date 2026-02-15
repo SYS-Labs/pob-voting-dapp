@@ -173,6 +173,7 @@ contract PoBRegistryBypass is Initializable, OwnableUpgradeable, UUPSUpgradeable
         require(iterationId > 0, "Invalid iteration ID");
         require(chainId > 0, "Invalid chain ID");
         require(!iterations[iterationId].exists, "Iteration already registered");
+        require(iterationId == iterationCount + 1, "Iteration ID must be contiguous");
 
         iterations[iterationId] = IterationInfo({
             iterationId: iterationId,
@@ -200,6 +201,7 @@ contract PoBRegistryBypass is Initializable, OwnableUpgradeable, UUPSUpgradeable
     ) external onlyOwner {
         require(iterations[iterationId].exists, "Iteration not registered");
         require(roundId > 0, "Invalid round ID");
+        require(roundId <= MAX_ROUNDS_PER_ITERATION, "Round ID exceeds max");
         require(jurySC != address(0), "Invalid jurySC address");
         require(!rounds[iterationId][roundId].exists, "Round already exists");
 

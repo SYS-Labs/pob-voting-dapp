@@ -6,7 +6,7 @@ describe("V1Adapter", function () {
   const DEPOSIT = ethers.parseEther("30");
   const ITERATION = 1;
 
-  let pob, jurySC, adapter;
+  let pob, jurySC, adapter, registry;
   let owner, devRel, daoHic1, daoHic2, project1, project2, community1;
 
   beforeEach(async function () {
@@ -30,9 +30,18 @@ describe("V1Adapter", function () {
     // Transfer PoB ownership to JurySC
     await pob.connect(owner).transferOwnership(await jurySC.getAddress());
 
-    // Deploy V1Adapter
+    // Deploy PoBRegistry proxy
+    const PoBRegistry = await ethers.getContractFactory("PoBRegistry");
+    registry = await upgrades.deployProxy(
+      PoBRegistry,
+      [owner.address],
+      { initializer: "initialize" }
+    );
+    await registry.waitForDeployment();
+
+    // Deploy V1Adapter with registry address
     const V1Adapter = await ethers.getContractFactory("V1Adapter");
-    adapter = await V1Adapter.deploy();
+    adapter = await V1Adapter.deploy(await registry.getAddress());
     await adapter.waitForDeployment();
 
     // Setup: register projects, devrel, dao_hic voters
@@ -296,6 +305,84 @@ describe("V1Adapter", function () {
       expect(await adapter.getRoleOf(sc, 0)).to.equal("Community");
       expect(await adapter.claimed(sc, 0)).to.be.false;
       expect(await adapter.ownerOfToken(sc, 0)).to.equal(community1.address);
+    });
+  });
+
+  describe("Voting mode override via registry", function () {
+    it("votingMode() returns override when set in registry", async function () {
+      const sc = await jurySC.getAddress();
+
+      // Default: contract returns 0 (CONSENSUS)
+      expect(await adapter.votingMode(sc)).to.equal(0);
+
+      // Set override to WEIGHTED (1)
+      await registry.connect(owner).setVotingModeOverride(sc, 1);
+      expect(await adapter.votingMode(sc)).to.equal(1);
+
+      // Set override to CONSENSUS (0)
+      await registry.connect(owner).setVotingModeOverride(sc, 0);
+      expect(await adapter.votingMode(sc)).to.equal(0);
+    });
+
+    it("votingMode() returns contract value when no override set", async function () {
+      const sc = await jurySC.getAddress();
+
+      // Set contract to WEIGHTED mode
+      await jurySC.connect(owner).setVotingMode(1);
+
+      // No override set — adapter reads from contract
+      expect(await adapter.votingMode(sc)).to.equal(1);
+    });
+
+    it("getWinner() returns weighted winner when override is WEIGHTED", async function () {
+      // Contract is in CONSENSUS mode but override says WEIGHTED
+      await jurySC.connect(owner).activate();
+      const sc = await jurySC.getAddress();
+
+      await jurySC.connect(devRel).voteDevRel(project1.address);
+
+      // Set override to WEIGHTED
+      await registry.connect(owner).setVotingModeOverride(sc, 1);
+
+      // getWinner() should now route through getWinnerWeighted()
+      const [winner, hasWinner] = await adapter.getWinner(sc);
+      expect(winner).to.equal(project1.address);
+      expect(hasWinner).to.be.true;
+    });
+
+    it("getWinner() uses base getWinner when no override", async function () {
+      await jurySC.connect(owner).activate();
+      const sc = await jurySC.getAddress();
+
+      await jurySC.connect(devRel).voteDevRel(project1.address);
+      await jurySC.connect(daoHic1).voteDaoHic(project1.address);
+      await jurySC.connect(daoHic2).voteDaoHic(project1.address);
+
+      // No override — uses base getWinner (consensus)
+      const [winner, hasWinner] = await adapter.getWinner(sc);
+      expect(winner).to.equal(project1.address);
+      expect(hasWinner).to.be.true;
+    });
+
+    it("adapter works with zero-address registry", async function () {
+      // Deploy adapter with zero-address registry
+      const V1Adapter = await ethers.getContractFactory("V1Adapter");
+      const adapterNoRegistry = await V1Adapter.deploy(ethers.ZeroAddress);
+      await adapterNoRegistry.waitForDeployment();
+
+      const sc = await jurySC.getAddress();
+
+      // Should still work, falling back to contract calls
+      expect(await adapterNoRegistry.votingMode(sc)).to.equal(0);
+
+      await jurySC.connect(owner).activate();
+      await jurySC.connect(devRel).voteDevRel(project1.address);
+      await jurySC.connect(daoHic1).voteDaoHic(project1.address);
+      await jurySC.connect(daoHic2).voteDaoHic(project1.address);
+
+      const [winner, hasWinner] = await adapterNoRegistry.getWinner(sc);
+      expect(winner).to.equal(project1.address);
+      expect(hasWinner).to.be.true;
     });
   });
 });
