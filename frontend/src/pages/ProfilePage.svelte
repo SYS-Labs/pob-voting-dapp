@@ -47,7 +47,7 @@
         </p>
       </div>
       {#if isOwnProfile}
-        <span class="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)]">
+        <span class="pob-pill pob-pill--active">
           Your Profile
         </span>
       {/if}
@@ -56,14 +56,14 @@
 
   <!-- Stats Row -->
   <section class="pob-pane pob-pane--subtle">
-    <div class="flex gap-6">
-      <div class="text-center">
+    <div class="grid grid-cols-2 gap-3">
+      <div class="pob-fieldset text-center">
         <p class="text-2xl font-semibold">{badgeCount}</p>
         <p class="text-xs text-[var(--pob-text-muted)]">
           {badgeCount === 1 ? 'Badge' : 'Badges'}
         </p>
       </div>
-      <div class="text-center">
+      <div class="pob-fieldset text-center">
         <p class="text-2xl font-semibold">{certCount}</p>
         <p class="text-xs text-[var(--pob-text-muted)]">
           {certCount === 1 ? 'Certificate' : 'Certificates'}

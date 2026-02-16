@@ -52,12 +52,11 @@ export async function proposeTeamMember(
   iteration: number,
   member: string,
   signer: JsonRpcSigner
-): Promise<void> {
+): Promise<any> {
   const certNFT = getCertNFTContract(chainId, signer);
   if (!certNFT) throw new Error('CertNFT contract not available');
 
-  const tx = await certNFT.proposeTeamMember(iteration, member);
-  await tx.wait();
+  return await certNFT.proposeTeamMember(iteration, member);
 }
 
 export async function approveTeamMember(
@@ -66,12 +65,11 @@ export async function approveTeamMember(
   project: string,
   member: string,
   signer: JsonRpcSigner
-): Promise<void> {
+): Promise<any> {
   const certNFT = getCertNFTContract(chainId, signer);
   if (!certNFT) throw new Error('CertNFT contract not available');
 
-  const tx = await certNFT.approveTeamMember(iteration, project, member);
-  await tx.wait();
+  return await certNFT.approveTeamMember(iteration, project, member);
 }
 
 export async function rejectTeamMember(
@@ -80,12 +78,11 @@ export async function rejectTeamMember(
   project: string,
   member: string,
   signer: JsonRpcSigner
-): Promise<void> {
+): Promise<any> {
   const certNFT = getCertNFTContract(chainId, signer);
   if (!certNFT) throw new Error('CertNFT contract not available');
 
-  const tx = await certNFT.rejectTeamMember(iteration, project, member);
-  await tx.wait();
+  return await certNFT.rejectTeamMember(iteration, project, member);
 }
 
 export async function setTeamMemberName(
@@ -94,12 +91,11 @@ export async function setTeamMemberName(
   project: string,
   fullName: string,
   signer: JsonRpcSigner
-): Promise<void> {
+): Promise<any> {
   const certNFT = getCertNFTContract(chainId, signer);
   if (!certNFT) throw new Error('CertNFT contract not available');
 
-  const tx = await certNFT.setTeamMemberName(iteration, project, fullName);
-  await tx.wait();
+  return await certNFT.setTeamMemberName(iteration, project, fullName);
 }
 
 export async function checkIsProject(

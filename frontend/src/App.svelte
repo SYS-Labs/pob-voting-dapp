@@ -22,6 +22,7 @@
   import IterationEditPage from '~/pages/IterationEditPage.svelte';
   import BadgesPage from '~/pages/BadgesPage.svelte';
   import CertsPage from '~/pages/CertsPage.svelte';
+  import CertRequestPage from '~/pages/CertRequestPage.svelte';
   import ProfilePage from '~/pages/ProfilePage.svelte';
   import FaqPage from '~/pages/FaqPage.svelte';
   import ForumPage from '~/pages/ForumPage.svelte';
@@ -128,6 +129,7 @@
     if (pathname.match(/^\/iteration\/\d+\/project\//)) return 'project';
     if (pathname.startsWith('/iteration/')) return 'iteration';
     if (pathname === '/badges') return 'badges';
+    if (pathname.match(/^\/certs\/request\/\d+$/)) return 'cert-request';
     if (pathname === '/certs') return 'certs';
     if (pathname.startsWith('/profile/')) return 'profile';
     if (pathname === '/faq') return 'faq';
@@ -292,6 +294,17 @@
     });
   });
 
+  // Load cert state when navigating to the certs or cert-request page
+  $effect(() => {
+    if (currentPage !== 'certs' && currentPage !== 'cert-request') return;
+    if (!walletAddress || !chainId || !publicProvider) return;
+
+    const iters = filteredIterations.map(i => i.iteration);
+    if (iters.length === 0) return;
+
+    loadCertState(chainId, walletAddress, iters, publicProvider);
+  });
+
   // Confirm removal handlers
   async function handleConfirmRemoveVoter() {
     if (!pendingRemovalVoter || !signer || !selectedIteration) return;
@@ -419,7 +432,7 @@
       }}
       showIterationTab={Boolean(selectedIteration)}
       showBadgesTab={walletAddress !== null && !isOwner}
-      showCertsTab={walletAddress !== null && !isOwner}
+      showCertsTab={walletAddress !== null}
       currentIteration={selectedIteration?.iteration ?? null}
     />
 
@@ -639,9 +652,24 @@
           loading={certLoading}
           {chainId}
           {signer}
-          {isOwner}
           {publicProvider}
-          iterations={filteredIterations.map(i => i.iteration)}
+          onRefresh={() => {
+            if (walletAddress && chainId && publicProvider) {
+              const iters = filteredIterations.map(i => i.iteration);
+              loadCertState(chainId, walletAddress, iters, publicProvider);
+            }
+          }}
+        />
+      </Route>
+
+      <!-- Cert request page -->
+      <Route path="/certs/request/:iteration" let:params>
+        <CertRequestPage
+          iteration={Number(params.iteration)}
+          {walletAddress}
+          {chainId}
+          {signer}
+          {publicProvider}
           onRefresh={() => {
             if (walletAddress && chainId && publicProvider) {
               const iters = filteredIterations.map(i => i.iteration);

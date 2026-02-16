@@ -14,7 +14,6 @@ describe("CertNFT", function () {
   let user3;
 
   const ITERATION = 1;
-  const INFO_CID = "QmTestInfoCID123456789";
   const TEMPLATE_CID = "QmTemplateCID123456789";
   const PENDING_PERIOD = 48 * 60 * 60; // 48 hours in seconds
 
@@ -75,7 +74,7 @@ describe("CertNFT", function () {
 
   describe("requestCert", function () {
     it("mints a certificate for eligible user", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
 
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
       expect(tokenId).to.equal(1);
@@ -84,64 +83,51 @@ describe("CertNFT", function () {
       expect(cert.iteration).to.equal(ITERATION);
       expect(cert.account).to.equal(user1.address);
       expect(cert.certType).to.equal("participant");
-      expect(cert.infoCID).to.equal(INFO_CID);
       expect(cert.status).to.equal(0); // Pending
     });
 
     it("emits CertRequested event", async function () {
-      await expect(certNFT.connect(user1).requestCert(ITERATION, INFO_CID))
+      await expect(certNFT.connect(user1).requestCert(ITERATION))
         .to.emit(certNFT, "CertRequested")
         .withArgs(1, ITERATION, user1.address, "participant");
     });
 
     it("increments nextTokenId", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       expect(await certNFT.nextTokenId()).to.equal(2);
     });
 
     it("reverts if already has cert for iteration", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       await expect(
-        certNFT.connect(user1).requestCert(ITERATION, INFO_CID)
+        certNFT.connect(user1).requestCert(ITERATION)
       ).to.be.revertedWithCustomError(certNFT, "AlreadyHasCert");
     });
 
     it("reverts if no middleware set", async function () {
       await expect(
-        certNFT.connect(user1).requestCert(999, INFO_CID) // iteration 999 has no middleware
+        certNFT.connect(user1).requestCert(999) // iteration 999 has no middleware
       ).to.be.revertedWithCustomError(certNFT, "NoMiddleware");
     });
 
     it("reverts if not eligible", async function () {
       // user2 has no badge or role
       await expect(
-        certNFT.connect(user2).requestCert(ITERATION, INFO_CID)
+        certNFT.connect(user2).requestCert(ITERATION)
       ).to.be.revertedWithCustomError(certNFT, "NotEligible");
     });
 
-    it("reverts with empty CID", async function () {
-      await expect(
-        certNFT.connect(user1).requestCert(ITERATION, "")
-      ).to.be.revertedWithCustomError(certNFT, "EmptyCID");
-    });
-
-    it("reverts with CID too long", async function () {
-      const longCID = "a".repeat(101);
-      await expect(
-        certNFT.connect(user1).requestCert(ITERATION, longCID)
-      ).to.be.revertedWithCustomError(certNFT, "CIDTooLong");
-    });
   });
 
   describe("certStatus auto-finalize", function () {
     it("returns Pending before 48 hours", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
       expect(await certNFT.certStatus(tokenId)).to.equal(0); // Pending
     });
 
     it("returns Minted after 48 hours", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
 
       // Advance time by 48 hours + 1 second
@@ -152,7 +138,7 @@ describe("CertNFT", function () {
     });
 
     it("returns Cancelled if cancelled even after 48h", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
 
       await certNFT.connect(owner).cancelCert(tokenId);
@@ -173,7 +159,7 @@ describe("CertNFT", function () {
 
   describe("cancelCert", function () {
     it("owner can cancel a pending cert", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
 
       await expect(certNFT.connect(owner).cancelCert(tokenId))
@@ -184,7 +170,7 @@ describe("CertNFT", function () {
     });
 
     it("non-owner cannot cancel", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
 
       await expect(
@@ -199,7 +185,7 @@ describe("CertNFT", function () {
     });
 
     it("reverts if already cancelled", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
       await certNFT.connect(owner).cancelCert(tokenId);
 
@@ -211,7 +197,7 @@ describe("CertNFT", function () {
 
   describe("soulbound transfer block", function () {
     it("blocks transfers", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
 
       await expect(
@@ -222,7 +208,7 @@ describe("CertNFT", function () {
 
   describe("tokenURI", function () {
     it("returns valid JSON metadata", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);
@@ -230,7 +216,6 @@ describe("CertNFT", function () {
 
       expect(metadata.name).to.equal("PoB Certificate #1");
       expect(metadata.description).to.equal("Proof-of-Builders Participation Certificate");
-      expect(metadata.infoCID).to.equal(INFO_CID);
       expect(metadata.template).to.equal(TEMPLATE_CID);
 
       // Check attributes
@@ -245,7 +230,7 @@ describe("CertNFT", function () {
     });
 
     it("reflects Minted status after 48h", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
 
       await ethers.provider.send("evm_increaseTime", [PENDING_PERIOD + 1]);
@@ -258,7 +243,7 @@ describe("CertNFT", function () {
     });
 
     it("reflects Cancelled status", async function () {
-      await certNFT.connect(user1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
       await certNFT.connect(owner).cancelCert(tokenId);
 

@@ -49,9 +49,9 @@
   );
 </script>
 
-<div class="space-y-3">
+<div class="pob-fieldset space-y-3">
   <!-- Certificate Visual -->
-  <div class="aspect-square w-full rounded-lg bg-gradient-to-br from-[var(--pob-orange)]/20 to-[var(--pob-orange)]/5 flex items-center justify-center border border-[var(--pob-orange)]/30">
+  <div class="aspect-square w-full rounded-lg bg-gradient-to-br from-[var(--pob-primary)]/20 to-[var(--pob-primary)]/5 flex items-center justify-center border border-[var(--pob-primary)]/30">
     <div class="text-center space-y-2">
       <div class="text-4xl">📜</div>
       <div class="text-xs text-[var(--pob-text-muted)]">
@@ -61,8 +61,8 @@
   </div>
 
   <!-- Cert Info -->
-  <div class="flex items-center justify-between mt-3">
-    <span class="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)]">
+  <div class="flex items-center justify-between">
+    <span class="pob-pill pob-pill--active">
       {certTypeLabel}
     </span>
     <span class="text-sm text-[var(--pob-text-muted)]">
@@ -84,11 +84,11 @@
 
   <!-- Team Members -->
   {#if teamMemberNames.length > 0}
-    <div class="pt-2 border-t border-white/10">
+    <div class="pt-2 border-t border-[var(--pob-border)]">
       <p class="text-xs text-[var(--pob-text-muted)] mb-1">Team</p>
       <div class="flex flex-wrap gap-1">
-        {#each teamMemberNames as name}
-          <span class="text-xs text-[var(--pob-text-secondary)] bg-white/5 rounded px-1.5 py-0.5">
+        {#each teamMemberNames as name (name)}
+          <span class="text-xs text-[var(--pob-text-muted)] bg-white/5 rounded px-1.5 py-0.5">
             {name}
           </span>
         {/each}

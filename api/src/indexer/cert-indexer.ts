@@ -16,19 +16,23 @@ import { createMetadataDatabase } from '../db/metadata.js';
 import { createRetryTracker } from '../db/retry-tracker.js';
 import { createIterationsDatabase } from '../db/iterations.js';
 import { createTeamMembersDatabase, type TeamMemberStatus } from '../db/teamMembers.js';
+import { createEligibilityDatabase } from '../db/eligibility.js';
 import { IPFSService } from '../services/ipfs.js';
 import { NETWORKS } from '../constants/networks.js';
 
 // Minimal ABIs for contract calls
 const CERT_NFT_ABI = [
   'function nextTokenId() view returns (uint256)',
-  'function certs(uint256) view returns (uint256 iteration, address account, string certType, string infoCID, uint8 status, uint256 requestTime)',
+  'function certs(uint256) view returns (uint256 iteration, address account, string certType, uint8 status, uint256 requestTime)',
   'function certStatus(uint256) view returns (uint8)',
   'function middleware(uint256) view returns (address)',
+  'function hasNamedTeamMembers(uint256 iteration, address project) view returns (bool)',
 ];
 
 const CERT_MIDDLEWARE_ABI = [
   'function templateCID() view returns (string)',
+  'function validate(address) view returns (bool, string)',
+  'function isProjectInAnyRound(address) view returns (bool)',
 ];
 
 const CERT_NFT_TEAM_ABI = [
@@ -70,6 +74,7 @@ class CertIndexer {
   private metadataDb: ReturnType<typeof createMetadataDatabase>;
   private iterationsDb: ReturnType<typeof createIterationsDatabase>;
   private teamMembersDb: ReturnType<typeof createTeamMembersDatabase>;
+  private eligibilityDb: ReturnType<typeof createEligibilityDatabase>;
   private retryTracker: ReturnType<typeof createRetryTracker>;
   private ipfsService: IPFSService;
   private providers: Map<number, JsonRpcProvider> = new Map();
@@ -83,6 +88,7 @@ class CertIndexer {
     this.metadataDb = createMetadataDatabase(this.db);
     this.iterationsDb = createIterationsDatabase(this.db);
     this.teamMembersDb = createTeamMembersDatabase(this.db);
+    this.eligibilityDb = createEligibilityDatabase(this.db);
     this.retryTracker = createRetryTracker(this.db);
     this.ipfsService = new IPFSService();
 
@@ -253,7 +259,6 @@ class CertIndexer {
     const iteration = Number(certData.iteration);
     const account = certData.account;
     const certType = certData.certType;
-    const infoCID = certData.infoCID;
     const status = STATUS_MAP[Number(statusRaw)] || 'pending';
     const requestTime = Number(certData.requestTime);
 
@@ -261,10 +266,6 @@ class CertIndexer {
     const middlewareAddress = await certNFT.middleware(iteration).catch(() => ethers.ZeroAddress);
     const templateCID = await this.getTemplateCID(middlewareAddress, provider);
 
-    // Cache IPFS content for infoCID and templateCID
-    if (infoCID) {
-      await this.fetchAndCacheMetadata(infoCID);
-    }
     if (templateCID) {
       await this.fetchAndCacheMetadata(templateCID);
     }
@@ -276,7 +277,6 @@ class CertIndexer {
       iteration,
       account,
       cert_type: certType,
-      info_cid: infoCID,
       status,
       request_time: requestTime,
       middleware_address: middlewareAddress !== ethers.ZeroAddress ? middlewareAddress : null,
@@ -352,6 +352,97 @@ class CertIndexer {
 
     if (totalIndexed > 0) {
       logger.debug('Team member indexing complete for chain', { chainId, totalIndexed });
+    }
+  }
+
+  /**
+   * Index eligibility for candidate accounts from iteration snapshots
+   */
+  private async indexChainEligibility(chainId: number): Promise<void> {
+    const config = NETWORKS[chainId];
+    if (!config.certNFTAddress) return;
+
+    const provider = this.providers.get(chainId);
+    if (!provider) return;
+
+    const certNFT = new Contract(config.certNFTAddress, CERT_NFT_ABI, provider);
+
+    // Collect candidate accounts from iteration snapshots where voting ended
+    const snapshots = this.iterationsDb.getSnapshotsByChain(chainId);
+    let totalChecked = 0;
+
+    for (const snapshot of snapshots) {
+      // Only check iterations where voting has ended
+      if (snapshot.jury_state !== 'ended' && snapshot.jury_state !== 'locked') continue;
+
+      const iteration = snapshot.iteration_id;
+
+      // Get middleware address
+      let middlewareAddress: string;
+      try {
+        middlewareAddress = await certNFT.middleware(iteration);
+      } catch {
+        continue;
+      }
+      if (!middlewareAddress || middlewareAddress === ethers.ZeroAddress) continue;
+
+      const middleware = new Contract(middlewareAddress, CERT_MIDDLEWARE_ABI, provider);
+
+      // Collect candidate accounts
+      const candidates = new Set<string>();
+      if (snapshot.devrel_account) {
+        candidates.add(snapshot.devrel_account.toLowerCase());
+      }
+      if (snapshot.daohic_voters) {
+        try {
+          const voters: string[] = JSON.parse(snapshot.daohic_voters);
+          for (const v of voters) candidates.add(v.toLowerCase());
+        } catch { /* ignore */ }
+      }
+      if (snapshot.projects) {
+        try {
+          const projects: { address: string }[] = JSON.parse(snapshot.projects);
+          for (const p of projects) candidates.add(p.address.toLowerCase());
+        } catch { /* ignore */ }
+      }
+
+      for (const account of candidates) {
+        try {
+          const [eligible, certType] = await middleware.validate(account);
+          let isProjectFlag = false;
+          let hasNamedFlag = false;
+
+          if (eligible) {
+            try {
+              isProjectFlag = await middleware.isProjectInAnyRound(account);
+            } catch { /* ignore */ }
+
+            if (isProjectFlag) {
+              try {
+                hasNamedFlag = await certNFT.hasNamedTeamMembers(iteration, account);
+              } catch { /* ignore */ }
+            }
+          }
+
+          this.eligibilityDb.upsertEligibility({
+            chain_id: chainId,
+            iteration,
+            account,
+            eligible: eligible ? 1 : 0,
+            cert_type: certType || '',
+            is_project: isProjectFlag ? 1 : 0,
+            has_named_team_members: hasNamedFlag ? 1 : 0,
+            last_updated_at: Date.now(),
+          });
+          totalChecked++;
+        } catch (error) {
+          logger.warn('Failed to check eligibility', { chainId, iteration, account, error });
+        }
+      }
+    }
+
+    if (totalChecked > 0) {
+      logger.debug('Eligibility indexing complete for chain', { chainId, totalChecked });
     }
   }
 
@@ -459,6 +550,7 @@ class CertIndexer {
     for (const chainId of chainIds) {
       await this.indexChainCerts(chainId);
       await this.indexChainTeamMembers(chainId);
+      await this.indexChainEligibility(chainId);
       await this.indexChainProfiles(chainId);
     }
 

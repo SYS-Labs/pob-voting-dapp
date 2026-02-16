@@ -3,6 +3,7 @@
   import type { TeamMember } from '~/interfaces';
   import { approveTeamMember, rejectTeamMember } from '~/utils/teamMembers';
   import { formatAddress } from '~/utils';
+  import { runTransaction, pendingAction } from '~/stores/transactions';
 
   interface PendingMember {
     iteration: number;
@@ -24,62 +25,26 @@
     onAction,
   }: Props = $props();
 
-  let processingKey = $state<string | null>(null);
-  let actionErrors = $state<Record<string, string>>({});
-
   function memberKey(item: PendingMember): string {
     return `${item.iteration}-${item.project}-${item.member.memberAddress}`;
   }
 
   async function handleApprove(item: PendingMember) {
     if (!signer) return;
-
-    const key = memberKey(item);
-    processingKey = key;
-    actionErrors = { ...actionErrors, [key]: '' };
-
-    try {
-      await approveTeamMember(chainId, item.iteration, item.project, item.member.memberAddress, signer);
-      // Clear any previous error for this key
-      const { [key]: _, ...rest } = actionErrors;
-      actionErrors = rest;
-      onAction();
-    } catch (err: any) {
-      if (err?.code === 'ACTION_REJECTED' || err?.code === 4001) {
-        actionErrors = { ...actionErrors, [key]: 'Transaction was rejected.' };
-      } else if (err?.reason) {
-        actionErrors = { ...actionErrors, [key]: err.reason };
-      } else {
-        actionErrors = { ...actionErrors, [key]: 'Failed to approve team member.' };
-      }
-    } finally {
-      processingKey = null;
-    }
+    await runTransaction(
+      'Approve team member',
+      () => approveTeamMember(chainId, item.iteration, item.project, item.member.memberAddress, signer!),
+      async () => { onAction(); }
+    );
   }
 
   async function handleReject(item: PendingMember) {
     if (!signer) return;
-
-    const key = memberKey(item);
-    processingKey = key;
-    actionErrors = { ...actionErrors, [key]: '' };
-
-    try {
-      await rejectTeamMember(chainId, item.iteration, item.project, item.member.memberAddress, signer);
-      const { [key]: _, ...rest } = actionErrors;
-      actionErrors = rest;
-      onAction();
-    } catch (err: any) {
-      if (err?.code === 'ACTION_REJECTED' || err?.code === 4001) {
-        actionErrors = { ...actionErrors, [key]: 'Transaction was rejected.' };
-      } else if (err?.reason) {
-        actionErrors = { ...actionErrors, [key]: err.reason };
-      } else {
-        actionErrors = { ...actionErrors, [key]: 'Failed to reject team member.' };
-      }
-    } finally {
-      processingKey = null;
-    }
+    await runTransaction(
+      'Reject team member',
+      () => rejectTeamMember(chainId, item.iteration, item.project, item.member.memberAddress, signer!),
+      async () => { onAction(); }
+    );
   }
 </script>
 
@@ -90,22 +55,19 @@
   </div>
 
   {#if pendingMembers.length === 0}
-    <p class="text-sm text-[var(--pob-text-muted)]" style="padding: 0.75rem 1.25rem;">
+    <p class="text-sm text-[var(--pob-text-muted)]">
       No pending team member proposals.
     </p>
   {:else}
-    <ul class="space-y-2" style="padding: 0.75rem 1.25rem;">
+    <ul class="space-y-2">
       {#each pendingMembers as item (memberKey(item))}
-        {@const key = memberKey(item)}
-        {@const isProcessing = processingKey === key}
-        {@const errorMsg = actionErrors[key] || ''}
-        <li class="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+        <li class="rounded-lg border border-[var(--pob-border)] bg-white/5 px-3 py-2">
           <div class="flex items-center justify-between gap-2 flex-wrap">
             <div class="flex flex-col gap-0.5 min-w-0">
               <span class="text-xs text-[var(--pob-text-muted)]">
                 Iteration {item.iteration}
               </span>
-              <span class="text-sm text-[var(--pob-text-secondary)] truncate">
+              <span class="text-sm text-[var(--pob-text)] truncate">
                 Project: {formatAddress(item.project)}
               </span>
               <span class="text-sm text-white truncate">
@@ -121,24 +83,21 @@
               <button
                 type="button"
                 class="pob-button pob-button--small"
-                disabled={processingKey !== null || !signer}
+                disabled={$pendingAction !== null || !signer}
                 onclick={() => handleApprove(item)}
               >
-                {isProcessing ? 'Processing...' : 'Approve'}
+                Approve
               </button>
               <button
                 type="button"
                 class="pob-button pob-button--outline pob-button--small"
-                disabled={processingKey !== null || !signer}
+                disabled={$pendingAction !== null || !signer}
                 onclick={() => handleReject(item)}
               >
-                {isProcessing ? 'Processing...' : 'Reject'}
+                Reject
               </button>
             </div>
           </div>
-          {#if errorMsg}
-            <p class="text-sm text-red-400 mt-1">{errorMsg}</p>
-          {/if}
         </li>
       {/each}
     </ul>

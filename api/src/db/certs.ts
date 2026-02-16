@@ -10,7 +10,6 @@ export interface CertSnapshot {
   iteration: number;
   account: string;
   cert_type: string;
-  info_cid: string;
   status: CertStatus;
   request_time: number;
   middleware_address: string | null;
@@ -25,7 +24,6 @@ export interface CertSnapshotAPI {
   iteration: number;
   account: string;
   certType: string;
-  infoCID: string;
   status: CertStatus;
   requestTime: number;
   middlewareAddress: string | null;
@@ -41,7 +39,6 @@ function toAPIFormat(row: CertSnapshot): CertSnapshotAPI {
     iteration: row.iteration,
     account: row.account,
     certType: row.cert_type,
-    infoCID: row.info_cid,
     status: row.status,
     requestTime: row.request_time,
     middlewareAddress: row.middleware_address,
@@ -55,16 +52,15 @@ export function createCertsDatabase(db: Database.Database) {
     const stmt = db.prepare(`
       INSERT INTO cert_snapshots (
         chain_id, cert_nft_address, token_id, iteration, account,
-        cert_type, info_cid, status, request_time,
+        cert_type, status, request_time,
         middleware_address, template_cid, last_updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(chain_id, token_id) DO UPDATE SET
         cert_nft_address = excluded.cert_nft_address,
         iteration = excluded.iteration,
         account = excluded.account,
         cert_type = excluded.cert_type,
-        info_cid = excluded.info_cid,
         status = excluded.status,
         request_time = excluded.request_time,
         middleware_address = excluded.middleware_address,
@@ -79,7 +75,6 @@ export function createCertsDatabase(db: Database.Database) {
       cert.iteration,
       cert.account,
       cert.cert_type,
-      cert.info_cid,
       cert.status,
       cert.request_time,
       cert.middleware_address,

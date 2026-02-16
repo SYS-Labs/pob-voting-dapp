@@ -231,7 +231,6 @@ CREATE TABLE IF NOT EXISTS cert_snapshots (
   iteration INTEGER NOT NULL,
   account TEXT NOT NULL,
   cert_type TEXT NOT NULL,
-  info_cid TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'pending',
   request_time INTEGER NOT NULL DEFAULT 0,
   middleware_address TEXT,
@@ -273,3 +272,17 @@ CREATE TABLE IF NOT EXISTS team_member_snapshots (
 CREATE INDEX IF NOT EXISTS idx_team_member_project ON team_member_snapshots(chain_id, iteration, project_address);
 CREATE INDEX IF NOT EXISTS idx_team_member_member ON team_member_snapshots(chain_id, member_address);
 CREATE INDEX IF NOT EXISTS idx_team_member_status ON team_member_snapshots(chain_id, status);
+
+-- Pre-computed cert eligibility
+CREATE TABLE IF NOT EXISTS cert_eligibility (
+  chain_id INTEGER NOT NULL,
+  iteration INTEGER NOT NULL,
+  account TEXT NOT NULL,
+  eligible INTEGER NOT NULL DEFAULT 0,
+  cert_type TEXT NOT NULL DEFAULT '',
+  is_project INTEGER NOT NULL DEFAULT 0,
+  has_named_team_members INTEGER NOT NULL DEFAULT 0,
+  last_updated_at INTEGER NOT NULL,
+  UNIQUE(chain_id, iteration, account)
+);
+CREATE INDEX IF NOT EXISTS idx_cert_elig_account ON cert_eligibility(chain_id, account);

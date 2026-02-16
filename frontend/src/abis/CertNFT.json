@@ -22,11 +22,6 @@
   },
   {
     "inputs": [],
-    "name": "CIDTooLong",
-    "type": "error"
-  },
-  {
-    "inputs": [],
     "name": "CertAlreadyRequested",
     "type": "error"
   },
@@ -151,11 +146,6 @@
   },
   {
     "inputs": [],
-    "name": "EmptyCID",
-    "type": "error"
-  },
-  {
-    "inputs": [],
     "name": "EmptyName",
     "type": "error"
   },
@@ -192,6 +182,11 @@
   {
     "inputs": [],
     "name": "NameAlreadySet",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NameContainsInvalidBytes",
     "type": "error"
   },
   {
@@ -573,19 +568,6 @@
   },
   {
     "inputs": [],
-    "name": "MAX_CID_LENGTH",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
     "name": "MAX_NAME_LENGTH",
     "outputs": [
       {
@@ -799,11 +781,6 @@
       {
         "internalType": "string",
         "name": "certType",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "infoCID",
         "type": "string"
       },
       {
@@ -1172,11 +1149,6 @@
         "internalType": "uint256",
         "name": "iteration",
         "type": "uint256"
-      },
-      {
-        "internalType": "string",
-        "name": "infoCID",
-        "type": "string"
       }
     ],
     "name": "requestCert",
@@ -1426,6 +1398,19 @@
     "name": "upgradeToAndCall",
     "outputs": [],
     "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "version",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "pure",
     "type": "function"
   }
 ]

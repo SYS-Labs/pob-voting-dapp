@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import type { Provider, JsonRpcSigner } from 'ethers';
+import type { Provider } from 'ethers';
 import type { Cert, CertEligibility } from '~/interfaces';
 import { getUserCerts, checkCertEligibility, CERT_NFT_ADDRESSES } from '~/utils/certNFT';
 
@@ -24,6 +24,36 @@ export const certsLoading = derived(certStateStore, ($s) => $s.loading);
 export const certsError = derived(certStateStore, ($s) => $s.error);
 export const certEligibility = derived(certStateStore, ($s) => $s.eligibility);
 
+function getApiBaseUrl(): string {
+  const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
+  return envBaseUrl ? `${envBaseUrl}/api` : '/api';
+}
+
+async function fetchEligibilityFromAPI(
+  chainId: number,
+  account: string
+): Promise<Record<number, CertEligibility>> {
+  const baseUrl = getApiBaseUrl();
+  const resp = await fetch(`${baseUrl}/certs/${chainId}/eligible/${account}`);
+  if (!resp.ok) return {};
+
+  const data = await resp.json();
+  const eligibility: Record<number, CertEligibility> = {};
+
+  if (Array.isArray(data.eligibility)) {
+    for (const row of data.eligibility) {
+      eligibility[row.iteration] = {
+        eligible: row.eligible,
+        certType: row.certType,
+        isProject: row.isProject,
+        hasNamedTeamMembers: row.hasNamedTeamMembers,
+      };
+    }
+  }
+
+  return eligibility;
+}
+
 export async function loadCertState(
   chainId: number,
   account: string,
@@ -37,14 +67,19 @@ export async function loadCertState(
   try {
     const certs = await getUserCerts(chainId, account, iterations, provider);
 
-    // Check eligibility for iterations where user has no cert
-    const eligibility: Record<number, CertEligibility> = {};
-    for (const iteration of iterations) {
-      const hasCert = certs.some((c) => c.iteration === iteration);
-      if (!hasCert) {
-        const elig = await checkCertEligibility(chainId, iteration, account, provider);
-        if (elig) {
-          eligibility[iteration] = elig;
+    // Try API-based eligibility first, fall back to per-iteration RPC
+    let eligibility: Record<number, CertEligibility> = {};
+    try {
+      eligibility = await fetchEligibilityFromAPI(chainId, account);
+    } catch {
+      // Fallback: per-iteration RPC calls
+      for (const iteration of iterations) {
+        const hasCert = certs.some((c) => c.iteration === iteration);
+        if (!hasCert) {
+          const elig = await checkCertEligibility(chainId, iteration, account, provider);
+          if (elig) {
+            eligibility[iteration] = elig;
+          }
         }
       }
     }

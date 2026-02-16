@@ -1,6 +1,7 @@
 <script lang="ts">
   import { type JsonRpcSigner } from 'ethers';
   import { setTeamMemberName } from '~/utils/teamMembers';
+  import { runTransaction, pendingAction } from '~/stores/transactions';
 
   interface Props {
     iteration: number;
@@ -21,73 +22,46 @@
   }: Props = $props();
 
   let fullName = $state('');
-  let loading = $state(false);
-  let error = $state('');
 
   let canSubmit: boolean = $derived(
-    fullName.trim().length > 0 && signer !== null && !loading
+    fullName.trim().length > 0 && signer !== null && $pendingAction === null
   );
 
   async function handleSubmit() {
-    if (!signer) {
-      error = 'Please connect your wallet first.';
-      return;
-    }
+    if (!signer) return;
 
     const name = fullName.trim();
-    if (!name) {
-      error = 'Please enter your full name.';
-      return;
-    }
+    if (!name) return;
 
-    if (name.length > 64) {
-      error = 'Name must be 64 characters or less.';
-      return;
-    }
-
-    error = '';
-    loading = true;
-
-    try {
-      await setTeamMemberName(chainId, iteration, project, name, signer);
-      fullName = '';
-      onNameSet();
-    } catch (err: any) {
-      if (err?.code === 'ACTION_REJECTED' || err?.code === 4001) {
-        error = 'Transaction was rejected.';
-      } else if (err?.reason) {
-        error = err.reason;
-      } else {
-        error = 'Transaction failed. Please try again.';
-      }
-    } finally {
-      loading = false;
-    }
+    await runTransaction(
+      'Set certificate name',
+      () => setTeamMemberName(chainId, iteration, project, name, signer!),
+      async () => { onNameSet(); }
+    );
+    fullName = '';
   }
 </script>
 
-<div class="pob-pane">
-  <div class="pob-pane__heading">
-    <h3 class="pob-pane__title">Certificate Name</h3>
-  </div>
+<div class="pob-fieldset">
+  <h3 class="text-sm font-semibold text-[var(--pob-text)] mb-3">Certificate Name</h3>
 
   {#if currentName}
-    <div class="space-y-2">
+    <div class="space-y-1">
       <p class="text-sm text-[var(--pob-text-muted)]">
         Your name for the certificate:
       </p>
-      <p class="text-base text-[var(--pob-text-secondary)] font-medium">
+      <p class="text-base text-[var(--pob-text)] font-medium">
         {currentName}
       </p>
     </div>
   {:else}
-    <div class="space-y-3">
+    <div class="space-y-4">
       <p class="text-sm text-[var(--pob-text-muted)]">
         Enter your full name as it will appear on the certificate.
       </p>
 
-      <div class="space-y-2">
-        <label for="member-name" class="text-sm text-[var(--pob-text-secondary)]">
+      <div class="space-y-1">
+        <label for="member-name" class="text-xs font-medium text-[var(--pob-text)]">
           Full Name
         </label>
         <input
@@ -97,25 +71,21 @@
           placeholder="Your full name"
           maxlength={64}
           bind:value={fullName}
-          disabled={loading}
+          disabled={$pendingAction !== null}
         />
       </div>
 
       <button
-        class="pob-button w-full justify-center"
+        class="pob-button pob-button--full"
         disabled={!canSubmit}
         onclick={handleSubmit}
       >
-        {#if loading}
+        {#if $pendingAction === 'Set certificate name'}
           Setting Name...
         {:else}
           Set Name
         {/if}
       </button>
-
-      {#if error}
-        <p class="text-sm text-red-400">{error}</p>
-      {/if}
     </div>
   {/if}
 </div>

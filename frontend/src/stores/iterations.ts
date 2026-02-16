@@ -1,6 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import type { Iteration, IterationStatus } from '~/interfaces';
 import { iterationsAPI, type IterationSnapshot } from '~/utils/iterations-api';
+import { mergeCertNFTAddresses } from '~/utils/certNFT';
 
 // ============================================================================
 // Types
@@ -128,9 +129,9 @@ export async function refreshIterations(): Promise<void> {
     : null;
 
   try {
-    const snapshots = await iterationsAPI.getAllIterations();
+    const result = await iterationsAPI.getAllIterations();
 
-    if (!snapshots || snapshots.length === 0) {
+    if (!result.iterations || result.iterations.length === 0) {
       iterationsStore.update(s => ({
         ...s, iterations: [], loading: false,
         error: 'No iterations available.',
@@ -138,6 +139,12 @@ export async function refreshIterations(): Promise<void> {
       return;
     }
 
+    // Register CertNFT addresses from API so cert utils can find them
+    if (result.certNFTAddresses) {
+      mergeCertNFTAddresses(result.certNFTAddresses);
+    }
+
+    const snapshots = result.iterations;
     const filteredSnapshots = enforceChainId
       ? snapshots.filter(s => s.chainId === enforceChainId)
       : snapshots;

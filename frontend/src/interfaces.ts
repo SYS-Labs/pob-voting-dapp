@@ -1,6 +1,6 @@
 export type IterationStatus = 'upcoming' | 'active' | 'ended';
 
-export type PageType = 'iterations' | 'iteration' | 'project' | 'badges' | 'certs' | 'profile' | 'faq' | 'forum';
+export type PageType = 'iterations' | 'iteration' | 'project' | 'badges' | 'certs' | 'cert-request' | 'profile' | 'faq' | 'forum';
 
 export interface PreviousRound {
   round: number;
@@ -126,7 +126,6 @@ export interface Cert {
   iteration: number;
   account: string;
   certType: CertType;
-  infoCID: string;
   status: CertStatus;
   requestTime: number; // Unix timestamp
 }
@@ -134,6 +133,8 @@ export interface Cert {
 export interface CertEligibility {
   eligible: boolean;
   certType: CertType;
+  isProject?: boolean;
+  hasNamedTeamMembers?: boolean;
 }
 
 // ========== Team Member Types ==========

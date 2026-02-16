@@ -19,9 +19,11 @@ import { createIterationsDatabase } from '../db/iterations.js';
 import { createCertsDatabase } from '../db/certs.js';
 import { createProfilesDatabase } from '../db/profiles.js';
 import { createTeamMembersDatabase } from '../db/teamMembers.js';
+import { createEligibilityDatabase } from '../db/eligibility.js';
 import { IPFSService } from '../services/ipfs.js';
 import { MetadataService } from '../services/metadata.js';
 import { logger } from '../utils/logger.js';
+import { NETWORKS } from '../constants/networks.js';
 import { PostRecord } from '../types/post.js';
 
 const PORT = parseInt(process.env.API_PORT || process.env.DASHBOARD_PORT || '4000', 10);
@@ -35,6 +37,7 @@ const iterationsDb = createIterationsDatabase(db);
 const certsDb = createCertsDatabase(db);
 const profilesDb = createProfilesDatabase(db);
 const teamMembersDb = createTeamMembersDatabase(db);
+const eligibilityDb = createEligibilityDatabase(db);
 
 // Initialize IPFS and metadata services
 const ipfsService = new IPFSService();
@@ -69,7 +72,16 @@ const routes: Record<string, Handler> = {
 
   'GET:/api/iterations': async (_req, res) => {
     const iterations = iterationsDb.getAllSnapshotsAPI();
-    sendJson(res, 200, { iterations });
+
+    // Include per-chain CertNFT addresses so the frontend can discover them
+    const certNFTAddresses: Record<number, string> = {};
+    for (const [chainId, cfg] of Object.entries(NETWORKS)) {
+      if (cfg.certNFTAddress) {
+        certNFTAddresses[Number(chainId)] = cfg.certNFTAddress;
+      }
+    }
+
+    sendJson(res, 200, { iterations, certNFTAddresses });
   }
 };
 
@@ -140,6 +152,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname.match(/^\/api\/team-members\/\d+\/pending$/)) {
     await handleGetPendingTeamMembers(req, res, url);
+    return;
+  }
+
+  // Eligibility endpoint
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/certs\/\d+\/eligible\/0x[a-fA-F0-9]{40}$/)) {
+    await handleGetEligibility(req, res, url);
     return;
   }
 
@@ -693,20 +711,7 @@ async function handleGetCertsForAccount(
   }
 
   const rows = certsDb.getCertsForAccount(chainId, address);
-  const certs = rows.map((row) => {
-    const api = certsDb.toAPI(row);
-
-    // Inline IPFS metadata from cache
-    let infoMetadata: Record<string, unknown> | null = null;
-    if (row.info_cid) {
-      const cached = metadataDb.getCachedIPFSContent(row.info_cid);
-      if (cached) {
-        try { infoMetadata = JSON.parse(cached.content); } catch { /* ignore */ }
-      }
-    }
-
-    return { ...api, infoMetadata };
-  });
+  const certs = rows.map((row) => certsDb.toAPI(row));
 
   sendJson(res, 200, { certs });
 }
@@ -734,19 +739,7 @@ async function handleGetCertsForIteration(
   const rows = certsDb.getCertsForIteration(chainId, iterationId);
   // Only return minted certs for public iteration view
   const mintedRows = rows.filter((r) => r.status === 'minted');
-  const certs = mintedRows.map((row) => {
-    const api = certsDb.toAPI(row);
-
-    let infoMetadata: Record<string, unknown> | null = null;
-    if (row.info_cid) {
-      const cached = metadataDb.getCachedIPFSContent(row.info_cid);
-      if (cached) {
-        try { infoMetadata = JSON.parse(cached.content); } catch { /* ignore */ }
-      }
-    }
-
-    return { ...api, infoMetadata };
-  });
+  const certs = mintedRows.map((row) => certsDb.toAPI(row));
 
   sendJson(res, 200, { certs });
 }
@@ -839,6 +832,44 @@ async function handleGetPendingTeamMembers(
   const members = rows.map((row) => teamMembersDb.toAPI(row));
 
   sendJson(res, 200, { members });
+}
+
+async function handleGetEligibility(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // Parse URL: /api/certs/:chainId/eligible/:address
+  const parts = url.pathname.replace('/api/certs/', '').split('/');
+  if (parts.length !== 3 || parts[1] !== 'eligible') {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/certs/:chainId/eligible/:address' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+  const address = parts[2];
+
+  if (isNaN(chainId)) {
+    sendJson(res, 400, { error: 'Invalid chainId format' });
+    return;
+  }
+
+  if (!ethers.isAddress(address)) {
+    sendJson(res, 400, { error: 'Invalid address format' });
+    return;
+  }
+
+  const rows = eligibilityDb.getEligibleForAccount(chainId, address);
+
+  // Exclude iterations where account already has a cert
+  const existingCerts = certsDb.getCertsForAccount(chainId, address);
+  const certIterations = new Set(existingCerts.map((c) => c.iteration));
+
+  const eligibility = rows
+    .filter((row) => !certIterations.has(row.iteration))
+    .map((row) => eligibilityDb.toAPI(row));
+
+  sendJson(res, 200, { eligibility });
 }
 
 async function handleGetProfile(

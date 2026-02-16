@@ -133,6 +133,27 @@ async function main() {
   fs.writeFileSync(deploymentFilePath, JSON.stringify(deployment, null, 2));
   console.log(`\nDeployment file updated: ${deploymentFilePath}`);
 
+  // 7b. Update iterations.local.json with CertNFT address
+  const iterationsLocalPath = path.join(
+    process.cwd(),
+    "../frontend/public/iterations.local.json"
+  );
+  if (fs.existsSync(iterationsLocalPath)) {
+    const iterationsLocal = JSON.parse(
+      fs.readFileSync(iterationsLocalPath, "utf8")
+    );
+    if (Array.isArray(iterationsLocal)) {
+      for (const entry of iterationsLocal) {
+        entry.certNFT = certNFTAddress;
+      }
+      fs.writeFileSync(
+        iterationsLocalPath,
+        JSON.stringify(iterationsLocal, null, 2)
+      );
+      console.log(`Updated: ${iterationsLocalPath} (certNFT: ${certNFTAddress})`);
+    }
+  }
+
   // 8. Summary
   console.log("\n========== Cert Deployment Summary ==========");
   console.log(`Iteration:          ${iteration}`);

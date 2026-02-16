@@ -13,7 +13,6 @@ describe("CertNFT - Team Members", function () {
   let nonProject;
 
   const ITERATION = 1;
-  const INFO_CID = "QmTestInfoCID123456789";
   const TEMPLATE_CID = "QmTemplateCID123456789";
 
   beforeEach(async function () {
@@ -309,7 +308,7 @@ describe("CertNFT - Team Members", function () {
   describe("requestCert integration", function () {
     it("reverts with NoNamedTeamMembers for project with no members", async function () {
       await expect(
-        certNFT.connect(project1).requestCert(ITERATION, INFO_CID)
+        certNFT.connect(project1).requestCert(ITERATION)
       ).to.be.revertedWithCustomError(certNFT, "NoNamedTeamMembers");
     });
 
@@ -319,7 +318,7 @@ describe("CertNFT - Team Members", function () {
 
       // Member approved but hasn't set name yet
       await expect(
-        certNFT.connect(project1).requestCert(ITERATION, INFO_CID)
+        certNFT.connect(project1).requestCert(ITERATION)
       ).to.be.revertedWithCustomError(certNFT, "NoNamedTeamMembers");
     });
 
@@ -329,7 +328,7 @@ describe("CertNFT - Team Members", function () {
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice Builder");
 
       await expect(
-        certNFT.connect(project1).requestCert(ITERATION, INFO_CID)
+        certNFT.connect(project1).requestCert(ITERATION)
       )
         .to.emit(certNFT, "CertRequested")
         .withArgs(1, ITERATION, project1.address, "participant");
@@ -338,7 +337,7 @@ describe("CertNFT - Team Members", function () {
     it("non-project callers (DevRel) are NOT affected by team member guard", async function () {
       // devRel is not a project, should request cert without team members
       await expect(
-        certNFT.connect(devRel).requestCert(ITERATION, INFO_CID)
+        certNFT.connect(devRel).requestCert(ITERATION)
       )
         .to.emit(certNFT, "CertRequested")
         .withArgs(1, ITERATION, devRel.address, "participant");
@@ -351,7 +350,7 @@ describe("CertNFT - Team Members", function () {
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
       await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice Builder");
-      await certNFT.connect(project1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(project1).requestCert(ITERATION);
     });
 
     it("proposeTeamMember reverts with CertAlreadyRequested", async function () {
@@ -392,7 +391,7 @@ describe("CertNFT - Team Members", function () {
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
 
       // Request cert - member2 is still Proposed
-      await certNFT.connect(project1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(project1).requestCert(ITERATION);
 
       // Try to approve member2 after cert requested
       await expect(
@@ -411,7 +410,7 @@ describe("CertNFT - Team Members", function () {
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
 
       // Request cert
-      await certNFT.connect(project1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(project1).requestCert(ITERATION);
 
       // Try to set name for member2 after cert requested
       await expect(
@@ -490,7 +489,7 @@ describe("CertNFT - Team Members", function () {
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
       await certNFT.connect(member2).setTeamMemberName(ITERATION, project1.address, "Bob");
 
-      await certNFT.connect(project1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(project1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(project1.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);
@@ -511,7 +510,7 @@ describe("CertNFT - Team Members", function () {
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
       await certNFT.connect(member3).setTeamMemberName(ITERATION, project1.address, "Charlie");
 
-      await certNFT.connect(project1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(project1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(project1.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);
@@ -530,7 +529,7 @@ describe("CertNFT - Team Members", function () {
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
       // member2 approved but no name set
 
-      await certNFT.connect(project1).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(project1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(project1.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);
@@ -540,7 +539,7 @@ describe("CertNFT - Team Members", function () {
     });
 
     it("no teamMembers field for non-project certs", async function () {
-      await certNFT.connect(devRel).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(devRel).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(devRel.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);
@@ -551,7 +550,7 @@ describe("CertNFT - Team Members", function () {
 
     it("no teamMembers field when all proposed but none named", async function () {
       // For this scenario, use devRel cert (no team members at all)
-      await certNFT.connect(devRel).requestCert(ITERATION, INFO_CID);
+      await certNFT.connect(devRel).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(devRel.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);

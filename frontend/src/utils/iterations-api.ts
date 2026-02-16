@@ -71,7 +71,7 @@ export class IterationsAPI {
   /**
    * Fetch all iteration snapshots
    */
-  async getAllIterations(): Promise<IterationSnapshot[]> {
+  async getAllIterations(): Promise<{ iterations: IterationSnapshot[]; certNFTAddresses: Record<number, string> }> {
     const response = await fetch(`${this.baseUrl}/iterations`);
 
     if (!response.ok) {
@@ -79,7 +79,10 @@ export class IterationsAPI {
     }
 
     const data = await response.json();
-    return data.iterations || [];
+    return {
+      iterations: data.iterations || [],
+      certNFTAddresses: data.certNFTAddresses || {},
+    };
   }
 
   /**

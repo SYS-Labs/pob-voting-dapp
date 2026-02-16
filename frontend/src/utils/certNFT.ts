@@ -4,12 +4,27 @@ import type { Cert, CertEligibility, CertStatus } from '~/interfaces';
 
 const PENDING_PERIOD = 48 * 60 * 60; // 48 hours in seconds
 
-// Per-chain CertNFT proxy addresses (fill after deploy)
+// Per-chain CertNFT proxy addresses.
+// Mainnet/testnet addresses are hardcoded here; local dev addresses
+// are populated at runtime from the API via mergeCertNFTAddresses().
 export const CERT_NFT_ADDRESSES: Record<number, string> = {
-  // 57: '0x...', // Mainnet
-  // 5700: '0x...', // Testnet
-  // 31337: '0x...', // Hardhat
+  // 57: '0x...', // Mainnet — fill after deploy
+  // 5700: '0x...', // Testnet — fill after deploy
 };
+
+/**
+ * Merge CertNFT addresses discovered from the API into the runtime map.
+ * Called by the iterations store after fetching /api/iterations.
+ */
+export function mergeCertNFTAddresses(addresses: Record<number, string>): void {
+  for (const [chainId, address] of Object.entries(addresses)) {
+    if (address) {
+      CERT_NFT_ADDRESSES[Number(chainId)] = address;
+    }
+  }
+  // Clear the contract cache so stale entries are rebuilt with new addresses
+  contractCache.clear();
+}
 
 // Contract instance cache
 const contractCache = new Map<string, Contract>();
@@ -18,7 +33,10 @@ export function getCertNFTContract(chainId: number, signerOrProvider: Provider |
   const address = CERT_NFT_ADDRESSES[chainId];
   if (!address) return null;
 
-  const key = `${chainId}-${address}`;
+  // Distinguish signer from provider in cache key so write-capable
+  // instances are never shadowed by read-only ones.
+  const isSigner = 'getAddress' in signerOrProvider;
+  const key = `${chainId}-${address}-${isSigner ? 'signer' : 'provider'}`;
   const cached = contractCache.get(key);
   if (cached) return cached;
 
@@ -71,7 +89,6 @@ export async function getUserCert(
       iteration: Number(cert.iteration),
       account: cert.account,
       certType: cert.certType,
-      infoCID: cert.infoCID,
       status: resolveCertStatusFromEnum(Number(statusEnum)),
       requestTime: Number(cert.requestTime),
     };

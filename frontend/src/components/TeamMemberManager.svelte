@@ -3,6 +3,7 @@
   import type { TeamMember } from '~/interfaces';
   import { getTeamMembers, proposeTeamMember } from '~/utils/teamMembers';
   import { formatAddress } from '~/utils';
+  import { runTransaction, pendingAction } from '~/stores/transactions';
 
   interface Props {
     iteration: number;
@@ -26,8 +27,6 @@
   let loading = $state(true);
   let error = $state('');
   let newMemberAddress = $state('');
-  let proposing = $state(false);
-  let proposeError = $state('');
 
   let hasApprovedAndNamed: boolean = $derived(
     members.some((m) => m.status === 'Approved' && m.fullName.length > 0)
@@ -55,36 +54,20 @@
   }
 
   async function handlePropose() {
-    if (!signer) {
-      proposeError = 'Please connect your wallet first.';
-      return;
-    }
+    if (!signer) return;
 
     const address = newMemberAddress.trim();
-    if (!address) {
-      proposeError = 'Please enter a valid address.';
-      return;
-    }
+    if (!address) return;
 
-    proposeError = '';
-    proposing = true;
-
-    try {
-      await proposeTeamMember(chainId, iteration, address, signer);
-      newMemberAddress = '';
-      await loadMembers();
-      onTeamChange();
-    } catch (err: any) {
-      if (err?.code === 'ACTION_REJECTED' || err?.code === 4001) {
-        proposeError = 'Transaction was rejected.';
-      } else if (err?.reason) {
-        proposeError = err.reason;
-      } else {
-        proposeError = 'Failed to propose team member.';
+    await runTransaction(
+      'Propose team member',
+      () => proposeTeamMember(chainId, iteration, address, signer!),
+      async () => {
+        await loadMembers();
+        onTeamChange();
       }
-    } finally {
-      proposing = false;
-    }
+    );
+    newMemberAddress = '';
   }
 
   $effect(() => {
@@ -94,15 +77,13 @@
   });
 </script>
 
-<div class="pob-pane">
-  <div class="pob-pane__heading">
-    <h3 class="pob-pane__title">Team Members</h3>
-  </div>
+<div class="pob-fieldset">
+  <h3 class="text-sm font-semibold text-[var(--pob-text)] mb-3">Team Members</h3>
 
   <div class="space-y-4">
     {#if !hasApprovedAndNamed && !loading}
-      <div class="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3">
-        <p class="text-sm text-yellow-400">
+      <div class="pob-warning">
+        <p class="text-xs">
           No approved team members with names set. Add and approve team members so they appear on the certificate.
         </p>
       </div>
@@ -111,14 +92,16 @@
     {#if loading}
       <p class="text-sm text-[var(--pob-text-muted)]">Loading team members...</p>
     {:else if error}
-      <p class="text-sm text-red-400">{error}</p>
+      <div class="pob-warning">
+        <p class="text-xs">{error}</p>
+      </div>
     {:else if members.length === 0}
       <p class="text-sm text-[var(--pob-text-muted)]">No team members yet.</p>
     {:else}
       <ul class="space-y-2">
         {#each members as member (member.memberAddress)}
-          <li class="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <span class="text-sm text-[var(--pob-text-secondary)] truncate">
+          <li class="flex items-center justify-between gap-2 rounded-lg border border-[var(--pob-border)] bg-white/5 px-3 py-2">
+            <span class="text-sm text-[var(--pob-text)] truncate">
               {member.fullName || formatAddress(member.memberAddress)}
             </span>
             <span class="pob-pill {STATUS_CLASSES[member.status]} shrink-0">
@@ -129,8 +112,8 @@
       </ul>
     {/if}
 
-    <div class="space-y-2 pt-2 border-t border-white/10">
-      <label for="new-member-address" class="text-sm text-[var(--pob-text-secondary)]">
+    <div class="space-y-1 pt-2 border-t border-[var(--pob-border)]">
+      <label for="new-member-address" class="text-xs font-medium text-[var(--pob-text)]">
         Add Team Member
       </label>
       <div class="flex gap-2">
@@ -140,23 +123,20 @@
           class="pob-input flex-1"
           placeholder="0x..."
           bind:value={newMemberAddress}
-          disabled={proposing}
+          disabled={$pendingAction !== null}
         />
         <button
           class="pob-button shrink-0"
-          disabled={proposing || !newMemberAddress.trim() || !signer}
+          disabled={$pendingAction !== null || !newMemberAddress.trim() || !signer}
           onclick={handlePropose}
         >
-          {#if proposing}
+          {#if $pendingAction === 'Propose team member'}
             Proposing...
           {:else}
             Propose
           {/if}
         </button>
       </div>
-      {#if proposeError}
-        <p class="text-sm text-red-400">{proposeError}</p>
-      {/if}
     </div>
   </div>
 </div>

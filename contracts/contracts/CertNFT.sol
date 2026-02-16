@@ -22,7 +22,6 @@ contract CertNFT is
     // ========== Constants ==========
 
     uint256 public constant PENDING_PERIOD = 48 hours;
-    uint256 public constant MAX_CID_LENGTH = 100;
     uint256 public constant MAX_TEAM_MEMBERS = 20;
     uint256 public constant MAX_NAME_LENGTH = 64;
 
@@ -35,7 +34,6 @@ contract CertNFT is
         uint256 iteration;
         address account;
         string certType;
-        string infoCID;
         CertStatus status;
         uint256 requestTime;
     }
@@ -88,8 +86,6 @@ contract CertNFT is
     error AlreadyHasCert();
     error NoMiddleware();
     error NotEligible();
-    error EmptyCID();
-    error CIDTooLong();
     error InvalidToken();
     error NotPending();
 
@@ -126,16 +122,12 @@ contract CertNFT is
     /**
      * @notice Request a certificate for a given iteration
      * @param iteration The iteration number
-     * @param infoCID IPFS CID of participant info JSON
      */
-    function requestCert(uint256 iteration, string calldata infoCID) external nonReentrant {
+    function requestCert(uint256 iteration) external nonReentrant {
         if (certOf[msg.sender][iteration] != 0) revert AlreadyHasCert();
 
         address mw = middleware[iteration];
         if (mw == address(0)) revert NoMiddleware();
-
-        if (bytes(infoCID).length == 0) revert EmptyCID();
-        if (bytes(infoCID).length > MAX_CID_LENGTH) revert CIDTooLong();
 
         (bool eligible, string memory certType) = ICertMiddleware(mw).validate(msg.sender);
         if (!eligible) revert NotEligible();
@@ -152,7 +144,6 @@ contract CertNFT is
             iteration: iteration,
             account: msg.sender,
             certType: certType,
-            infoCID: infoCID,
             status: CertStatus.Pending,
             requestTime: block.timestamp
         });
@@ -207,7 +198,7 @@ contract CertNFT is
             ']',
             templatePart,
             teamPart,
-            ',"infoCID":"', cert.infoCID, '"}'
+            '}'
         ));
 
         return string(abi.encodePacked(part1, part2));
