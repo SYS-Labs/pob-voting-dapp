@@ -1,6 +1,18 @@
 export type IterationStatus = 'upcoming' | 'active' | 'ended';
 
-export type PageType = 'iterations' | 'iteration' | 'project' | 'badges' | 'certs' | 'cert-request' | 'cert' | 'profile' | 'faq' | 'forum';
+export type PageType =
+  | 'iterations'
+  | 'iteration'
+  | 'project'
+  | 'badges'
+  | 'certs'
+  | 'cert-request'
+  | 'cert-review'
+  | 'cert'
+  | 'profile'
+  | 'faq'
+  | 'forum'
+  | 'get-address';
 
 export interface PreviousRound {
   round: number;

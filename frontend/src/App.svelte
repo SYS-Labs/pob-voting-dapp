@@ -26,6 +26,7 @@
   import CertReviewPage from '~/pages/CertReviewPage.svelte';
   import CertPage from '~/pages/CertPage.svelte';
   import ProfilePage from '~/pages/ProfilePage.svelte';
+  import GetAddressPage from '~/pages/GetAddressPage.svelte';
   import FaqPage from '~/pages/FaqPage.svelte';
   import ForumPage from '~/pages/ForumPage.svelte';
   import NotFoundPage from '~/pages/NotFoundPage.svelte';
@@ -136,6 +137,7 @@
     if (pathname === '/certs') return 'certs';
     if (pathname.match(/^\/cert\/\d+\/\d+$/)) return 'cert';
     if (pathname.startsWith('/profile/')) return 'profile';
+    if (pathname.startsWith('/get-address')) return 'get-address';
     if (pathname === '/faq') return 'faq';
     if (pathname.startsWith('/forum')) return 'forum';
     return 'iterations';
@@ -722,6 +724,11 @@
           {chainId}
           {loading}
         />
+      </Route>
+
+      <!-- Address generator page -->
+      <Route path="/get-address">
+        <GetAddressPage />
       </Route>
 
       <!-- FAQ page -->

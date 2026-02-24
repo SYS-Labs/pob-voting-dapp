@@ -53,6 +53,7 @@
     { id: 'forum' as const, label: 'Forum', show: true, path: '/forum' },
     { id: 'badges' as const, label: 'Badges', show: showBadgesTab, path: '/badges' },
     { id: 'certs' as const, label: 'Certs', show: showCertsTab, path: '/certs' },
+    { id: 'get-address' as const, label: 'Key Tool', show: true, path: '/get-address' },
     { id: 'faq' as const, label: 'FAQ', show: true, path: '/faq' },
   ]);
 
@@ -61,11 +62,12 @@
   function isTabActive(tabId: string, tabPath: string, currentPath: string): boolean {
     if (tabId === 'iterations' && currentPage === 'iterations') return true;
     if (tabId === 'iteration' && currentPage === 'iteration') return true;
+    if (tabId === 'get-address' && currentPage === 'get-address') return true;
     if (tabId !== 'iterations' && tabId !== 'iteration' && currentPath === tabPath) return true;
     return false;
   }
 
-  function handleNavigate(tabId: 'iterations' | 'iteration' | 'badges' | 'certs' | 'faq' | 'forum') {
+  function handleNavigate(tabId: 'iterations' | 'iteration' | 'badges' | 'certs' | 'faq' | 'forum' | 'get-address') {
     onNavigate(tabId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
