@@ -24,7 +24,7 @@ const CONTRACTS = [
   { name: "PoB_02", path: "contracts/PoB_02.sol", outputName: "PoB_02_v001" },
   { name: "PoBRegistry", path: "contracts/PoBRegistry.sol" },
   { name: "CertNFT", path: "contracts/CertNFT.sol" },
-  { name: "CertMiddleware_001", path: "contracts/CertMiddleware_001.sol" }
+  { name: "CertGate", path: "contracts/CertGate.sol" }
 ];
 
 function extractABI(contractName, contractPath) {

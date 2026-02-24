@@ -121,6 +121,17 @@ export function getExplorerTxLink(chainId: number, txHash: string): string {
 }
 
 /**
+ * Get block explorer link for address
+ */
+export function getExplorerAddressLink(chainId: number, address: string): string {
+  const network = NETWORKS[chainId];
+  const explorerUrl = network?.explorerUrl;
+
+  if (!explorerUrl || explorerUrl === '#') return '';
+  return `${explorerUrl}/address/${address}`;
+}
+
+/**
  * Validate YouTube URL
  */
 export function isValidYouTubeUrl(url: string): boolean {

@@ -88,12 +88,42 @@ export function createTeamMembersDatabase(db: Database.Database) {
   }
 
   function getPendingMembers(chainId: number): TeamMemberSnapshot[] {
+    // Only return proposed members whose cert is currently in 'requested' status (Stage 2).
+    // approveTeamMember/rejectTeamMember require Stage 2; surfacing Stage 1 members
+    // would show approve/reject actions that revert on-chain.
     const stmt = db.prepare(`
-      SELECT * FROM team_member_snapshots
-      WHERE chain_id = ? AND status = 'proposed'
-      ORDER BY iteration ASC, project_address ASC
+      SELECT tms.* FROM team_member_snapshots tms
+      JOIN cert_snapshots cs
+        ON cs.chain_id = tms.chain_id
+        AND cs.iteration = tms.iteration
+        AND LOWER(cs.account) = LOWER(tms.project_address)
+      WHERE tms.chain_id = ? AND tms.status = 'proposed' AND cs.status = 'requested'
+      ORDER BY tms.iteration ASC, tms.project_address ASC
     `);
     return stmt.all(chainId) as TeamMemberSnapshot[];
+  }
+
+  function deleteTeamMembersNotIn(
+    chainId: number,
+    iteration: number,
+    projectAddress: string,
+    keepAddresses: string[]
+  ): void {
+    if (keepAddresses.length === 0) {
+      const stmt = db.prepare(`
+        DELETE FROM team_member_snapshots
+        WHERE chain_id = ? AND iteration = ? AND LOWER(project_address) = LOWER(?)
+      `);
+      stmt.run(chainId, iteration, projectAddress);
+    } else {
+      const placeholders = keepAddresses.map(() => '?').join(', ');
+      const stmt = db.prepare(`
+        DELETE FROM team_member_snapshots
+        WHERE chain_id = ? AND iteration = ? AND LOWER(project_address) = LOWER(?)
+        AND LOWER(member_address) NOT IN (${placeholders})
+      `);
+      stmt.run(chainId, iteration, projectAddress, ...keepAddresses);
+    }
   }
 
   function toAPI(row: TeamMemberSnapshot): TeamMemberSnapshotAPI {
@@ -105,6 +135,7 @@ export function createTeamMembersDatabase(db: Database.Database) {
     getTeamMembersForProject,
     getTeamMembersForMember,
     getPendingMembers,
+    deleteTeamMembersNotIn,
     toAPI,
   };
 }

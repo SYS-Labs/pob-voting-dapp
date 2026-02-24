@@ -20,6 +20,8 @@ import { createCertsDatabase } from '../db/certs.js';
 import { createProfilesDatabase } from '../db/profiles.js';
 import { createTeamMembersDatabase } from '../db/teamMembers.js';
 import { createEligibilityDatabase } from '../db/eligibility.js';
+import { createTemplatesDatabase } from '../db/templates.js';
+import { sanitizeSVG } from '../services/svg-sanitizer.js';
 import { IPFSService } from '../services/ipfs.js';
 import { MetadataService } from '../services/metadata.js';
 import { logger } from '../utils/logger.js';
@@ -38,6 +40,7 @@ const certsDb = createCertsDatabase(db);
 const profilesDb = createProfilesDatabase(db);
 const teamMembersDb = createTeamMembersDatabase(db);
 const eligibilityDb = createEligibilityDatabase(db);
+const templatesDb = createTemplatesDatabase(db);
 
 // Initialize IPFS and metadata services
 const ipfsService = new IPFSService();
@@ -129,6 +132,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Cert endpoints
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/certs\/\d+\/pending$/)) {
+    await handleGetPendingCerts(req, res, url);
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname.match(/^\/api\/certs\/\d+\/iteration\/\d+$/)) {
     await handleGetCertsForIteration(req, res, url);
     return;
@@ -164,6 +172,17 @@ const server = http.createServer(async (req, res) => {
   // Profile endpoints
   if (req.method === 'GET' && url.pathname.match(/^\/api\/profile\/\d+\/0x[a-fA-F0-9]{40}$/)) {
     await handleGetProfile(req, res, url);
+    return;
+  }
+
+  // SVG template endpoints
+  if (req.method === 'POST' && url.pathname === '/api/templates/sanitize') {
+    await handleSanitizeTemplate(req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/templates/publish') {
+    await handlePublishTemplate(req, res);
     return;
   }
 
@@ -744,6 +763,30 @@ async function handleGetCertsForIteration(
   sendJson(res, 200, { certs });
 }
 
+async function handleGetPendingCerts(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  const parts = url.pathname.replace('/api/certs/', '').split('/');
+  if (parts.length !== 2 || parts[1] !== 'pending') {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/certs/:chainId/pending' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+
+  if (isNaN(chainId)) {
+    sendJson(res, 400, { error: 'Invalid chainId format' });
+    return;
+  }
+
+  const rows = certsDb.getNonFinalCerts(chainId);
+  const certs = rows.map((row) => certsDb.toAPI(row));
+
+  sendJson(res, 200, { certs });
+}
+
 // ========== Team Member Handlers ==========
 
 async function handleGetTeamMembersForProject(
@@ -861,9 +904,12 @@ async function handleGetEligibility(
 
   const rows = eligibilityDb.getEligibleForAccount(chainId, address);
 
-  // Exclude iterations where account already has a cert
+  // Exclude iterations where account has a non-cancelled cert
+  // (cancelled certs allow re-entry so users can navigate to the resubmit UI)
   const existingCerts = certsDb.getCertsForAccount(chainId, address);
-  const certIterations = new Set(existingCerts.map((c) => c.iteration));
+  const certIterations = new Set(
+    existingCerts.filter((c) => c.status !== 'cancelled').map((c) => c.iteration)
+  );
 
   const eligibility = rows
     .filter((row) => !certIterations.has(row.iteration))
@@ -937,6 +983,125 @@ async function handleGetProfile(
       iterationCount: iterationSet.size,
     },
   });
+}
+
+// ============================================================================
+// SVG Template Endpoints
+// ============================================================================
+
+/**
+ * POST /api/templates/sanitize
+ * Body: { svg: string }
+ * Returns sanitized SVG + keccak256 hash + validation report. No IPFS write.
+ */
+async function handleSanitizeTemplate(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const body = await readJsonBody(req) as { svg?: string };
+    const rawSvg = body?.svg;
+
+    if (typeof rawSvg !== 'string' || rawSvg.length === 0) {
+      sendJson(res, 400, { error: 'Missing required field: svg (string)' });
+      return;
+    }
+
+    const result = sanitizeSVG(rawSvg);
+
+    sendJson(res, 200, {
+      valid: result.valid,
+      sanitizedSvg: result.sanitizedSvg,
+      hash: result.hash,
+      issues: result.issues,
+      errors: result.errors,
+    });
+  } catch (error) {
+    logger.error('Template sanitize failed', error);
+    sendJson(res, 500, { error: 'Failed to sanitize template' });
+  }
+}
+
+/**
+ * POST /api/templates/publish
+ * Body: { svg: string, message: string, signature: string }
+ * Admin-only. Re-sanitizes internally (never trusts prior preview).
+ * Idempotent by sanitized-hash: reuses existing CID when possible.
+ * Returns: { cid, hash, new: boolean }
+ */
+async function handlePublishTemplate(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<void> {
+  try {
+    const body = await readJsonBody(req) as {
+      svg?: string;
+      message?: string;
+      signature?: string;
+    };
+
+    const rawSvg = body?.svg;
+    const message = String(body?.message || '');
+    const signature = String(body?.signature || '');
+
+    if (typeof rawSvg !== 'string' || rawSvg.length === 0) {
+      sendJson(res, 400, { error: 'Missing required field: svg (string)' });
+      return;
+    }
+
+    if (!message || !signature) {
+      sendJson(res, 400, { error: 'message and signature are required' });
+      return;
+    }
+
+    const isAdmin = validateAdminSignature(message, signature);
+    if (!isAdmin) {
+      sendJson(res, 401, { error: 'Invalid admin signature' });
+      return;
+    }
+
+    // Always re-sanitize; never trust a caller-provided hash or CID
+    const result = sanitizeSVG(rawSvg);
+
+    if (!result.valid) {
+      sendJson(res, 422, {
+        error: 'SVG failed validation',
+        errors: result.errors,
+        issues: result.issues,
+      });
+      return;
+    }
+
+    // Idempotency: reuse CID if this exact sanitized content was published before
+    const existing = templatesDb.getByCID(result.hash);
+    if (existing) {
+      logger.info('Template publish: reusing existing CID', { hash: result.hash, cid: existing });
+      sendJson(res, 200, {
+        cid: existing,
+        hash: result.hash,
+        new: false,
+      });
+      return;
+    }
+
+    // Upload sanitized bytes to IPFS
+    const sanitizedBytes = Buffer.from(result.sanitizedSvg, 'utf8');
+    const cid = await ipfsService.uploadBytes(sanitizedBytes, 'cert-template.svg');
+
+    // Persist for future idempotency checks
+    templatesDb.insert(result.hash, cid);
+
+    logger.info('Template publish: new CID pinned', { hash: result.hash, cid });
+
+    sendJson(res, 201, {
+      cid,
+      hash: result.hash,
+      new: true,
+    });
+  } catch (error) {
+    logger.error('Template publish failed', error);
+    sendJson(res, 500, { error: 'Failed to publish template' });
+  }
 }
 
 // ========== Helpers ==========

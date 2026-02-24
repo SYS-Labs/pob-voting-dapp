@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 
-export type CertStatus = 'pending' | 'minted' | 'cancelled';
+export type CertStatus = 'pending' | 'minted' | 'cancelled' | 'requested';
 
 export interface CertSnapshot {
   id?: number;
@@ -119,10 +119,10 @@ export function createCertsDatabase(db: Database.Database) {
     return row.count;
   }
 
-  function getPendingCerts(chainId: number): CertSnapshot[] {
+  function getNonFinalCerts(chainId: number): CertSnapshot[] {
     const stmt = db.prepare(`
       SELECT * FROM cert_snapshots
-      WHERE chain_id = ? AND status = 'pending'
+      WHERE chain_id = ? AND status IN ('requested', 'pending', 'cancelled')
       ORDER BY token_id ASC
     `);
     return stmt.all(chainId) as CertSnapshot[];
@@ -147,7 +147,7 @@ export function createCertsDatabase(db: Database.Database) {
     getCertsForAccount,
     getCertsForIteration,
     getActiveCertCount,
-    getPendingCerts,
+    getNonFinalCerts,
     getHighestTokenId,
     toAPI,
   };

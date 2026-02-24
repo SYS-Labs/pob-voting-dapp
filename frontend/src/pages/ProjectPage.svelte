@@ -260,10 +260,14 @@
     !statusFlags.votingEnded
   );
 
-  // Handle vote button click - opens confirmation modal
+  // Handle vote button click - direct vote if badged, modal only for mint flow
   function handleVoteClick() {
     if (!votingRole || !project) return;
-    showVoteModal = true;
+    if (votingRole === 'community' && currentIterationBadges.length === 0) {
+      showVoteModal = true;
+      return;
+    }
+    handleConfirmVote();
   }
 
   // Handle confirmed vote from modal
@@ -371,6 +375,17 @@
             <p class="pob-mono text-xs text-[var(--pob-text-muted)]">
               {formatAddress(project.address)}
             </p>
+            {#if resolvedMetadata?.app_url}
+              <a
+                href={resolvedMetadata.app_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="pob-socials__link pob-socials__link--app"
+                title="Project website"
+              >
+                Visit App
+              </a>
+            {/if}
           </div>
           {#if canEditMetadata}
             <Link

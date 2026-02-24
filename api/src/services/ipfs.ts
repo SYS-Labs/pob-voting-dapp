@@ -149,6 +149,47 @@ export class IPFSService {
   }
 
   /**
+   * Preview CID for raw bytes without uploading (only-hash mode)
+   */
+  async previewBytesCID(data: Buffer): Promise<string> {
+    try {
+      const result = await this.client.add(data, {
+        onlyHash: true,
+        cidVersion: 1,
+        wrapWithDirectory: false
+      });
+      return result.cid.toString();
+    } catch (error) {
+      logger.error('Failed to preview bytes CID', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Upload raw bytes to IPFS (used for SVG templates)
+   */
+  async uploadBytes(data: Buffer, name?: string): Promise<string> {
+    try {
+      const result = await this.client.add(data, {
+        pin: true,
+        cidVersion: 1,
+        wrapWithDirectory: false
+      });
+
+      logger.info('Uploaded bytes to IPFS', {
+        cid: result.cid.toString(),
+        name,
+        size: result.size
+      });
+
+      return result.cid.toString();
+    } catch (error) {
+      logger.error('Failed to upload bytes to IPFS', { error, name });
+      throw error;
+    }
+  }
+
+  /**
    * Unpin old CID (called after tx confirmation)
    */
   async unpin(cid: string): Promise<void> {

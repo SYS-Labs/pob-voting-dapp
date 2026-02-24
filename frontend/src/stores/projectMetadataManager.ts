@@ -14,6 +14,7 @@ export interface ProjectMetadataFormSocials {
 
 export interface ProjectMetadataForm {
   name: string;
+  app_url: string;
   yt_vid: string;
   proposal: string;
   socials: ProjectMetadataFormSocials;
@@ -261,6 +262,7 @@ export function createProjectMetadataManager(
         chainId,
         account: projectAddress,
         name: formData.name,
+        app_url: formData.app_url || undefined,
         yt_vid: formData.yt_vid || undefined,
         proposal: formData.proposal || undefined,
         socials,

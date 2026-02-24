@@ -286,3 +286,14 @@ CREATE TABLE IF NOT EXISTS cert_eligibility (
   UNIQUE(chain_id, iteration, account)
 );
 CREATE INDEX IF NOT EXISTS idx_cert_elig_account ON cert_eligibility(chain_id, account);
+
+-- Published cert SVG templates (idempotency store for /api/templates/publish)
+-- sanitized_hash is the keccak256 hex of sanitized UTF-8 bytes (matches on-chain hash)
+-- cid is the IPFS CID of the pinned sanitized SVG bytes
+CREATE TABLE IF NOT EXISTS cert_templates (
+  sanitized_hash TEXT PRIMARY KEY,
+  cid TEXT NOT NULL,
+  pinned_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cert_templates_cid ON cert_templates(cid);

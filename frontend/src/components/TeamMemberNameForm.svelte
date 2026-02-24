@@ -22,9 +22,11 @@
   }: Props = $props();
 
   let fullName = $state('');
+  let confirmed = $state(false);
+  $effect(() => { fullName = currentName; });
 
   let canSubmit: boolean = $derived(
-    fullName.trim().length > 0 && signer !== null && $pendingAction === null
+    fullName.trim().length > 0 && signer !== null && $pendingAction === null && confirmed === true
   );
 
   async function handleSubmit() {
@@ -45,47 +47,36 @@
 <div class="pob-fieldset">
   <h3 class="text-sm font-semibold text-[var(--pob-text)] mb-3">Certificate Name</h3>
 
-  {#if currentName}
-    <div class="space-y-1">
-      <p class="text-sm text-[var(--pob-text-muted)]">
-        Your name for the certificate:
-      </p>
-      <p class="text-base text-[var(--pob-text)] font-medium">
-        {currentName}
-      </p>
-    </div>
-  {:else}
-    <div class="space-y-4">
-      <p class="text-sm text-[var(--pob-text-muted)]">
-        Enter your full name as it will appear on the certificate.
-      </p>
+  <div class="space-y-4">
+    <p class="text-sm text-[var(--pob-text-muted)]">
+      Enter your full name as it will appear on the certificate. If you submit this via an on-chain transaction, it will be public and may be permanent.
+    </p>
 
-      <div class="space-y-1">
-        <label for="member-name" class="text-xs font-medium text-[var(--pob-text)]">
-          Full Name
-        </label>
-        <input
-          id="member-name"
-          type="text"
-          class="pob-input"
-          placeholder="Your full name"
-          maxlength={64}
-          bind:value={fullName}
-          disabled={$pendingAction !== null}
-        />
-      </div>
-
-      <button
-        class="pob-button pob-button--full"
-        disabled={!canSubmit}
-        onclick={handleSubmit}
-      >
-        {#if $pendingAction === 'Set certificate name'}
-          Setting Name...
-        {:else}
-          Set Name
-        {/if}
-      </button>
+    <div class="pob-form-group">
+      <label for="member-name" class="pob-form-label">
+        Full Name
+      </label>
+      <input
+        id="member-name"
+        type="text"
+        class="pob-input"
+        placeholder="Your full name"
+        maxlength={64}
+        bind:value={fullName}
+        disabled={$pendingAction !== null}
+      />
     </div>
-  {/if}
+
+    <button
+      class="pob-button pob-button--full"
+      disabled={!canSubmit}
+      onclick={handleSubmit}
+    >
+      {#if $pendingAction === 'Set certificate name'}
+        {currentName ? 'Updating Name...' : 'Setting Name...'}
+      {:else}
+        {currentName ? 'Update Name' : 'Set Name'}
+      {/if}
+    </button>
+  </div>
 </div>

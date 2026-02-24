@@ -1,5 +1,5 @@
 import { Contract, type Provider, type JsonRpcSigner } from 'ethers';
-import { CertNFTABI, CertMiddleware_001_ABI } from '~/abis';
+import { CertNFTABI, CertGateABI } from '~/abis';
 import { getCertNFTContract, CERT_NFT_ADDRESSES } from '~/utils/certNFT';
 import type { MemberStatus, TeamMember } from '~/interfaces';
 
@@ -98,6 +98,18 @@ export async function setTeamMemberName(
   return await certNFT.setTeamMemberName(iteration, project, fullName);
 }
 
+export async function removeTeamMember(
+  chainId: number,
+  iteration: number,
+  member: string,
+  signer: JsonRpcSigner
+): Promise<any> {
+  const certNFT = getCertNFTContract(chainId, signer);
+  if (!certNFT) throw new Error('CertNFT contract not available');
+
+  return await certNFT.removeTeamMember(iteration, member);
+}
+
 export async function checkIsProject(
   chainId: number,
   iteration: number,
@@ -113,7 +125,7 @@ export async function checkIsProject(
       return false;
     }
 
-    const middleware = new Contract(middlewareAddr, CertMiddleware_001_ABI, provider);
+    const middleware = new Contract(middlewareAddr, CertGateABI, provider);
     return await middleware.isProjectInAnyRound(account);
   } catch {
     return false;

@@ -862,8 +862,13 @@
       "inputs": []
     },
     {
-      "name": "CIDTooLong",
-      "signature": "CIDTooLong()",
+      "name": "AlreadyMinted",
+      "signature": "AlreadyMinted()",
+      "inputs": []
+    },
+    {
+      "name": "CertAlreadyRequested",
+      "signature": "CertAlreadyRequested()",
       "inputs": []
     },
     {
@@ -986,8 +991,8 @@
       ]
     },
     {
-      "name": "EmptyCID",
-      "signature": "EmptyCID()",
+      "name": "EmptyName",
+      "signature": "EmptyName()",
       "inputs": []
     },
     {
@@ -1001,13 +1006,63 @@
       "inputs": []
     },
     {
+      "name": "InvalidMemberIndex",
+      "signature": "InvalidMemberIndex()",
+      "inputs": []
+    },
+    {
       "name": "InvalidToken",
       "signature": "InvalidToken()",
       "inputs": []
     },
     {
+      "name": "MemberAlreadyExists",
+      "signature": "MemberAlreadyExists()",
+      "inputs": []
+    },
+    {
+      "name": "MemberNotApproved",
+      "signature": "MemberNotApproved()",
+      "inputs": []
+    },
+    {
+      "name": "MissingPlaceholder",
+      "signature": "MissingPlaceholder()",
+      "inputs": []
+    },
+    {
+      "name": "NameAlreadySet",
+      "signature": "NameAlreadySet()",
+      "inputs": []
+    },
+    {
+      "name": "NameContainsInvalidBytes",
+      "signature": "NameContainsInvalidBytes()",
+      "inputs": []
+    },
+    {
+      "name": "NameTooLong",
+      "signature": "NameTooLong()",
+      "inputs": []
+    },
+    {
+      "name": "NoActiveTemplate",
+      "signature": "NoActiveTemplate()",
+      "inputs": []
+    },
+    {
       "name": "NoMiddleware",
       "signature": "NoMiddleware()",
+      "inputs": []
+    },
+    {
+      "name": "NoNamedTeamMembers",
+      "signature": "NoNamedTeamMembers()",
+      "inputs": []
+    },
+    {
+      "name": "NotCancelled",
+      "signature": "NotCancelled()",
       "inputs": []
     },
     {
@@ -1023,6 +1078,21 @@
     {
       "name": "NotPending",
       "signature": "NotPending()",
+      "inputs": []
+    },
+    {
+      "name": "NotProjectForIteration",
+      "signature": "NotProjectForIteration()",
+      "inputs": []
+    },
+    {
+      "name": "NotRequested",
+      "signature": "NotRequested()",
+      "inputs": []
+    },
+    {
+      "name": "NotTeamMember",
+      "signature": "NotTeamMember()",
       "inputs": []
     },
     {
@@ -1053,6 +1123,21 @@
       "inputs": []
     },
     {
+      "name": "TemplateHashMismatch",
+      "signature": "TemplateHashMismatch()",
+      "inputs": []
+    },
+    {
+      "name": "TemplateTooLarge",
+      "signature": "TemplateTooLarge()",
+      "inputs": []
+    },
+    {
+      "name": "TooManyMembers",
+      "signature": "TooManyMembers()",
+      "inputs": []
+    },
+    {
       "name": "UUPSUnauthorizedCallContext",
       "signature": "UUPSUnauthorizedCallContext()",
       "inputs": []
@@ -1067,9 +1152,14 @@
           "type": "bytes32"
         }
       ]
+    },
+    {
+      "name": "WrongStage",
+      "signature": "WrongStage()",
+      "inputs": []
     }
   ],
-  "CertMiddleware_001": [
+  "CertGate": [
     {
       "name": "ArrayLengthMismatch",
       "signature": "ArrayLengthMismatch()",
@@ -1078,6 +1168,11 @@
     {
       "name": "EmptyArrays",
       "signature": "EmptyArrays()",
+      "inputs": []
+    },
+    {
+      "name": "InvalidAddress",
+      "signature": "InvalidAddress()",
       "inputs": []
     },
     {

@@ -1,5 +1,5 @@
 import { Contract, type Provider, type JsonRpcSigner } from 'ethers';
-import { CertNFTABI, CertMiddleware_001_ABI } from '~/abis';
+import { CertNFTABI, CertGateABI, PoBRegistryABI } from '~/abis';
 import type { Cert, CertEligibility, CertStatus } from '~/interfaces';
 
 const PENDING_PERIOD = 48 * 60 * 60; // 48 hours in seconds
@@ -60,8 +60,8 @@ export async function checkCertEligibility(
       return null;
     }
 
-    const middleware = new Contract(middlewareAddr, CertMiddleware_001_ABI, provider);
-    const [eligible, certType] = await middleware.validate(account);
+    const gate = new Contract(middlewareAddr, CertGateABI, provider);
+    const [eligible, certType] = await gate.validate(account);
     return { eligible, certType };
   } catch {
     return null;
@@ -119,6 +119,7 @@ export async function getUserCerts(
  */
 export function resolveCertStatus(cert: Cert): CertStatus {
   if (cert.status === 'Cancelled') return 'Cancelled';
+  if (cert.status === 'Requested') return 'Requested';
   if (cert.status === 'Pending') {
     const now = Math.floor(Date.now() / 1000);
     if (now >= cert.requestTime + PENDING_PERIOD) {
@@ -128,8 +129,101 @@ export function resolveCertStatus(cert: Cert): CertStatus {
   return cert.status;
 }
 
+export async function isValidCert(
+  chainId: number,
+  tokenId: string,
+  provider: Provider
+): Promise<boolean> {
+  const certNFT = getCertNFTContract(chainId, provider);
+  if (!certNFT) return false;
+  try {
+    return await certNFT.isValidCert(tokenId);
+  } catch {
+    return false;
+  }
+}
+
+export async function resubmitCert(
+  chainId: number,
+  tokenId: string,
+  signer: JsonRpcSigner
+): Promise<any> {
+  const certNFT = getCertNFTContract(chainId, signer);
+  if (!certNFT) throw new Error('CertNFT not available');
+  const tx = await certNFT.resubmitCert(tokenId);
+  return tx.wait();
+}
+
+export async function cancelCert(
+  chainId: number,
+  tokenId: string,
+  signer: JsonRpcSigner
+): Promise<any> {
+  const certNFT = getCertNFTContract(chainId, signer);
+  if (!certNFT) throw new Error('CertNFT not available');
+  const tx = await certNFT.cancelCert(tokenId);
+  return tx.wait();
+}
+
+export async function finalizeCert(
+  chainId: number,
+  tokenId: string,
+  signer: JsonRpcSigner
+): Promise<any> {
+  const certNFT = getCertNFTContract(chainId, signer);
+  if (!certNFT) throw new Error('CertNFT not available');
+  const tx = await certNFT.finalizeCert(tokenId);
+  return tx.wait();
+}
+
 function resolveCertStatusFromEnum(status: number): CertStatus {
   if (status === 0) return 'Pending';
   if (status === 1) return 'Minted';
-  return 'Cancelled';
+  if (status === 2) return 'Cancelled';
+  if (status === 3) return 'Requested';
+  return 'Cancelled'; // defensive fallback for unknown future enum values
+}
+
+export async function approveCert(
+  chainId: number,
+  tokenId: string,
+  signer: JsonRpcSigner
+): Promise<any> {
+  const certNFT = getCertNFTContract(chainId, signer);
+  if (!certNFT) throw new Error('CertNFT not available');
+  const tx = await certNFT.approveCert(tokenId);
+  return tx.wait();
+}
+
+export async function renderCertSVG(
+  chainId: number,
+  tokenId: string,
+  templateBytes: Uint8Array,
+  provider: Provider
+): Promise<string> {
+  const certNFT = getCertNFTContract(chainId, provider);
+  if (!certNFT) throw new Error('CertNFT not available');
+  return await certNFT.renderSVG(tokenId, templateBytes);
+}
+
+export async function getTemplateCID(
+  chainId: number,
+  iteration: number,
+  provider: Provider
+): Promise<string | null> {
+  const certNFT = getCertNFTContract(chainId, provider);
+  if (!certNFT) return null;
+
+  try {
+    // Template is stored in PoBRegistry (source of truth after API sanitization/publish)
+    const registryAddr: string = await certNFT.pobRegistry();
+    if (!registryAddr || registryAddr === '0x0000000000000000000000000000000000000000') {
+      return null;
+    }
+    const registry = new Contract(registryAddr, PoBRegistryABI, provider);
+    const [, , cid] = await registry.getIterationTemplate(iteration);
+    return cid && cid.length > 0 ? cid : null;
+  } catch {
+    return null;
+  }
 }

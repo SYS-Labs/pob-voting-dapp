@@ -208,7 +208,26 @@
   }
 
   function handleVoteClick(project: Project, tokenId?: string) {
-    pendingVote = { project, tokenId };
+    const votingRole: ParticipantRole | null = isOwner
+      ? null
+      : roles.project
+        ? null
+        : roles.smt
+          ? 'smt'
+          : roles.dao_hic
+            ? 'dao_hic'
+            : 'community';
+
+    // Show modal only for community voters who need to mint first
+    if (votingRole === 'community' && !tokenId) {
+      pendingVote = { project, tokenId };
+      return;
+    }
+
+    // Otherwise vote directly — TxPendingModal handles on-chain confirmation
+    if (votingRole) {
+      handleVote(votingRole, project.address, tokenId);
+    }
   }
 
   async function handleConfirmVote() {

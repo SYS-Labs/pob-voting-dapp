@@ -7,7 +7,7 @@ import JurySC_03_v001_ABI from './JurySC_03_v001.json';
 import IVersionAdapterABI from './IVersionAdapter.json';
 import PoBRegistryABI from './PoBRegistry.json';
 import CertNFTABI from './CertNFT.json';
-import CertMiddleware_001_ABI from './CertMiddleware_001.json';
+import CertGateABI from './CertGate.json';
 
 // ============================================================================
 // Combined Write ABIs
@@ -60,5 +60,5 @@ export {
 
   // Certificate system
   CertNFTABI,
-  CertMiddleware_001_ABI,
+  CertGateABI,
 };

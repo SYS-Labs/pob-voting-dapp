@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./ICertMiddleware.sol";
+import "./ICertGate.sol";
 
 /**
  * @title IPoB
@@ -33,13 +33,16 @@ interface IJurySC_V3ForCert {
 }
 
 /**
- * @title CertMiddleware_001
- * @notice Per-iteration certificate validation middleware.
+ * @title CertGate
+ * @notice Per-iteration certificate eligibility gate (formerly CertMiddleware).
  *         Non-upgradeable. One instance deployed per iteration.
  *         Validates that an account participated as a non-community role
  *         across ALL rounds of an iteration before granting certificate eligibility.
+ *
+ *         Template storage (hash + CID) has been moved to PoBRegistry so the API
+ *         is the single gatekeeper for sanitizing and publishing SVG templates.
  */
-contract CertMiddleware_001 is Ownable, ICertMiddleware {
+contract CertGate is Ownable, ICertGate {
 
     // ========== Constants ==========
 
@@ -53,15 +56,11 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
     /// @notice JurySC voting contracts for each round (ordered by round)
     address[] public jurySCContracts;
 
-    /// @notice IPFS CID of the certificate template
-    string private _templateCID;
-
     /// @notice Owner-registered roles (for organizers, speakers, etc.)
     mapping(address => string) public registeredRole;
 
     // ========== Events ==========
 
-    event TemplateCIDSet(string cid);
     event RoleRegistered(address indexed account, string role);
     event RoleRemoved(address indexed account);
 
@@ -71,6 +70,7 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
     error EmptyArrays();
     error VotingNotEnded();
     error NotParticipant();
+    error InvalidAddress();
 
     // ========== Constructor ==========
 
@@ -87,11 +87,16 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
         if (pobContracts_.length == 0) revert EmptyArrays();
         if (pobContracts_.length != jurySCContracts_.length) revert ArrayLengthMismatch();
 
+        for (uint256 i = 0; i < pobContracts_.length; i++) {
+            if (pobContracts_[i] == address(0) || jurySCContracts_[i] == address(0)) revert InvalidAddress();
+            if (pobContracts_[i].code.length == 0 || jurySCContracts_[i].code.length == 0) revert InvalidAddress();
+        }
+
         pobContracts = pobContracts_;
         jurySCContracts = jurySCContracts_;
     }
 
-    // ========== ICertMiddleware Implementation ==========
+    // ========== ICertGate Implementation ==========
 
     /**
      * @notice Validate whether an account is eligible for a certificate
@@ -100,6 +105,7 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
      *   2. All rounds must have voting ended
      *   3. Account must have minted badge AND have non-community role in EACH round
      *   4. Winner check: iterate rounds in reverse, first hasWinner=true is authoritative
+     * @dev Registered roles (step 1) intentionally bypass all subsequent checks by design.
      * @param account The address to check
      * @return eligible Whether the account qualifies
      * @return certType The certificate type string
@@ -140,9 +146,20 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
                     hasNonCommunityRole = false;
                 }
             }
-            hasNonCommunityRole = hasNonCommunityRole ||
-                                   jury.isDaoHicVoter(account) ||
-                                   jury.isRegisteredProject(account);
+            if (!hasNonCommunityRole) {
+                try jury.isDaoHicVoter(account) returns (bool result) {
+                    hasNonCommunityRole = result;
+                } catch {
+                    hasNonCommunityRole = false;
+                }
+            }
+            if (!hasNonCommunityRole) {
+                try jury.isRegisteredProject(account) returns (bool result) {
+                    hasNonCommunityRole = result;
+                } catch {
+                    hasNonCommunityRole = false;
+                }
+            }
             if (!hasNonCommunityRole) {
                 return (false, "");
             }
@@ -163,11 +180,15 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
     }
 
     /**
-     * @notice Get the template CID for this iteration's certificates
-     * @return The IPFS CID string
+     * @notice Check if an account is a registered project in any round
+     * @param account The address to check
+     * @return Whether the account is a project in any round
      */
-    function templateCID() external view override returns (string memory) {
-        return _templateCID;
+    function isProjectInAnyRound(address account) external view override returns (bool) {
+        for (uint256 i = 0; i < jurySCContracts.length; i++) {
+            if (IJurySCForCert(jurySCContracts[i]).isRegisteredProject(account)) return true;
+        }
+        return false;
     }
 
     // ========== View Helpers ==========
@@ -180,28 +201,7 @@ contract CertMiddleware_001 is Ownable, ICertMiddleware {
         return pobContracts.length;
     }
 
-    /**
-     * @notice Check if an account is a registered project in any round
-     * @param account The address to check
-     * @return Whether the account is a project in any round
-     */
-    function isProjectInAnyRound(address account) external view override returns (bool) {
-        for (uint256 i = 0; i < jurySCContracts.length; i++) {
-            if (IJurySCForCert(jurySCContracts[i]).isRegisteredProject(account)) return true;
-        }
-        return false;
-    }
-
     // ========== Owner Functions ==========
-
-    /**
-     * @notice Set the template CID for certificate artwork
-     * @param cid IPFS CID of the template
-     */
-    function setTemplateCID(string calldata cid) external onlyOwner {
-        _templateCID = cid;
-        emit TemplateCIDSet(cid);
-    }
 
     /**
      * @notice Register a special role for an address (organizer, speaker, etc.)

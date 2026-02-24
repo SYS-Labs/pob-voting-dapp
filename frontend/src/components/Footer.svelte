@@ -1,5 +1,5 @@
 <script lang="ts">
-  // No props needed
+  import { Link } from 'svelte-routing';
 </script>
 
 <footer style="border-top: 1px solid var(--pob-border); padding: 2rem 0;">

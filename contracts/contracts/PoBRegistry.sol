@@ -110,6 +110,20 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @dev Stores mode + 1 (0 = no override, 1 = CONSENSUS override, 2 = WEIGHTED override)
     mapping(address => uint8) public votingModeOverride;
 
+    // ========== Template Storage (v3) ==========
+
+    /// @notice Certificate template for an iteration (hash + version + CID)
+    /// @dev Set exclusively by the API's /publish endpoint after SVG sanitization.
+    ///      On-chain hash is always computed from sanitized bytes only.
+    struct IterationTemplate {
+        bytes32 hash;       // keccak256 of the sanitized SVG bytes
+        uint32 version;     // auto-incremented on each update
+        string cid;         // IPFS CID of the pinned sanitized SVG
+    }
+
+    /// @notice iterationId => certificate template
+    mapping(uint256 => IterationTemplate) public iterationTemplates;
+
     // ========== Events ==========
 
     event IterationRegistered(
@@ -151,6 +165,12 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event AdapterSet(uint256 indexed versionId, address indexed adapter);
     event RoundVersionSet(uint256 indexed iterationId, uint256 indexed roundId, uint256 indexed versionId);
     event VotingModeOverrideSet(address indexed jurySC, uint8 mode);
+    event TemplateSet(uint256 indexed iterationId, bytes32 indexed templateHash, string cid);
+
+    // ========== Errors ==========
+
+    error ZeroAddress();
+    error NotAContract();
 
     // ========== Initialization ==========
 
@@ -527,7 +547,8 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      */
     function setAdapter(uint256 versionId, address adapter) external onlyOwner {
         require(versionId > 0, "Invalid version ID");
-        require(adapter != address(0), "Invalid adapter address");
+        if (adapter == address(0)) revert ZeroAddress();
+        if (adapter.code.length == 0) revert NotAContract();
         versionAdapters[versionId] = adapter;
         emit AdapterSet(versionId, adapter);
     }
@@ -580,12 +601,55 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit VotingModeOverrideSet(jurySC, mode);
     }
 
+    // ========== Template Functions ==========
+
+    /**
+     * @notice Set the certificate template for an iteration (owner only)
+     * @dev Must only be called with a hash produced by the API's /publish endpoint
+     *      after SVG sanitization. Never accept caller-provided CID/hash directly.
+     * @param iterationId Iteration number
+     * @param templateHash keccak256 of the sanitized SVG bytes
+     * @param cid IPFS CID of the pinned sanitized SVG
+     */
+    function setIterationTemplate(
+        uint256 iterationId,
+        bytes32 templateHash,
+        string calldata cid
+    ) external onlyOwner {
+        require(iterationId > 0, "Invalid iteration ID");
+        require(templateHash != bytes32(0), "Invalid template hash");
+        require(bytes(cid).length > 0, "CID cannot be empty");
+        require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
+
+        iterationTemplates[iterationId].version++;
+        iterationTemplates[iterationId].hash = templateHash;
+        iterationTemplates[iterationId].cid = cid;
+
+        emit TemplateSet(iterationId, templateHash, cid);
+    }
+
+    /**
+     * @notice Get the certificate template for an iteration
+     * @param iterationId Iteration number
+     * @return hash keccak256 of the sanitized SVG bytes (zero if not set)
+     * @return version Auto-incremented version counter
+     * @return cid IPFS CID of the sanitized SVG (empty if not set)
+     */
+    function getIterationTemplate(uint256 iterationId)
+        external
+        view
+        returns (bytes32 hash, uint32 version, string memory cid)
+    {
+        IterationTemplate storage t = iterationTemplates[iterationId];
+        return (t.hash, t.version, t.cid);
+    }
+
     /**
      * @notice Get contract version string
      * @return Version string
      */
     function version() external pure returns (string memory) {
-        return "2";
+        return "3";
     }
 
     // ========== UUPS Upgrade Authorization ==========

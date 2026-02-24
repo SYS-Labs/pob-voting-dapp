@@ -3,10 +3,10 @@ import pkg from "hardhat";
 
 const { ethers } = pkg;
 
-describe("CertMiddleware_001", function () {
+describe("CertGate", function () {
   let mockPoB1, mockPoB2;
   let mockJury1, mockJury2;
-  let middleware;
+  let gate;
   let owner;
   let devRel, daoHic, project1, community, organizer, winner;
 
@@ -30,14 +30,14 @@ describe("CertMiddleware_001", function () {
       mockJury2.waitForDeployment(),
     ]);
 
-    // Deploy middleware with 2 rounds
-    const CertMiddleware = await ethers.getContractFactory("CertMiddleware_001");
-    middleware = await CertMiddleware.deploy(
+    // Deploy CertGate with 2 rounds
+    const CertGate = await ethers.getContractFactory("CertGate");
+    gate = await CertGate.deploy(
       [await mockPoB1.getAddress(), await mockPoB2.getAddress()],
       [await mockJury1.getAddress(), await mockJury2.getAddress()],
       owner.address
     );
-    await middleware.waitForDeployment();
+    await gate.waitForDeployment();
 
     // Default: both rounds voting ended
     await mockJury1.setHasVotingEnded(true);
@@ -46,43 +46,43 @@ describe("CertMiddleware_001", function () {
 
   describe("constructor", function () {
     it("stores contract arrays", async function () {
-      expect(await middleware.roundCount()).to.equal(2);
-      expect(await middleware.pobContracts(0)).to.equal(await mockPoB1.getAddress());
-      expect(await middleware.pobContracts(1)).to.equal(await mockPoB2.getAddress());
+      expect(await gate.roundCount()).to.equal(2);
+      expect(await gate.pobContracts(0)).to.equal(await mockPoB1.getAddress());
+      expect(await gate.pobContracts(1)).to.equal(await mockPoB2.getAddress());
     });
 
     it("reverts on empty arrays", async function () {
-      const CertMiddleware = await ethers.getContractFactory("CertMiddleware_001");
+      const CertGate = await ethers.getContractFactory("CertGate");
       await expect(
-        CertMiddleware.deploy([], [], owner.address)
-      ).to.be.revertedWithCustomError(CertMiddleware, "EmptyArrays");
+        CertGate.deploy([], [], owner.address)
+      ).to.be.revertedWithCustomError(CertGate, "EmptyArrays");
     });
 
     it("reverts on mismatched array lengths", async function () {
-      const CertMiddleware = await ethers.getContractFactory("CertMiddleware_001");
+      const CertGate = await ethers.getContractFactory("CertGate");
       await expect(
-        CertMiddleware.deploy(
+        CertGate.deploy(
           [await mockPoB1.getAddress()],
           [await mockJury1.getAddress(), await mockJury2.getAddress()],
           owner.address
         )
-      ).to.be.revertedWithCustomError(CertMiddleware, "ArrayLengthMismatch");
+      ).to.be.revertedWithCustomError(CertGate, "ArrayLengthMismatch");
     });
   });
 
   describe("registered roles bypass", function () {
     it("returns true for registered organizer", async function () {
-      await middleware.connect(owner).registerRole(organizer.address, "organizer");
+      await gate.connect(owner).registerRole(organizer.address, "organizer");
 
-      const [eligible, certType] = await middleware.validate(organizer.address);
+      const [eligible, certType] = await gate.validate(organizer.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("organizer");
     });
 
     it("returns true for registered speaker", async function () {
-      await middleware.connect(owner).registerRole(organizer.address, "speaker");
+      await gate.connect(owner).registerRole(organizer.address, "speaker");
 
-      const [eligible, certType] = await middleware.validate(organizer.address);
+      const [eligible, certType] = await gate.validate(organizer.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("speaker");
     });
@@ -90,9 +90,9 @@ describe("CertMiddleware_001", function () {
     it("bypasses all voting/badge checks", async function () {
       // Even with voting not ended
       await mockJury1.setHasVotingEnded(false);
-      await middleware.connect(owner).registerRole(organizer.address, "organizer");
+      await gate.connect(owner).registerRole(organizer.address, "organizer");
 
-      const [eligible] = await middleware.validate(organizer.address);
+      const [eligible] = await gate.validate(organizer.address);
       expect(eligible).to.be.true;
     });
   });
@@ -105,7 +105,7 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsDevRelAccount(devRel.address, true);
       await mockJury2.setIsDevRelAccount(devRel.address, true);
 
-      const [eligible] = await middleware.validate(devRel.address);
+      const [eligible] = await gate.validate(devRel.address);
       expect(eligible).to.be.false;
     });
 
@@ -116,7 +116,7 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsDevRelAccount(devRel.address, true);
       await mockJury2.setIsDevRelAccount(devRel.address, true);
 
-      const [eligible] = await middleware.validate(devRel.address);
+      const [eligible] = await gate.validate(devRel.address);
       expect(eligible).to.be.false;
     });
   });
@@ -128,7 +128,7 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsDevRelAccount(devRel.address, true);
       await mockJury2.setIsDevRelAccount(devRel.address, true);
 
-      const [eligible, certType] = await middleware.validate(devRel.address);
+      const [eligible, certType] = await gate.validate(devRel.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("participant");
     });
@@ -139,7 +139,7 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsDaoHicVoter(daoHic.address, true);
       await mockJury2.setIsDaoHicVoter(daoHic.address, true);
 
-      const [eligible, certType] = await middleware.validate(daoHic.address);
+      const [eligible, certType] = await gate.validate(daoHic.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("participant");
     });
@@ -150,7 +150,7 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsRegisteredProject(project1.address, true);
       await mockJury2.setIsRegisteredProject(project1.address, true);
 
-      const [eligible, certType] = await middleware.validate(project1.address);
+      const [eligible, certType] = await gate.validate(project1.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("participant");
     });
@@ -161,7 +161,7 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsDevRelAccount(devRel.address, true);
       await mockJury2.setIsDevRelAccount(devRel.address, true);
 
-      const [eligible] = await middleware.validate(devRel.address);
+      const [eligible] = await gate.validate(devRel.address);
       expect(eligible).to.be.false;
     });
 
@@ -171,19 +171,18 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsDevRelAccount(devRel.address, true);
       // No role in round 2
 
-      const [eligible] = await middleware.validate(devRel.address);
+      const [eligible] = await gate.validate(devRel.address);
       expect(eligible).to.be.false;
     });
   });
 
   describe("community exclusion", function () {
     it("rejects community-only participants", async function () {
-      // Has badge but no non-community role
       await mockPoB1.setHasMinted(community.address, true);
       await mockPoB2.setHasMinted(community.address, true);
       // No devRel/daoHic/project role set
 
-      const [eligible] = await middleware.validate(community.address);
+      const [eligible] = await gate.validate(community.address);
       expect(eligible).to.be.false;
     });
   });
@@ -195,10 +194,9 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsRegisteredProject(project1.address, true);
       await mockJury2.setIsRegisteredProject(project1.address, true);
 
-      // Latest round (round 2) has winner
       await mockJury2.setWinner(project1.address, true);
 
-      const [eligible, certType] = await middleware.validate(project1.address);
+      const [eligible, certType] = await gate.validate(project1.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("winner");
     });
@@ -209,11 +207,10 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsRegisteredProject(project1.address, true);
       await mockJury2.setIsRegisteredProject(project1.address, true);
 
-      // Round 1 has different winner, round 2 has this project as winner
-      await mockJury1.setWinner(owner.address, true); // Different winner in round 1
-      await mockJury2.setWinner(project1.address, true); // This project wins round 2
+      await mockJury1.setWinner(owner.address, true);
+      await mockJury2.setWinner(project1.address, true);
 
-      const [eligible, certType] = await middleware.validate(project1.address);
+      const [eligible, certType] = await gate.validate(project1.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("winner");
     });
@@ -224,10 +221,9 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsDevRelAccount(devRel.address, true);
       await mockJury2.setIsDevRelAccount(devRel.address, true);
 
-      // Winner is someone else
       await mockJury2.setWinner(project1.address, true);
 
-      const [eligible, certType] = await middleware.validate(devRel.address);
+      const [eligible, certType] = await gate.validate(devRel.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("participant");
     });
@@ -238,9 +234,7 @@ describe("CertMiddleware_001", function () {
       await mockJury1.setIsDevRelAccount(devRel.address, true);
       await mockJury2.setIsDevRelAccount(devRel.address, true);
 
-      // No winner set in any round (default hasWinner = false)
-
-      const [eligible, certType] = await middleware.validate(devRel.address);
+      const [eligible, certType] = await gate.validate(devRel.address);
       expect(eligible).to.be.true;
       expect(certType).to.equal("participant");
     });
@@ -249,87 +243,69 @@ describe("CertMiddleware_001", function () {
   describe("isProjectInAnyRound", function () {
     it("returns true if registered project in round 1", async function () {
       await mockJury1.setIsRegisteredProject(project1.address, true);
-
-      expect(await middleware.isProjectInAnyRound(project1.address)).to.be.true;
+      expect(await gate.isProjectInAnyRound(project1.address)).to.be.true;
     });
 
     it("returns true if registered project in round 2 only", async function () {
       await mockJury2.setIsRegisteredProject(project1.address, true);
-
-      expect(await middleware.isProjectInAnyRound(project1.address)).to.be.true;
+      expect(await gate.isProjectInAnyRound(project1.address)).to.be.true;
     });
 
     it("returns true if registered project in both rounds", async function () {
       await mockJury1.setIsRegisteredProject(project1.address, true);
       await mockJury2.setIsRegisteredProject(project1.address, true);
-
-      expect(await middleware.isProjectInAnyRound(project1.address)).to.be.true;
+      expect(await gate.isProjectInAnyRound(project1.address)).to.be.true;
     });
 
     it("returns false if not a project in any round", async function () {
-      expect(await middleware.isProjectInAnyRound(devRel.address)).to.be.false;
+      expect(await gate.isProjectInAnyRound(devRel.address)).to.be.false;
     });
 
     it("returns false for devrel account (not a project)", async function () {
       await mockJury1.setIsDevRelAccount(devRel.address, true);
       await mockJury2.setIsDevRelAccount(devRel.address, true);
-
-      expect(await middleware.isProjectInAnyRound(devRel.address)).to.be.false;
+      expect(await gate.isProjectInAnyRound(devRel.address)).to.be.false;
     });
   });
 
   describe("owner functions", function () {
-    it("owner can set templateCID", async function () {
-      const cid = "QmNewTemplate";
-      await expect(middleware.connect(owner).setTemplateCID(cid))
-        .to.emit(middleware, "TemplateCIDSet")
-        .withArgs(cid);
-      expect(await middleware.templateCID()).to.equal(cid);
-    });
-
     it("owner can register role", async function () {
-      await expect(middleware.connect(owner).registerRole(organizer.address, "organizer"))
-        .to.emit(middleware, "RoleRegistered")
+      await expect(gate.connect(owner).registerRole(organizer.address, "organizer"))
+        .to.emit(gate, "RoleRegistered")
         .withArgs(organizer.address, "organizer");
-      expect(await middleware.registeredRole(organizer.address)).to.equal("organizer");
+      expect(await gate.registeredRole(organizer.address)).to.equal("organizer");
     });
 
     it("owner can remove role", async function () {
-      await middleware.connect(owner).registerRole(organizer.address, "organizer");
-      await expect(middleware.connect(owner).removeRole(organizer.address))
-        .to.emit(middleware, "RoleRemoved")
+      await gate.connect(owner).registerRole(organizer.address, "organizer");
+      await expect(gate.connect(owner).removeRole(organizer.address))
+        .to.emit(gate, "RoleRemoved")
         .withArgs(organizer.address);
-      expect(await middleware.registeredRole(organizer.address)).to.equal("");
+      expect(await gate.registeredRole(organizer.address)).to.equal("");
     });
 
     it("rejects empty role string", async function () {
       await expect(
-        middleware.connect(owner).registerRole(organizer.address, "")
+        gate.connect(owner).registerRole(organizer.address, "")
       ).to.be.revertedWith("Empty role");
     });
 
     it("rejects role string exceeding MAX_ROLE_LENGTH", async function () {
       const longRole = "A".repeat(65);
       await expect(
-        middleware.connect(owner).registerRole(organizer.address, longRole)
+        gate.connect(owner).registerRole(organizer.address, longRole)
       ).to.be.revertedWith("Role too long");
     });
 
     it("accepts role string at exactly MAX_ROLE_LENGTH", async function () {
       const maxRole = "A".repeat(64);
-      await middleware.connect(owner).registerRole(organizer.address, maxRole);
-      expect(await middleware.registeredRole(organizer.address)).to.equal(maxRole);
-    });
-
-    it("non-owner cannot set templateCID", async function () {
-      await expect(
-        middleware.connect(devRel).setTemplateCID("QmTest")
-      ).to.be.reverted;
+      await gate.connect(owner).registerRole(organizer.address, maxRole);
+      expect(await gate.registeredRole(organizer.address)).to.equal(maxRole);
     });
 
     it("non-owner cannot register role", async function () {
       await expect(
-        middleware.connect(devRel).registerRole(organizer.address, "organizer")
+        gate.connect(devRel).registerRole(organizer.address, "organizer")
       ).to.be.reverted;
     });
   });

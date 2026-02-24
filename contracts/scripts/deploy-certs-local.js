@@ -1,10 +1,11 @@
 /**
- * Deploy CertNFT + CertMiddleware_001 for local development.
+ * Deploy CertNFT + CertGate for local development.
  *
  * Reads the latest deployment-iteration-*-localhost-*.json, deploys CertNFT
- * as a UUPS proxy, upgrades PoBRegistry (adds profile storage), deploys
- * CertMiddleware_001 for the iteration, sets a placeholder templateCID,
- * links middleware to CertNFT, and updates the deployment JSON file.
+ * as a UUPS proxy, upgrades PoBRegistry (adds template storage), deploys
+ * CertGate for the iteration, links it to CertNFT, and links PoBRegistry
+ * to CertNFT. Template must be published via POST /api/templates/publish
+ * and then set on PoBRegistry via setIterationTemplate().
  *
  * Usage:
  *   npx hardhat run scripts/deploy-certs-local.js --network localhost
@@ -97,38 +98,38 @@ async function main() {
   await upgraded.waitForDeployment();
   console.log(`PoBRegistry upgraded at: ${registryProxy}`);
 
-  // 4. Deploy CertMiddleware_001
-  console.log("\n--- Deploying CertMiddleware_001 ---");
-  const CertMiddleware = await ethers.getContractFactory(
-    "CertMiddleware_001"
-  );
-  const middleware = await CertMiddleware.deploy(
+  // 4. Deploy CertGate
+  console.log("\n--- Deploying CertGate ---");
+  const CertGate = await ethers.getContractFactory("CertGate");
+  const gate = await CertGate.deploy(
     [pobAddress],
     [juryAddress],
     deployer.address
   );
-  await middleware.waitForDeployment();
-  const middlewareAddress = await middleware.getAddress();
-  console.log(`CertMiddleware_001 deployed at: ${middlewareAddress}`);
+  await gate.waitForDeployment();
+  const gateAddress = await gate.getAddress();
+  console.log(`CertGate deployed at: ${gateAddress}`);
 
-  // 5. Set placeholder templateCID
-  const placeholderCID = "bafkreiplaceholdertemplateforlocaldevelopment";
-  const tx1 = await middleware.setTemplateCID(placeholderCID);
+  // 5. Link CertGate to CertNFT
+  const tx1 = await certNFT.setMiddleware(iteration, gateAddress);
   await tx1.wait();
-  console.log(`Template CID set: ${placeholderCID}`);
+  console.log(`CertGate linked to CertNFT for iteration ${iteration}`);
 
-  // 6. Link middleware to CertNFT
-  const tx2 = await certNFT.setMiddleware(iteration, middlewareAddress);
+  // 5b. Link PoBRegistry to CertNFT (so renderSVG can look up template hash)
+  const tx2 = await certNFT.setPoBRegistry(registryProxy);
   await tx2.wait();
-  console.log(
-    `Middleware linked to CertNFT for iteration ${iteration}`
-  );
+  console.log(`PoBRegistry linked to CertNFT: ${registryProxy}`);
+
+  // Note: certificate template is set on PoBRegistry via:
+  //   registry.setIterationTemplate(iteration, keccak256(svgBytes), cid)
+  // Only call this after the API's /api/templates/publish endpoint has
+  // produced a sanitized CID for the iteration template.
 
   // 7. Update deployment JSON file
   deployment.contracts.CertNFT = {
     proxy: certNFTAddress,
   };
-  deployment.contracts.CertMiddleware_001 = middlewareAddress;
+  deployment.contracts.CertGate = gateAddress;
 
   fs.writeFileSync(deploymentFilePath, JSON.stringify(deployment, null, 2));
   console.log(`\nDeployment file updated: ${deploymentFilePath}`);
@@ -144,7 +145,9 @@ async function main() {
     );
     if (Array.isArray(iterationsLocal)) {
       for (const entry of iterationsLocal) {
-        entry.certNFT = certNFTAddress;
+        if (entry.iteration === iteration) {
+          entry.certNFT = certNFTAddress;
+        }
       }
       fs.writeFileSync(
         iterationsLocalPath,
@@ -158,9 +161,9 @@ async function main() {
   console.log("\n========== Cert Deployment Summary ==========");
   console.log(`Iteration:          ${iteration}`);
   console.log(`CertNFT:            ${certNFTAddress}`);
-  console.log(`CertMiddleware_001: ${middlewareAddress}`);
+  console.log(`CertGate:           ${gateAddress}`);
   console.log(`PoBRegistry:        ${registryProxy} (upgraded)`);
-  console.log(`Template CID:       ${placeholderCID}`);
+  console.log(`Template:           set via POST /api/templates/publish → registry.setIterationTemplate()`);
   console.log("=============================================");
 }
 

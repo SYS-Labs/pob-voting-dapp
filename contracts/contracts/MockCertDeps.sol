@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./ICertMiddleware.sol";
+import "./ICertGate.sol";
 
 /**
  * @title MockPoB
- * @notice Mock PoB badge contract for testing CertMiddleware
+ * @notice Mock PoB badge contract for testing CertGate
  */
 contract MockPoB {
     mapping(address => bool) public hasMinted;
@@ -17,7 +17,7 @@ contract MockPoB {
 
 /**
  * @title MockJurySCForCert
- * @notice Mock JurySC contract for testing CertMiddleware
+ * @notice Mock JurySC contract for testing CertGate
  */
 contract MockJurySCForCert {
     bool private _hasVotingEnded;
@@ -81,14 +81,14 @@ contract MockJurySCForCert {
 }
 
 /**
- * @title MockCertMiddleware
- * @notice Mock middleware for testing CertNFT team member features
+ * @title MockCertGate
+ * @notice Mock gate for testing CertNFT team member and cert request features.
+ *         Template storage has moved to PoBRegistry; use MockPoBRegistry for template tests.
  */
-contract MockCertMiddleware is ICertMiddleware {
+contract MockCertGate is ICertGate {
     mapping(address => bool) private _eligible;
     mapping(address => string) private _certType;
     mapping(address => bool) private _isProject;
-    string private _templateCID;
 
     function setEligible(address account, bool eligible_, string calldata certType_) external {
         _eligible[account] = eligible_;
@@ -99,19 +99,40 @@ contract MockCertMiddleware is ICertMiddleware {
         _isProject[account] = value;
     }
 
-    function setTemplateCID(string calldata cid) external {
-        _templateCID = cid;
-    }
-
     function validate(address account) external view override returns (bool eligible, string memory certType) {
         return (_eligible[account], _certType[account]);
     }
 
-    function templateCID() external view override returns (string memory) {
-        return _templateCID;
-    }
-
     function isProjectInAnyRound(address account) external view override returns (bool) {
         return _isProject[account];
+    }
+}
+
+/**
+ * @title MockPoBRegistry
+ * @notice Mock PoBRegistry for testing CertNFT renderSVG and tokenURI template lookups.
+ */
+contract MockPoBRegistry {
+    struct MockTemplate {
+        bytes32 hash;
+        uint32 version;
+        string cid;
+    }
+
+    mapping(uint256 => MockTemplate) private _templates;
+
+    function setTemplate(uint256 iterationId, bytes32 hash, string calldata cid) external {
+        _templates[iterationId].version++;
+        _templates[iterationId].hash = hash;
+        _templates[iterationId].cid = cid;
+    }
+
+    function getIterationTemplate(uint256 iterationId)
+        external
+        view
+        returns (bytes32 hash, uint32 version, string memory cid)
+    {
+        MockTemplate storage t = _templates[iterationId];
+        return (t.hash, t.version, t.cid);
     }
 }

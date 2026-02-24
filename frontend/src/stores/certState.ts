@@ -67,20 +67,25 @@ export async function loadCertState(
   try {
     const certs = await getUserCerts(chainId, account, iterations, provider);
 
-    // Try API-based eligibility first, fall back to per-iteration RPC
+    // Try API-based eligibility first
     let eligibility: Record<number, CertEligibility> = {};
     try {
       eligibility = await fetchEligibilityFromAPI(chainId, account);
-    } catch {
-      // Fallback: per-iteration RPC calls
-      for (const iteration of iterations) {
-        const hasCert = certs.some((c) => c.iteration === iteration);
-        if (!hasCert) {
+    } catch { /* fall through to live checks below */ }
+
+    // For every iteration not already covered by the API response, do a live on-chain
+    // check. This handles both the all-missing case (registered-role accounts not yet
+    // indexed) and partial-index cases (API returned some iterations but missed others).
+    for (const iteration of iterations) {
+      if (eligibility[iteration]) continue; // already have API data
+      const hasCert = certs.some((c) => c.iteration === iteration);
+      if (!hasCert) {
+        try {
           const elig = await checkCertEligibility(chainId, iteration, account, provider);
-          if (elig) {
+          if (elig?.eligible) {
             eligibility[iteration] = elig;
           }
-        }
+        } catch { /* ignore per-iteration errors */ }
       }
     }
 

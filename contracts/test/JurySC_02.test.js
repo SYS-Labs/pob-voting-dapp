@@ -41,11 +41,11 @@ describe("JurySC_02 (address-based projects)", function () {
       community5,
     ] = await ethers.getSigners();
 
-    const PoB_01 = await ethers.getContractFactory("PoB_01");
+    const PoB_01 = await ethers.getContractFactory("PoB_02");
     pob = await PoB_01.deploy("Proof of Builders v1", "POB1", ITERATION, owner.address);
     await pob.waitForDeployment();
 
-    const JurySC_01 = await ethers.getContractFactory("JurySC_01");
+    const JurySC_01 = await ethers.getContractFactory("JurySC_02");
     jurySC = await upgrades.deployProxy(JurySC_01, [await pob.getAddress(), ITERATION, owner.address], {
       kind: "uups",
     });
@@ -538,7 +538,7 @@ describe("JurySC_02 (address-based projects)", function () {
 
     it("reverts manual close before activation", async function () {
       const jurySC2 = jurySC.connect(owner);
-      const JurySC_01 = await ethers.getContractFactory("JurySC_01");
+      const JurySC_01 = await ethers.getContractFactory("JurySC_02");
       const jurySCFresh = await upgrades.deployProxy(
         JurySC_01,
         [await pob.getAddress(), ITERATION, owner.address],
@@ -835,7 +835,7 @@ describe("JurySC_02 (address-based projects)", function () {
       });
 
       it("prevents contract upgrades", async function () {
-        const JurySC_01V2 = await ethers.getContractFactory("JurySC_01");
+        const JurySC_01V2 = await ethers.getContractFactory("JurySC_02");
         await expect(
           upgrades.upgradeProxy(await jurySC.getAddress(), JurySC_01V2)
         ).to.be.revertedWithCustomError(jurySC, "ContractLocked");
@@ -877,11 +877,11 @@ describe("JurySC_02 (address-based projects)", function () {
 
     it("allows owner to change mode before activation", async function () {
       // Deploy a new contract for this test
-      const PoB_01 = await ethers.getContractFactory("PoB_01");
+      const PoB_01 = await ethers.getContractFactory("PoB_02");
       const newPob = await PoB_01.deploy("Proof of Builders v1", "POB1", ITERATION, owner.address);
       await newPob.waitForDeployment();
 
-      const JurySC_01 = await ethers.getContractFactory("JurySC_01");
+      const JurySC_01 = await ethers.getContractFactory("JurySC_02");
       const newJury = await upgrades.deployProxy(JurySC_01, [await newPob.getAddress(), ITERATION, owner.address], {
         kind: "uups",
       });
@@ -1196,7 +1196,7 @@ describe("JurySC_02 (address-based projects)", function () {
 
     describe("MEDIUM-02 Fix: Upgrade restrictions after activation", function () {
       it("Should block upgrades after activation (during voting)", async function () {
-        const JurySC_01_V2 = await ethers.getContractFactory("JurySC_01");
+        const JurySC_01_V2 = await ethers.getContractFactory("JurySC_02");
 
         await expect(
           upgrades.upgradeProxy(await jurySC.getAddress(), JurySC_01_V2)
@@ -1207,7 +1207,7 @@ describe("JurySC_02 (address-based projects)", function () {
         // Close voting
         await jurySC.connect(owner).closeManually();
 
-        const JurySC_01_V2 = await ethers.getContractFactory("JurySC_01");
+        const JurySC_01_V2 = await ethers.getContractFactory("JurySC_02");
 
         // Upgrade should still be blocked (prevents post-vote manipulation)
         await expect(
@@ -1217,11 +1217,11 @@ describe("JurySC_02 (address-based projects)", function () {
 
       it("Should allow upgrades before activation", async function () {
         // Deploy a fresh contract (not activated)
-        const PoB_Fresh = await ethers.getContractFactory("PoB_01");
+        const PoB_Fresh = await ethers.getContractFactory("PoB_02");
         const pobFresh = await PoB_Fresh.deploy("PoB Fresh", "POBF", 99, owner.address);
         await pobFresh.waitForDeployment();
 
-        const JurySC_Fresh = await ethers.getContractFactory("JurySC_01");
+        const JurySC_Fresh = await ethers.getContractFactory("JurySC_02");
         const juryFresh = await upgrades.deployProxy(
           JurySC_Fresh,
           [await pobFresh.getAddress(), 99, owner.address],
@@ -1237,7 +1237,7 @@ describe("JurySC_02 (address-based projects)", function () {
         await juryFresh.connect(owner).addDaoHicVoter(daoHic1.address);
 
         // Upgrade should succeed (not activated yet)
-        const JurySC_01_V2 = await ethers.getContractFactory("JurySC_01");
+        const JurySC_01_V2 = await ethers.getContractFactory("JurySC_02");
         await expect(upgrades.upgradeProxy(await juryFresh.getAddress(), JurySC_01_V2)).to.not.be.reverted;
       });
     });

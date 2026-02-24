@@ -23,6 +23,8 @@
   import BadgesPage from '~/pages/BadgesPage.svelte';
   import CertsPage from '~/pages/CertsPage.svelte';
   import CertRequestPage from '~/pages/CertRequestPage.svelte';
+  import CertReviewPage from '~/pages/CertReviewPage.svelte';
+  import CertPage from '~/pages/CertPage.svelte';
   import ProfilePage from '~/pages/ProfilePage.svelte';
   import FaqPage from '~/pages/FaqPage.svelte';
   import ForumPage from '~/pages/ForumPage.svelte';
@@ -130,7 +132,9 @@
     if (pathname.startsWith('/iteration/')) return 'iteration';
     if (pathname === '/badges') return 'badges';
     if (pathname.match(/^\/certs\/request\/\d+$/)) return 'cert-request';
+    if (pathname.match(/^\/certs\/review\/\d+$/)) return 'cert-review';
     if (pathname === '/certs') return 'certs';
+    if (pathname.match(/^\/cert\/\d+\/\d+$/)) return 'cert';
     if (pathname.startsWith('/profile/')) return 'profile';
     if (pathname === '/faq') return 'faq';
     if (pathname.startsWith('/forum')) return 'forum';
@@ -296,7 +300,7 @@
 
   // Load cert state when navigating to the certs or cert-request page
   $effect(() => {
-    if (currentPage !== 'certs' && currentPage !== 'cert-request') return;
+    if (currentPage !== 'certs' && currentPage !== 'cert-request' && currentPage !== 'cert-review') return;
     if (!walletAddress || !chainId || !publicProvider) return;
 
     const iters = filteredIterations.map(i => i.iteration);
@@ -648,8 +652,27 @@
         <CertsPage
           certs={certCerts}
           eligibility={certEligibility}
+          iterations={filteredIterations}
           {walletAddress}
           loading={certLoading}
+          {chainId}
+          {signer}
+          {publicProvider}
+          onRefresh={() => {
+            if (walletAddress && chainId && publicProvider) {
+              const iters = filteredIterations.map(i => i.iteration);
+              loadCertState(chainId, walletAddress, iters, publicProvider);
+            }
+          }}
+        />
+      </Route>
+
+      <!-- Cert review page (owner reviews a specific requested cert) -->
+      <Route path="/certs/review/:tokenId" let:params>
+        <CertReviewPage
+          tokenId={Number(params.tokenId)}
+          iterations={filteredIterations}
+          {walletAddress}
           {chainId}
           {signer}
           {publicProvider}
@@ -676,6 +699,16 @@
               loadCertState(chainId, walletAddress, iters, publicProvider);
             }
           }}
+        />
+      </Route>
+
+      <!-- Public/tracked cert page -->
+      <Route path="/cert/:chainId/:tokenId" let:params>
+        <CertPage
+          chainId={Number(params.chainId)}
+          tokenId={params.tokenId}
+          {walletAddress}
+          filteredIterations={filteredIterations}
         />
       </Route>
 

@@ -22,6 +22,11 @@
   },
   {
     "inputs": [],
+    "name": "AlreadyMinted",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "CertAlreadyRequested",
     "type": "error"
   },
@@ -181,6 +186,11 @@
   },
   {
     "inputs": [],
+    "name": "MissingPlaceholder",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NameAlreadySet",
     "type": "error"
   },
@@ -196,12 +206,22 @@
   },
   {
     "inputs": [],
+    "name": "NoActiveTemplate",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NoMiddleware",
     "type": "error"
   },
   {
     "inputs": [],
     "name": "NoNamedTeamMembers",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotCancelled",
     "type": "error"
   },
   {
@@ -222,6 +242,11 @@
   {
     "inputs": [],
     "name": "NotProjectForIteration",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotRequested",
     "type": "error"
   },
   {
@@ -258,6 +283,16 @@
   },
   {
     "inputs": [],
+    "name": "TemplateHashMismatch",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TemplateTooLarge",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "TooManyMembers",
     "type": "error"
   },
@@ -275,6 +310,11 @@
       }
     ],
     "name": "UUPSUnsupportedProxiableUUID",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "WrongStage",
     "type": "error"
   },
   {
@@ -337,7 +377,33 @@
         "type": "uint256"
       }
     ],
+    "name": "CertApproved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
     "name": "CertCancelled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "CertFinalized",
     "type": "event"
   },
   {
@@ -369,6 +435,31 @@
       }
     ],
     "name": "CertRequested",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "iteration",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "CertResubmitted",
     "type": "event"
   },
   {
@@ -533,6 +624,31 @@
     "inputs": [
       {
         "indexed": true,
+        "internalType": "uint256",
+        "name": "iteration",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "project",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "member",
+        "type": "address"
+      }
+    ],
+    "name": "TeamMemberRemoved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "address",
         "name": "from",
         "type": "address"
@@ -594,6 +710,19 @@
   },
   {
     "inputs": [],
+    "name": "MAX_TEMPLATE_SIZE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "PENDING_PERIOD",
     "outputs": [
       {
@@ -632,6 +761,19 @@
       }
     ],
     "name": "approve",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "approveCert",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -795,6 +937,19 @@
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "finalizeCert",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -985,6 +1140,25 @@
     "inputs": [
       {
         "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "isValidCert",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
         "name": "",
         "type": "uint256"
       }
@@ -1137,6 +1311,48 @@
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "iteration",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "member",
+        "type": "address"
+      }
+    ],
+    "name": "removeTeamMember",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bytes",
+        "name": "templateBytes",
+        "type": "bytes"
+      }
+    ],
+    "name": "renderSVG",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "renounceOwnership",
     "outputs": [],
@@ -1152,6 +1368,19 @@
       }
     ],
     "name": "requestCert",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "tokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "resubmitCert",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1411,6 +1640,45 @@
       }
     ],
     "stateMutability": "pure",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "PoBRegistrySet",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "pobRegistry",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "setPoBRegistry",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]

@@ -32,6 +32,7 @@
 
   let formData = $state<ProjectMetadataForm>({
     name: '',
+    app_url: '',
     yt_vid: '',
     proposal: '',
     socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
@@ -108,6 +109,7 @@
     if (metadata) {
       formData = {
         name: metadata.name || '',
+        app_url: metadata.app_url || '',
         yt_vid: metadata.yt_vid || '',
         proposal: metadata.proposal || '',
         socials: {
@@ -121,6 +123,7 @@
     } else if (source) {
       formData = {
         name: source.name || '',
+        app_url: source.app_url || '',
         yt_vid: source.yt_vid || '',
         proposal: source.proposal || '',
         socials: {
@@ -134,6 +137,7 @@
     } else if (project) {
       formData = {
         name: `Project #${project.id}`,
+        app_url: '',
         yt_vid: '',
         proposal: '',
         socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
@@ -179,6 +183,7 @@
   const isFormValid = $derived.by(() => {
     if (!formData.name.trim()) return false;
     if (formData.name.length > 200) return false;
+    if (formData.app_url && !isValidUrl(formData.app_url)) return false;
     if (formData.yt_vid && !isValidYouTubeUrl(formData.yt_vid)) return false;
     if (formData.proposal && !isValidUrl(formData.proposal)) return false;
     if (formData.socials.x && !isValidUrl(formData.socials.x)) return false;
@@ -282,6 +287,20 @@
               <p class="pob-form__hint">
                 {formData.name.length}/200 characters
               </p>
+            </div>
+
+            <div class="pob-form__field pob-form__field--featured">
+              <label for="project-app-url" class="pob-form__label">App URL</label>
+              <input
+                id="project-app-url"
+                type="text"
+                bind:value={formData.app_url}
+                class="pob-input pob-input--featured"
+                placeholder="https://yourapp.com"
+              />
+              {#if formData.app_url && !isValidUrl(formData.app_url)}
+                <p class="pob-form__error">Invalid URL format</p>
+              {/if}
             </div>
           </div>
 

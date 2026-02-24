@@ -18,7 +18,11 @@ contract ForumOracle is Ownable {
     }
 
     // State variables
-    mapping(string => bool) public trustedUsers;           // X username => trusted status
+    /// @dev Advisory-only metadata: managed by owner, but NOT enforced in recordPost/recordResponse.
+    ///      The oracle service is expected to pre-filter posts by trusted usernames off-chain
+    ///      before submitting transactions. On-chain enforcement would require passing the
+    ///      author username as a parameter, which is intentionally omitted to keep gas minimal.
+    mapping(string => bool) public trustedUsers;
     mapping(string => PostRecord) public posts;            // X post ID => record
     mapping(string => string) public sourcePostResponses;  // Source post ID => reply post ID
     mapping(string => bool) public hasReceivedResponse;    // Source post ID => has response

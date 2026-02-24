@@ -19,32 +19,49 @@ describe("CertNFT - Team Members", function () {
     [owner, project1, member1, member2, member3, devRel, nonProject] =
       await ethers.getSigners();
 
-    // Deploy CertNFT as UUPS proxy
     const CertNFT = await ethers.getContractFactory("CertNFT");
     certNFT = await upgrades.deployProxy(CertNFT, [owner.address], {
       kind: "uups",
     });
     await certNFT.waitForDeployment();
 
-    // Deploy MockCertMiddleware
-    const MockCertMiddleware = await ethers.getContractFactory("MockCertMiddleware");
-    mockMiddleware = await MockCertMiddleware.deploy();
+    const MockCertGate = await ethers.getContractFactory("MockCertGate");
+    mockMiddleware = await MockCertGate.deploy();
     await mockMiddleware.waitForDeployment();
 
-    // Setup middleware
-    await mockMiddleware.setTemplateCID(TEMPLATE_CID);
-
-    // Link middleware to CertNFT
     await certNFT.connect(owner).setMiddleware(ITERATION, await mockMiddleware.getAddress());
 
-    // project1 is eligible and is a project
     await mockMiddleware.setEligible(project1.address, true, "participant");
     await mockMiddleware.setIsProject(project1.address, true);
 
-    // devRel is eligible but NOT a project
     await mockMiddleware.setEligible(devRel.address, true, "participant");
     await mockMiddleware.setIsProject(devRel.address, false);
   });
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /** Get project1 to Stage 2 (cert Requested). Returns tokenId.
+   *  Caller must ensure at least one named member exists before calling. */
+  async function requestAndGetTokenId() {
+    await certNFT.connect(project1).requestCert(ITERATION);
+    return certNFT.certOf(project1.address, ITERATION);
+  }
+
+  /**
+   * Cycle: propose member → name member → requestCert → approveTeamMember → cancelCert.
+   * Returns to Stage 1 with `memberToApprove` having MemberStatus.Approved.
+   * Returns the tokenId (now Cancelled).
+   */
+  async function setupStage1WithApprovedMember(memberToApprove) {
+    await certNFT.connect(project1).proposeTeamMember(ITERATION, memberToApprove.address);
+    await certNFT.connect(memberToApprove).setTeamMemberName(ITERATION, project1.address, "Seed Name");
+    const tokenId = await requestAndGetTokenId();
+    await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, memberToApprove.address);
+    await certNFT.connect(owner).cancelCert(tokenId);
+    return tokenId;
+  }
+
+  // ── proposeTeamMember ─────────────────────────────────────────────────────
 
   describe("proposeTeamMember", function () {
     it("project can propose a team member", async function () {
@@ -103,8 +120,6 @@ describe("CertNFT - Team Members", function () {
     });
 
     it("reverts when max members reached", async function () {
-      // Propose 20 members (the max)
-      const signers = await ethers.getSigners();
       for (let i = 0; i < 20; i++) {
         const addr = ethers.Wallet.createRandom().address;
         await certNFT.connect(project1).proposeTeamMember(ITERATION, addr);
@@ -120,14 +135,42 @@ describe("CertNFT - Team Members", function () {
         certNFT.connect(project1).proposeTeamMember(999, member1.address)
       ).to.be.revertedWithCustomError(certNFT, "NoMiddleware");
     });
-  });
 
-  describe("approveTeamMember", function () {
-    beforeEach(async function () {
+    it("reverts with WrongStage in Stage 2 (cert Requested)", async function () {
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      await certNFT.connect(project1).requestCert(ITERATION);
+
+      await expect(
+        certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address)
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
     });
 
-    it("owner can approve a proposed member", async function () {
+    it("succeeds in Stage 1 after cancelled cert", async function () {
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      const tokenId = await requestAndGetTokenId();
+      await certNFT.connect(owner).cancelCert(tokenId);
+
+      await expect(
+        certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address)
+      ).to.emit(certNFT, "TeamMemberProposed");
+    });
+  });
+
+  // ── approveTeamMember ─────────────────────────────────────────────────────
+
+  describe("approveTeamMember", function () {
+    let tokenId;
+
+    beforeEach(async function () {
+      // Stage 2: propose, name, then request cert
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      tokenId = await requestAndGetTokenId();
+    });
+
+    it("owner can approve a proposed member (Stage 2)", async function () {
       await expect(
         certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address)
       )
@@ -146,13 +189,13 @@ describe("CertNFT - Team Members", function () {
       ).to.be.reverted;
     });
 
-    it("reverts for non-existent member", async function () {
+    it("reverts for non-existent member (Stage 2)", async function () {
       await expect(
         certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member2.address)
       ).to.be.revertedWithCustomError(certNFT, "InvalidMemberIndex");
     });
 
-    it("reverts for already approved member", async function () {
+    it("reverts for already approved member (Stage 2)", async function () {
       await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
 
       await expect(
@@ -160,21 +203,47 @@ describe("CertNFT - Team Members", function () {
       ).to.be.revertedWithCustomError(certNFT, "InvalidMemberIndex");
     });
 
-    it("reverts for already rejected member", async function () {
+    it("reverts for already rejected member (Stage 2)", async function () {
       await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address);
 
       await expect(
         certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address)
       ).to.be.revertedWithCustomError(certNFT, "InvalidMemberIndex");
     });
-  });
 
-  describe("rejectTeamMember", function () {
-    beforeEach(async function () {
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+    it("reverts with WrongStage in Stage 1 (no cert)", async function () {
+      // Cancel cert to go back to Stage 1
+      await certNFT.connect(owner).cancelCert(tokenId);
+
+      await expect(
+        certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address)
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
     });
 
-    it("owner can reject a proposed member", async function () {
+    it("reverts with WrongStage in Stage 3 (cert Pending)", async function () {
+      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
+      // Approve cert → Stage 3
+      await certNFT.connect(owner).approveCert(tokenId);
+
+      await expect(
+        certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address)
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
+    });
+  });
+
+  // ── rejectTeamMember ──────────────────────────────────────────────────────
+
+  describe("rejectTeamMember", function () {
+    let tokenId;
+
+    beforeEach(async function () {
+      // Stage 2: propose, name, then request cert
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      tokenId = await requestAndGetTokenId();
+    });
+
+    it("owner can reject a proposed member (Stage 2)", async function () {
       await expect(
         certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address)
       )
@@ -184,7 +253,6 @@ describe("CertNFT - Team Members", function () {
       const [, status] = await certNFT.getTeamMember(ITERATION, project1.address, 0);
       expect(status).to.equal(2); // Rejected
 
-      // Approved count should not change
       expect(await certNFT.approvedMemberCount(ITERATION, project1.address)).to.equal(0);
     });
 
@@ -194,28 +262,163 @@ describe("CertNFT - Team Members", function () {
       ).to.be.reverted;
     });
 
-    it("reverts for non-existent member", async function () {
+    it("reverts for non-existent member (Stage 2)", async function () {
       await expect(
         certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member2.address)
       ).to.be.revertedWithCustomError(certNFT, "InvalidMemberIndex");
     });
 
-    it("reverts for already processed member", async function () {
+    it("reverts for already processed member (Stage 2)", async function () {
       await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address);
 
       await expect(
         certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address)
       ).to.be.revertedWithCustomError(certNFT, "InvalidMemberIndex");
     });
-  });
 
-  describe("setTeamMemberName", function () {
-    beforeEach(async function () {
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
+    it("decrements namedMemberCount when rejecting a named proposed member", async function () {
+      // beforeEach: member1 proposed, cert requested (Stage 2)
+      // Cancel to go back to Stage 1, set name, then resubmit to Stage 2
+      await certNFT.connect(owner).cancelCert(tokenId);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(1);
+
+      await certNFT.connect(project1).resubmitCert(tokenId); // Stage 2
+
+      await expect(
+        certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address)
+      ).to.emit(certNFT, "TeamMemberRejected");
+
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(0);
     });
 
-    it("approved member can set their name", async function () {
+    it("hasNamedTeamMembers becomes false when last named member is rejected", async function () {
+      // beforeEach: member1 proposed, cert requested (Stage 2)
+      // Cancel, propose member2, set names, resubmit
+      await certNFT.connect(owner).cancelCert(tokenId);
+
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      await certNFT.connect(member2).setTeamMemberName(ITERATION, project1.address, "Bob");
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(2);
+      expect(await certNFT.hasNamedTeamMembers(ITERATION, project1.address)).to.be.true;
+
+      await certNFT.connect(project1).resubmitCert(tokenId); // Stage 2
+
+      await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address);
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(1);
+
+      await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member2.address);
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(0);
+      expect(await certNFT.hasNamedTeamMembers(ITERATION, project1.address)).to.be.false;
+    });
+
+    it("reverts with WrongStage in Stage 1 (no cert)", async function () {
+      await certNFT.connect(owner).cancelCert(tokenId);
+
+      await expect(
+        certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address)
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
+    });
+  });
+
+  // ── removeTeamMember ──────────────────────────────────────────────────────
+
+  describe("removeTeamMember", function () {
+    it("project can remove a Proposed member in Stage 1", async function () {
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
+
+      await expect(
+        certNFT.connect(project1).removeTeamMember(ITERATION, member1.address)
+      )
+        .to.emit(certNFT, "TeamMemberRemoved")
+        .withArgs(ITERATION, project1.address, member1.address);
+
+      expect(await certNFT.getTeamMemberCount(ITERATION, project1.address)).to.equal(1);
+      expect(await certNFT.teamMemberIndex(ITERATION, project1.address, member1.address)).to.equal(0);
+    });
+
+    it("swap-and-pop preserves index of last member", async function () {
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member3.address);
+
+      // Remove member1 (index 0) — member3 swaps into its slot
+      await certNFT.connect(project1).removeTeamMember(ITERATION, member1.address);
+
+      expect(await certNFT.getTeamMemberCount(ITERATION, project1.address)).to.equal(2);
+      expect(await certNFT.teamMemberIndex(ITERATION, project1.address, member1.address)).to.equal(0); // deleted
+      expect(await certNFT.teamMemberIndex(ITERATION, project1.address, member3.address)).to.equal(1); // moved to slot 0 (idx+1=1)
+      expect(await certNFT.teamMemberIndex(ITERATION, project1.address, member2.address)).to.equal(2); // unchanged
+    });
+
+    it("reverts for non-existent member", async function () {
+      await expect(
+        certNFT.connect(project1).removeTeamMember(ITERATION, member1.address)
+      ).to.be.revertedWithCustomError(certNFT, "InvalidMemberIndex");
+    });
+
+    it("can remove an Approved member in Stage 1, decrements approvedMemberCount", async function () {
+      await setupStage1WithApprovedMember(member1);
+      // member1 is now Approved, cert is Cancelled (Stage 1)
+      expect(await certNFT.approvedMemberCount(ITERATION, project1.address)).to.equal(1);
+
+      await expect(
+        certNFT.connect(project1).removeTeamMember(ITERATION, member1.address)
+      )
+        .to.emit(certNFT, "TeamMemberRemoved")
+        .withArgs(ITERATION, project1.address, member1.address);
+
+      expect(await certNFT.approvedMemberCount(ITERATION, project1.address)).to.equal(0);
+      expect(await certNFT.teamMemberIndex(ITERATION, project1.address, member1.address)).to.equal(0);
+    });
+
+    it("namedMemberCount decremented when named member is removed", async function () {
+      // Propose member1, set name while Proposed (no approval required)
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(1);
+
+      await certNFT.connect(project1).removeTeamMember(ITERATION, member1.address);
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(0);
+    });
+
+    it("reverts with WrongStage in Stage 2 (cert Requested)", async function () {
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      await certNFT.connect(project1).requestCert(ITERATION);
+
+      await expect(
+        certNFT.connect(project1).removeTeamMember(ITERATION, member1.address)
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
+    });
+
+    it("succeeds in Stage 1 after cancelled cert", async function () {
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      const tokenId = await requestAndGetTokenId();
+      await certNFT.connect(owner).cancelCert(tokenId);
+
+      // member1 is Proposed, cert is Cancelled → Stage 1
+      await expect(
+        certNFT.connect(project1).removeTeamMember(ITERATION, member1.address)
+      ).to.emit(certNFT, "TeamMemberRemoved");
+    });
+  });
+
+  // ── setTeamMemberName ─────────────────────────────────────────────────────
+
+  describe("setTeamMemberName", function () {
+    let firstTokenId;
+
+    beforeEach(async function () {
+      // Cycle: propose → requestCert → approve → cancelCert
+      // Result: member1 is Approved, cert is Cancelled (Stage 1)
+      firstTokenId = await setupStage1WithApprovedMember(member1);
+    });
+
+    it("approved member can set their name (Stage 1)", async function () {
       await expect(
         certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice Builder")
       )
@@ -228,25 +431,56 @@ describe("CertNFT - Team Members", function () {
       expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(1);
     });
 
-    it("name is immutable once set", async function () {
+    it("name is re-editable in Stage 1 (not immutable)", async function () {
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice Builder");
 
       await expect(
-        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "New Name")
-      ).to.be.revertedWithCustomError(certNFT, "NameAlreadySet");
+        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice Updated")
+      ).to.emit(certNFT, "TeamMemberNameSet");
+
+      const [, , name] = await certNFT.getTeamMember(ITERATION, project1.address, 0);
+      expect(name).to.equal("Alice Updated");
     });
 
-    it("reverts for non-approved member (proposed)", async function () {
+    it("namedMemberCount only increments on first name set", async function () {
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(1);
+
+      // Updating does not increment count again
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice v2");
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(1);
+    });
+
+    it("reverts with WrongStage in Stage 2 (cert Requested)", async function () {
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      // Resubmit → Stage 2
+      await certNFT.connect(project1).resubmitCert(firstTokenId);
+
+      await expect(
+        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice v2")
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
+    });
+
+    it("proposed member can set their name (no approval required)", async function () {
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
+      // member2 is Proposed (not yet Approved) — should succeed
 
       await expect(
         certNFT.connect(member2).setTeamMemberName(ITERATION, project1.address, "Bob")
-      ).to.be.revertedWithCustomError(certNFT, "MemberNotApproved");
+      )
+        .to.emit(certNFT, "TeamMemberNameSet")
+        .withArgs(ITERATION, project1.address, member2.address, "Bob");
+
+      // member1 already named by setupStage1WithApprovedMember + member2 = 2
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(2);
     });
 
     it("reverts for rejected member", async function () {
+      // Propose member2 in Stage 1, then do a resubmit cycle to reject them
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
+      await certNFT.connect(project1).resubmitCert(firstTokenId); // → Stage 2
       await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member2.address);
+      await certNFT.connect(owner).cancelCert(firstTokenId); // → Stage 1
 
       await expect(
         certNFT.connect(member2).setTeamMemberName(ITERATION, project1.address, "Bob")
@@ -305,119 +539,142 @@ describe("CertNFT - Team Members", function () {
     });
   });
 
+  // ── requestCert integration ───────────────────────────────────────────────
+
   describe("requestCert integration", function () {
-    it("reverts with NoNamedTeamMembers for project with no members", async function () {
+    it("project cannot request cert without named team members", async function () {
       await expect(
         certNFT.connect(project1).requestCert(ITERATION)
       ).to.be.revertedWithCustomError(certNFT, "NoNamedTeamMembers");
     });
 
-    it("reverts when members approved but no names set", async function () {
+    it("project can request cert after naming at least one member", async function () {
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
-
-      // Member approved but hasn't set name yet
-      await expect(
-        certNFT.connect(project1).requestCert(ITERATION)
-      ).to.be.revertedWithCustomError(certNFT, "NoNamedTeamMembers");
-    });
-
-    it("succeeds with at least one named member", async function () {
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
-      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice Builder");
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
 
       await expect(
         certNFT.connect(project1).requestCert(ITERATION)
-      )
-        .to.emit(certNFT, "CertRequested")
-        .withArgs(1, ITERATION, project1.address, "participant");
+      ).to.emit(certNFT, "CertRequested");
     });
 
-    it("non-project callers (DevRel) are NOT affected by team member guard", async function () {
-      // devRel is not a project, should request cert without team members
+    it("non-project callers (DevRel) are not affected by team member logic", async function () {
       await expect(
         certNFT.connect(devRel).requestCert(ITERATION)
       )
         .to.emit(certNFT, "CertRequested")
         .withArgs(1, ITERATION, devRel.address, "participant");
     });
-  });
 
-  describe("freeze after cert request", function () {
-    beforeEach(async function () {
-      // Setup: propose, approve, name, then request cert
+    it("resubmitCert reverts with NoNamedTeamMembers after named count drops to zero", async function () {
+      // Propose + name member1, request cert
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
-      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice Builder");
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
       await certNFT.connect(project1).requestCert(ITERATION);
+      const tokenId = await certNFT.certOf(project1.address, ITERATION);
+
+      // Reject the named member (decrements namedMemberCount)
+      await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address);
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(0);
+
+      // Cancel cert → Stage 1
+      await certNFT.connect(owner).cancelCert(tokenId);
+
+      // Resubmit should fail — no named members remain
+      await expect(
+        certNFT.connect(project1).resubmitCert(tokenId)
+      ).to.be.revertedWithCustomError(certNFT, "NoNamedTeamMembers");
     });
 
-    it("proposeTeamMember reverts with CertAlreadyRequested", async function () {
+    it("resubmitCert succeeds when at least one named member remains", async function () {
+      // Propose + name two members, request cert
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
+      await certNFT.connect(member2).setTeamMemberName(ITERATION, project1.address, "Bob");
+      await certNFT.connect(project1).requestCert(ITERATION);
+      const tokenId = await certNFT.certOf(project1.address, ITERATION);
+
+      // Reject one named member
+      await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address);
+      expect(await certNFT.namedMemberCount(ITERATION, project1.address)).to.equal(1);
+
+      // Cancel cert → Stage 1
+      await certNFT.connect(owner).cancelCert(tokenId);
+
+      // Resubmit should succeed — member2 is still named
+      await expect(
+        certNFT.connect(project1).resubmitCert(tokenId)
+      ).to.emit(certNFT, "CertResubmitted");
+    });
+
+    it("approveCert reverts when a project has no approved team members", async function () {
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      await certNFT.connect(project1).requestCert(ITERATION);
+      const tokenId = await certNFT.certOf(project1.address, ITERATION);
+
+      await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address);
+      expect(await certNFT.approvedMemberCount(ITERATION, project1.address)).to.equal(0);
+
+      await expect(
+        certNFT.connect(owner).approveCert(tokenId)
+      ).to.be.revertedWithCustomError(certNFT, "NoApprovedTeamMembers");
+    });
+  });
+
+  // ── lifecycle stage enforcement ───────────────────────────────────────────
+
+  describe("lifecycle stage enforcement", function () {
+    it("proposeTeamMember blocked in Stage 2 (WrongStage)", async function () {
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
+      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
+      await certNFT.connect(project1).requestCert(ITERATION);
+
       await expect(
         certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address)
-      ).to.be.revertedWithCustomError(certNFT, "CertAlreadyRequested");
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
     });
 
-    it("approveTeamMember reverts with CertAlreadyRequested", async function () {
-      // We need a proposed member that wasn't approved before cert was requested
-      // This scenario requires proposing before cert request but approving after
-      // Since we already have cert, we test that any new approval would fail
-      // For this, we need a member proposed before the cert but not yet approved
-      // Let's use a different setup:
-    });
-
-    it("rejectTeamMember reverts with CertAlreadyRequested", async function () {
-      await expect(
-        certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address)
-      ).to.be.revertedWithCustomError(certNFT, "CertAlreadyRequested");
-    });
-
-    it("setTeamMemberName reverts with CertAlreadyRequested", async function () {
-      await expect(
-        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "New Name")
-      ).to.be.revertedWithCustomError(certNFT, "CertAlreadyRequested");
-    });
-  });
-
-  describe("freeze after cert request - with pending members", function () {
-    it("approveTeamMember reverts with CertAlreadyRequested for pending member", async function () {
-      // Propose two members
+    it("approveTeamMember blocked in Stage 1 (no cert) with WrongStage", async function () {
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
 
-      // Approve and name member1
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
+      await expect(
+        certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address)
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
+    });
+
+    it("approveTeamMember allowed in Stage 2 for pending member", async function () {
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
-
-      // Request cert - member2 is still Proposed
+      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
       await certNFT.connect(project1).requestCert(ITERATION);
 
-      // Try to approve member2 after cert requested
       await expect(
         certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member2.address)
-      ).to.be.revertedWithCustomError(certNFT, "CertAlreadyRequested");
+      ).to.emit(certNFT, "TeamMemberApproved");
     });
 
-    it("setTeamMemberName reverts for approved member without name after cert", async function () {
-      // Propose two members
+    it("setTeamMemberName blocked in Stage 2 (WrongStage)", async function () {
+      const tokenId = await setupStage1WithApprovedMember(member1);
+      await certNFT.connect(project1).resubmitCert(tokenId); // → Stage 2
+
+      await expect(
+        certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice")
+      ).to.be.revertedWithCustomError(certNFT, "WrongStage");
+    });
+
+    it("rejectTeamMember allowed in Stage 2", async function () {
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
-
-      // Approve both, but only name member1
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member2.address);
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
-
-      // Request cert
       await certNFT.connect(project1).requestCert(ITERATION);
 
-      // Try to set name for member2 after cert requested
       await expect(
-        certNFT.connect(member2).setTeamMemberName(ITERATION, project1.address, "Bob")
-      ).to.be.revertedWithCustomError(certNFT, "CertAlreadyRequested");
+        certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member1.address)
+      ).to.emit(certNFT, "TeamMemberRejected");
     });
   });
+
+  // ── view functions ────────────────────────────────────────────────────────
 
   describe("view functions", function () {
     it("getTeamMembers returns full array", async function () {
@@ -456,14 +713,10 @@ describe("CertNFT - Team Members", function () {
 
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
       expect(await certNFT.hasNamedTeamMembers(ITERATION, project1.address)).to.be.false;
-
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
-      expect(await certNFT.hasNamedTeamMembers(ITERATION, project1.address)).to.be.false;
     });
 
     it("hasNamedTeamMembers returns true after name set", async function () {
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
+      const tokenId = await setupStage1WithApprovedMember(member1);
       await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
 
       expect(await certNFT.hasNamedTeamMembers(ITERATION, project1.address)).to.be.true;
@@ -473,24 +726,66 @@ describe("CertNFT - Team Members", function () {
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
       await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
 
-      // Index is 1-based (index+1), 0 means not found
       expect(await certNFT.teamMemberIndex(ITERATION, project1.address, member1.address)).to.equal(1);
       expect(await certNFT.teamMemberIndex(ITERATION, project1.address, member2.address)).to.equal(2);
       expect(await certNFT.teamMemberIndex(ITERATION, project1.address, member3.address)).to.equal(0);
     });
   });
 
-  describe("tokenURI with team members", function () {
-    it("includes teamMembers array with approved names", async function () {
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member2.address);
-      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
-      await certNFT.connect(member2).setTeamMemberName(ITERATION, project1.address, "Bob");
+  // ── tokenURI with team members ────────────────────────────────────────────
 
-      await certNFT.connect(project1).requestCert(ITERATION);
-      const tokenId = await certNFT.certOf(project1.address, ITERATION);
+  describe("tokenURI with team members", function () {
+    /**
+     * Full lifecycle: propose → requestCert → approve/reject members (Stage 2)
+     * → cancelCert → setNames (Stage 1) → resubmitCert → tokenURI works.
+     *
+     * membersConfig: [{ member, action: 'approve'|'reject'|'skip', name?: string }]
+     * Returns the tokenId.
+     */
+    async function setupProjectWithNamedMembers(membersConfig) {
+      // Phase 1: propose all members and name the first one (Stage 1)
+      for (const { member } of membersConfig) {
+        await certNFT.connect(project1).proposeTeamMember(ITERATION, member.address);
+      }
+      // Name at least one member so requestCert passes the guard
+      const first = membersConfig.find(c => c.name);
+      if (first) {
+        await certNFT.connect(first.member).setTeamMemberName(ITERATION, project1.address, "Temp");
+      }
+
+      // Phase 2: request cert → Stage 2
+      const tokenId = await requestAndGetTokenId();
+
+      // Phase 3: approve/reject in Stage 2
+      for (const { member, action } of membersConfig) {
+        if (action === "approve") {
+          await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member.address);
+        } else if (action === "reject") {
+          await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member.address);
+        }
+      }
+
+      // Phase 4: cancel → Stage 1
+      await certNFT.connect(owner).cancelCert(tokenId);
+
+      // Phase 5: approved members set names (Stage 1)
+      for (const { member, action, name } of membersConfig) {
+        if (action === "approve" && name) {
+          await certNFT.connect(member).setTeamMemberName(ITERATION, project1.address, name);
+        }
+      }
+
+      // Phase 6: resubmit → Stage 2 (cert now Requested, tokenId reused)
+      await certNFT.connect(project1).resubmitCert(tokenId);
+
+      return tokenId;
+    }
+
+    it("includes teamMembers array with approved names", async function () {
+      const tokenId = await setupProjectWithNamedMembers([
+        { member: member1, action: "approve", name: "Alice" },
+        { member: member2, action: "approve", name: "Bob" },
+      ]);
 
       const uri = await certNFT.tokenURI(tokenId);
       const metadata = JSON.parse(uri);
@@ -499,19 +794,11 @@ describe("CertNFT - Team Members", function () {
     });
 
     it("excludes rejected members from teamMembers", async function () {
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member3.address);
-
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
-      await certNFT.connect(owner).rejectTeamMember(ITERATION, project1.address, member2.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member3.address);
-
-      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
-      await certNFT.connect(member3).setTeamMemberName(ITERATION, project1.address, "Charlie");
-
-      await certNFT.connect(project1).requestCert(ITERATION);
-      const tokenId = await certNFT.certOf(project1.address, ITERATION);
+      const tokenId = await setupProjectWithNamedMembers([
+        { member: member1, action: "approve", name: "Alice" },
+        { member: member2, action: "reject", name: null },
+        { member: member3, action: "approve", name: "Charlie" },
+      ]);
 
       const uri = await certNFT.tokenURI(tokenId);
       const metadata = JSON.parse(uri);
@@ -520,17 +807,10 @@ describe("CertNFT - Team Members", function () {
     });
 
     it("excludes approved members without name set", async function () {
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member1.address);
-      await certNFT.connect(project1).proposeTeamMember(ITERATION, member2.address);
-
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member1.address);
-      await certNFT.connect(owner).approveTeamMember(ITERATION, project1.address, member2.address);
-
-      await certNFT.connect(member1).setTeamMemberName(ITERATION, project1.address, "Alice");
-      // member2 approved but no name set
-
-      await certNFT.connect(project1).requestCert(ITERATION);
-      const tokenId = await certNFT.certOf(project1.address, ITERATION);
+      const tokenId = await setupProjectWithNamedMembers([
+        { member: member1, action: "approve", name: "Alice" },
+        { member: member2, action: "approve", name: null }, // approved but no name set
+      ]);
 
       const uri = await certNFT.tokenURI(tokenId);
       const metadata = JSON.parse(uri);
@@ -549,7 +829,6 @@ describe("CertNFT - Team Members", function () {
     });
 
     it("no teamMembers field when all proposed but none named", async function () {
-      // For this scenario, use devRel cert (no team members at all)
       await certNFT.connect(devRel).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(devRel.address, ITERATION);
 

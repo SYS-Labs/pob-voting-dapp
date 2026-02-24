@@ -99,6 +99,25 @@ contract PoBRegistryBypass is Initializable, OwnableUpgradeable, UUPSUpgradeable
     /// @dev After initialization (true), only authorized projects can set their own metadata
     bool public initializationComplete;
 
+    // ========== Storage layout compatibility with PoBRegistry v3 ==========
+
+    /// @dev Must match PoBRegistry storage layout exactly (slots are occupied even if unused)
+    mapping(address => string) public profilePictureCID;
+    mapping(address => string) public profileBioCID;
+    mapping(uint256 => address) public versionAdapters;
+    mapping(uint256 => mapping(uint256 => uint256)) public roundVersion;
+    mapping(address => uint8) public votingModeOverride;
+
+    // ========== Template Storage (v3 compatibility) ==========
+
+    struct IterationTemplate {
+        bytes32 hash;
+        uint32 version;
+        string cid;
+    }
+
+    mapping(uint256 => IterationTemplate) public iterationTemplates;
+
     // ========== Events ==========
 
     event IterationRegistered(
@@ -477,6 +496,103 @@ contract PoBRegistryBypass is Initializable, OwnableUpgradeable, UUPSUpgradeable
         }
 
         return cids;
+    }
+
+    // ========== Profile Functions (ABI parity) ==========
+
+    event ProfilePictureSet(address indexed account, string cid);
+    event ProfileBioSet(address indexed account, string cid);
+
+    function setProfilePicture(string calldata cid) external {
+        require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
+        profilePictureCID[msg.sender] = cid;
+        emit ProfilePictureSet(msg.sender, cid);
+    }
+
+    function setProfileBio(string calldata cid) external {
+        require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
+        profileBioCID[msg.sender] = cid;
+        emit ProfileBioSet(msg.sender, cid);
+    }
+
+    // ========== Adapter Routing Functions (ABI parity) ==========
+
+    event AdapterSet(uint256 indexed versionId, address indexed adapter);
+    event RoundVersionSet(uint256 indexed iterationId, uint256 indexed roundId, uint256 indexed versionId);
+    event VotingModeOverrideSet(address indexed jurySC, uint8 mode);
+
+    error ZeroAddress();
+    error NotAContract();
+
+    function setAdapter(uint256 versionId, address adapter) external onlyOwner {
+        require(versionId > 0, "Invalid version ID");
+        if (adapter == address(0)) revert ZeroAddress();
+        if (adapter.code.length == 0) revert NotAContract();
+        versionAdapters[versionId] = adapter;
+        emit AdapterSet(versionId, adapter);
+    }
+
+    function setRoundVersion(uint256 iterationId, uint256 roundId, uint256 versionId) external onlyOwner {
+        require(rounds[iterationId][roundId].exists, "Round not found");
+        require(versionId > 0, "Invalid version ID");
+        require(versionAdapters[versionId] != address(0), "Adapter not set for version");
+        roundVersion[iterationId][roundId] = versionId;
+        emit RoundVersionSet(iterationId, roundId, versionId);
+    }
+
+    function getAdapterConfig(uint256 iterationId, uint256 roundId) external view returns (
+        address jurySC,
+        address adapter
+    ) {
+        require(rounds[iterationId][roundId].exists, "Round not found");
+        uint256 versionId = roundVersion[iterationId][roundId];
+        require(versionId > 0, "Version not set for round");
+        adapter = versionAdapters[versionId];
+        require(adapter != address(0), "Adapter not set for version");
+        jurySC = rounds[iterationId][roundId].jurySC;
+    }
+
+    function setVotingModeOverride(address jurySC, uint8 mode) external onlyOwner {
+        require(jurySC != address(0), "Invalid address");
+        require(mode <= 1, "Invalid voting mode");
+        votingModeOverride[jurySC] = mode + 1;
+        emit VotingModeOverrideSet(jurySC, mode);
+    }
+
+    // ========== Template Functions (v3 compatibility) ==========
+
+    event TemplateSet(uint256 indexed iterationId, bytes32 indexed templateHash, string cid);
+
+    function setIterationTemplate(
+        uint256 iterationId,
+        bytes32 templateHash,
+        string calldata cid
+    ) external onlyOwner {
+        require(iterationId > 0, "Invalid iteration ID");
+        require(templateHash != bytes32(0), "Invalid template hash");
+        require(bytes(cid).length > 0, "CID cannot be empty");
+        require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
+
+        iterationTemplates[iterationId].version++;
+        iterationTemplates[iterationId].hash = templateHash;
+        iterationTemplates[iterationId].cid = cid;
+
+        emit TemplateSet(iterationId, templateHash, cid);
+    }
+
+    function getIterationTemplate(uint256 iterationId)
+        external
+        view
+        returns (bytes32 hash, uint32 version, string memory cid)
+    {
+        IterationTemplate storage t = iterationTemplates[iterationId];
+        return (t.hash, t.version, t.cid);
+    }
+
+    // ========== Version ==========
+
+    function version() external pure returns (string memory) {
+        return "3";
     }
 
     // ========== UUPS Upgrade Authorization ==========

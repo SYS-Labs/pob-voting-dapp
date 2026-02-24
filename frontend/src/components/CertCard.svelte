@@ -5,14 +5,16 @@
   interface Props {
     cert: Cert;
     teamMemberNames?: string[];
+    svgContent?: string;
   }
 
-  let { cert, teamMemberNames = [] }: Props = $props();
+  let { cert, teamMemberNames = [], svgContent }: Props = $props();
 
-  const STATUS_COLORS: Record<CertStatus, string> = {
-    Minted: 'border border-green-500/40 bg-green-500/10 text-green-400',
-    Pending: 'border border-yellow-500/40 bg-yellow-500/10 text-yellow-400',
-    Cancelled: 'border border-red-500/40 bg-red-500/10 text-red-400',
+  const STATUS_CLASSES: Record<CertStatus, string> = {
+    Minted: 'pob-pill--success',
+    Pending: 'pob-pill--warning',
+    Cancelled: 'pob-pill--failure',
+    Requested: 'pob-pill--info',
   };
 
   const CERT_TYPE_LABELS: Record<string, string> = {
@@ -51,13 +53,19 @@
 
 <div class="pob-fieldset space-y-3">
   <!-- Certificate Visual -->
-  <div class="aspect-square w-full rounded-lg bg-gradient-to-br from-[var(--pob-primary)]/20 to-[var(--pob-primary)]/5 flex items-center justify-center border border-[var(--pob-primary)]/30">
-    <div class="text-center space-y-2">
-      <div class="text-4xl">📜</div>
-      <div class="text-xs text-[var(--pob-text-muted)]">
-        Iteration {cert.iteration}
+  <div class="aspect-square w-full rounded-lg overflow-hidden border border-[var(--pob-primary)]/30">
+    {#if svgContent}
+      {@html svgContent}
+    {:else}
+      <div class="w-full h-full bg-gradient-to-br from-[var(--pob-primary)]/20 to-[var(--pob-primary)]/5 flex items-center justify-center">
+        <div class="text-center space-y-2">
+          <div class="text-4xl">📜</div>
+          <div class="text-xs text-[var(--pob-text-muted)]">
+            Iteration {cert.iteration}
+          </div>
+        </div>
       </div>
-    </div>
+    {/if}
   </div>
 
   <!-- Cert Info -->
@@ -72,10 +80,14 @@
 
   <!-- Status -->
   <div class="flex items-center justify-between">
-    <span class="pob-pill {STATUS_COLORS[effectiveStatus]}">
+    <span class="pob-pill {STATUS_CLASSES[effectiveStatus]}">
       {effectiveStatus}
     </span>
-    {#if effectiveStatus === 'Pending' && countdownText}
+    {#if effectiveStatus === 'Requested'}
+      <span class="text-xs text-[var(--pob-text-muted)]">
+        Awaiting approval
+      </span>
+    {:else if effectiveStatus === 'Pending' && countdownText}
       <span class="text-xs text-[var(--pob-text-muted)]">
         {countdownText}
       </span>

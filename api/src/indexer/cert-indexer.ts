@@ -29,10 +29,15 @@ const CERT_NFT_ABI = [
   'function hasNamedTeamMembers(uint256 iteration, address project) view returns (bool)',
 ];
 
-const CERT_MIDDLEWARE_ABI = [
-  'function templateCID() view returns (string)',
+const CERT_GATE_ABI = [
   'function validate(address) view returns (bool, string)',
   'function isProjectInAnyRound(address) view returns (bool)',
+  'event RoleRegistered(address indexed account, string role)',
+  'event RoleRemoved(address indexed account)',
+];
+
+const REGISTRY_TEMPLATE_ABI = [
+  'function getIterationTemplate(uint256 iterationId) view returns (bytes32 hash, uint32 version, string cid)',
 ];
 
 const CERT_NFT_TEAM_ABI = [
@@ -50,6 +55,7 @@ const STATUS_MAP: Record<number, CertStatus> = {
   0: 'pending',
   1: 'minted',
   2: 'cancelled',
+  3: 'requested',
 };
 
 // Team member status enum mapping (matches CertNFT.MemberStatus)
@@ -79,6 +85,10 @@ class CertIndexer {
   private ipfsService: IPFSService;
   private providers: Map<number, JsonRpcProvider> = new Map();
   private isRunning = false;
+  // Tracks the next-unscanned block per (chainId, middlewareAddress) for
+  // incremental role-event scanning (RoleRegistered + RoleRemoved). Resets to
+  // 0 on restart (safe because upserts are idempotent), then advances each poll.
+  private readonly roleEventCheckpoints = new Map<string, number>();
 
   constructor(dbPath?: string) {
     const path = dbPath || process.env.DB_PATH || './data/index.db';
@@ -139,19 +149,20 @@ class CertIndexer {
   }
 
   /**
-   * Get template CID from a middleware contract
+   * Get template CID from PoBRegistry for a given iteration
    */
   private async getTemplateCID(
-    middlewareAddress: string,
+    registryAddress: string,
+    iteration: number,
     provider: JsonRpcProvider
   ): Promise<string | null> {
-    if (!middlewareAddress || middlewareAddress === ethers.ZeroAddress) {
+    if (!registryAddress || registryAddress === ethers.ZeroAddress) {
       return null;
     }
 
     try {
-      const middleware = new Contract(middlewareAddress, CERT_MIDDLEWARE_ABI, provider);
-      const cid = await middleware.templateCID();
+      const registry = new Contract(registryAddress, REGISTRY_TEMPLATE_ABI, provider);
+      const [, , cid] = await registry.getIterationTemplate(iteration);
       return cid && cid.length > 0 ? cid : null;
     } catch {
       return null;
@@ -200,8 +211,8 @@ class CertIndexer {
         }
       }
 
-      // Re-check pending certs (status may have changed)
-      const pendingCerts = this.certsDb.getPendingCerts(chainId);
+      // Re-check non-final certs (status may have changed, e.g. cancelled → requested via resubmit)
+      const pendingCerts = this.certsDb.getNonFinalCerts(chainId);
       for (const cert of pendingCerts) {
         try {
           const statusRaw = await certNFT.certStatus(cert.token_id);
@@ -262,9 +273,12 @@ class CertIndexer {
     const status = STATUS_MAP[Number(statusRaw)] || 'pending';
     const requestTime = Number(certData.requestTime);
 
-    // Get middleware address and template CID for this iteration
+    // Get middleware (gate) address for this iteration
     const middlewareAddress = await certNFT.middleware(iteration).catch(() => ethers.ZeroAddress);
-    const templateCID = await this.getTemplateCID(middlewareAddress, provider);
+
+    // Get template CID from PoBRegistry (source of truth after API publish)
+    const registryAddress = NETWORKS[chainId].registryAddress || '';
+    const templateCID = await this.getTemplateCID(registryAddress, iteration, provider);
 
     if (templateCID) {
       await this.fetchAndCacheMetadata(templateCID);
@@ -325,10 +339,13 @@ class CertIndexer {
       for (const projectAddress of projectAddresses) {
         try {
           const count = Number(await certNFT.getTeamMemberCount(iteration, projectAddress));
+          const onChainAddresses: string[] = [];
+          let fetchError = false;
           for (let i = 0; i < count; i++) {
             try {
               const [memberAddress, statusRaw, fullName] = await certNFT.getTeamMember(iteration, projectAddress, i);
               const status = MEMBER_STATUS_MAP[Number(statusRaw)] || 'proposed';
+              onChainAddresses.push(memberAddress.toLowerCase());
 
               this.teamMembersDb.upsertTeamMember({
                 chain_id: chainId,
@@ -341,8 +358,13 @@ class CertIndexer {
               });
               totalIndexed++;
             } catch (error) {
+              fetchError = true;
               logger.warn('Failed to index team member', { chainId, iteration, projectAddress, index: i, error });
             }
+          }
+          // Prune members removed on-chain, but only if all fetches succeeded
+          if (!fetchError) {
+            this.teamMembersDb.deleteTeamMembersNotIn(chainId, iteration, projectAddress, onChainAddresses);
           }
         } catch (error) {
           logger.warn('Failed to get team member count', { chainId, iteration, projectAddress, error });
@@ -367,6 +389,12 @@ class CertIndexer {
 
     const certNFT = new Contract(config.certNFTAddress, CERT_NFT_ABI, provider);
 
+    // Fetch current block once so all event-range queries in this pass share the same toBlock.
+    let currentBlock = 0;
+    try {
+      currentBlock = Number(await provider.getBlockNumber());
+    } catch { /* fall back to full-history scan */ }
+
     // Collect candidate accounts from iteration snapshots where voting ended
     const snapshots = this.iterationsDb.getSnapshotsByChain(chainId);
     let totalChecked = 0;
@@ -386,7 +414,7 @@ class CertIndexer {
       }
       if (!middlewareAddress || middlewareAddress === ethers.ZeroAddress) continue;
 
-      const middleware = new Contract(middlewareAddress, CERT_MIDDLEWARE_ABI, provider);
+      const middleware = new Contract(middlewareAddress, CERT_GATE_ABI, provider);
 
       // Collect candidate accounts
       const candidates = new Set<string>();
@@ -405,6 +433,36 @@ class CertIndexer {
           for (const p of projects) candidates.add(p.address.toLowerCase());
         } catch { /* ignore */ }
       }
+
+      // Also include accounts touched by role admin actions.
+      // RoleRegistered accounts can be eligible via registeredRole bypass.
+      // RoleRemoved accounts must be revalidated so stale eligible=1 rows are cleared.
+      // Uses an incremental block range so each poll only scans new blocks.
+      const checkpointKey = `${chainId}-${middlewareAddress}`;
+      const fromBlock = this.roleEventCheckpoints.get(checkpointKey) ?? 0;
+      try {
+        const toBlock = currentBlock > 0 ? currentBlock : 'latest';
+        const [registeredEvents, removedEvents] = await Promise.all([
+          middleware.queryFilter(
+            middleware.filters.RoleRegistered(),
+            fromBlock,
+            toBlock
+          ),
+          middleware.queryFilter(
+            middleware.filters.RoleRemoved(),
+            fromBlock,
+            toBlock
+          ),
+        ]);
+
+        for (const event of [...registeredEvents, ...removedEvents]) {
+          const account = (event as any).args?.account;
+          if (account) candidates.add(account.toLowerCase());
+        }
+        if (currentBlock > 0) {
+          this.roleEventCheckpoints.set(checkpointKey, currentBlock + 1);
+        }
+      } catch { /* ignore — older middleware or RPC issue */ }
 
       for (const account of candidates) {
         try {

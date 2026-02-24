@@ -39,8 +39,8 @@ describe("PoBRegistry - Adapter Routing", function () {
   });
 
   describe("version()", function () {
-    it("returns '2'", async function () {
-      expect(await registry.version()).to.equal("2");
+    it("returns '3'", async function () {
+      expect(await registry.version()).to.equal("3");
     });
   });
 
@@ -64,7 +64,13 @@ describe("PoBRegistry - Adapter Routing", function () {
     it("reverts for zero address adapter", async function () {
       await expect(
         registry.setAdapter(1, ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid adapter address");
+      ).to.be.revertedWithCustomError(registry, "ZeroAddress");
+    });
+
+    it("reverts for EOA (non-contract) address", async function () {
+      await expect(
+        registry.setAdapter(1, user1.address)
+      ).to.be.revertedWithCustomError(registry, "NotAContract");
     });
 
     it("only owner can set adapter", async function () {

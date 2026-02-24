@@ -166,7 +166,7 @@ node scripts/update-abis.js
 - `frontend/src/abis/JurySC_02_v001.json` - JurySC_02 ABI
 - `frontend/src/abis/PoBRegistry.json` - Registry ABI
 - `frontend/src/abis/CertNFT.json` - Certificate NFT ABI
-- `frontend/src/abis/CertMiddleware_001.json` - Certificate middleware ABI
+- `frontend/src/abis/CertGate.json` - Certificate gate ABI
 - `frontend/src/abis/errors.json` - Error mappings for both contracts
 
 **Frontend note:**

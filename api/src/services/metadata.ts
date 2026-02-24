@@ -38,6 +38,7 @@ export interface IterationMetadata {
 export interface ProjectMetadata {
   account: string;
   name: string;
+  app_url?: string;
   yt_vid: string;
   proposal: string;
 }

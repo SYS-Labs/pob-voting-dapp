@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import pkg from "hardhat";
 import { create } from "ipfs-http-client";
-const { ethers, network } = pkg;
+const { ethers, network, upgrades } = pkg;
 
 const ACCOUNT_FUNDING = ethers.parseEther("50"); // 50 ETH per account (30 for community mint + 20 for gas)
 
@@ -636,6 +636,122 @@ async function main() {
   console.log("   1. Verify you're using one of the addresses listed above");
   console.log("   2. Check you're connected to the correct network (Hardhat Local)");
   console.log("   3. Community mint requires 30 ETH deposit + gas fees");
+
+  // ── Iteration 1: activate → vote → close → lock ─────────────────────────
+  if (isLocal && projectAddresses.length >= 1) {
+    console.log("\n=== Completing Iteration 1 (activate → vote → close → lock) ===");
+
+    const allSigners = await ethers.getSigners();
+    const devRelSigner   = allSigners[5];
+    const daoHic1Signer  = allSigners[3];
+    const daoHic2Signer  = allSigners[4];
+    const comm1Signer    = allSigners[6];
+    const comm2Signer    = allSigners[7];
+    const project1       = projectAddresses[0];
+
+    // Connect pob contract
+    const pob = await ethers.getContractAt("PoB_02", pobAddress);
+
+    // Activate (sets projectsLocked = true, opens 48h window)
+    const txActivate = await jurySC.activate();
+    await txActivate.wait();
+    console.log("- Iteration 1 activated");
+
+    // Community mints (during active voting; returns deposit on re-mint so safe)
+    const mintVal = ethers.parseEther("30");
+    const txMint1 = await pob.connect(comm1Signer).mint({ value: mintVal });
+    await txMint1.wait();
+    console.log("- Community 1 minted token 0");
+    const txMint2 = await pob.connect(comm2Signer).mint({ value: mintVal });
+    await txMint2.wait();
+    console.log("- Community 2 minted token 1");
+
+    // Votes — all for project 1 (consensus winner)
+    await (await jurySC.connect(devRelSigner).voteDevRel(project1)).wait();
+    console.log("- DevRel voted for project 1");
+    await (await jurySC.connect(daoHic1Signer).voteDaoHic(project1)).wait();
+    console.log("- DAO_HIC 1 voted for project 1");
+    await (await jurySC.connect(daoHic2Signer).voteDaoHic(project1)).wait();
+    console.log("- DAO_HIC 2 voted for project 1");
+    await (await jurySC.connect(comm1Signer).voteCommunity(0, project1)).wait();
+    console.log("- Community 1 voted (token 0) for project 1");
+    await (await jurySC.connect(comm2Signer).voteCommunity(1, project1)).wait();
+    console.log("- Community 2 voted (token 1) for project 1");
+
+    // Close + lock
+    await (await jurySC.closeManually()).wait();
+    console.log("- Voting closed manually");
+    await (await jurySC.lockContractForHistory()).wait();
+    console.log("- Contract locked for history");
+
+    // ── Deploy iteration 2 (uninitialized) ──────────────────────────────────
+    console.log("\n=== Deploying Iteration 2 (uninitialized) ===");
+
+    const iter2 = 2;
+    const PoB_02_Factory   = await ethers.getContractFactory("PoB_02");
+    const pob2 = await PoB_02_Factory.deploy(
+      "PoB Iteration #2", "POB2", iter2, deployer.address
+    );
+    await pob2.waitForDeployment();
+    const pob2Address = await pob2.getAddress();
+    console.log("- PoB_02 (iter 2):", pob2Address);
+
+    const JurySC_02_Factory = await ethers.getContractFactory("JurySC_02");
+    const jury2 = await upgrades.deployProxy(
+      JurySC_02_Factory,
+      [pob2Address, iter2, deployer.address],
+      { kind: "uups", initializer: "initialize" }
+    );
+    await jury2.waitForDeployment();
+    const jury2Address = await jury2.getAddress();
+    console.log("- JurySC_02 (iter 2):", jury2Address);
+
+    await (await pob2.transferOwnership(jury2Address)).wait();
+    console.log("- PoB_02 ownership transferred to JurySC_02");
+
+    // ── Register iteration 2 in PoBRegistry ──────────────────────────────────
+    if (registryAddress) {
+      const registry2 = await ethers.getContractAt("PoBRegistry", registryAddress);
+      const iter2Block = await ethers.provider.getBlockNumber();
+
+      const existingIter2 = await registry2.iterations(iter2).catch(() => ({ exists: false }));
+      if (!existingIter2.exists) {
+        await (await registry2.registerIteration(iter2, chainId)).wait();
+        console.log(`- Iteration ${iter2} registered in PoBRegistry`);
+      } else {
+        console.log(`- Iteration ${iter2} already registered`);
+      }
+
+      const existingRound2 = await registry2.rounds(iter2, 1).catch(() => ({ exists: false }));
+      if (!existingRound2.exists) {
+        await (await registry2.addRound(iter2, 1, jury2Address, iter2Block)).wait();
+        console.log(`- Round 1 registered for iteration ${iter2}`);
+      } else {
+        console.log(`- Round 1 for iteration ${iter2} already registered`);
+      }
+
+      await (await registry2.setRoundVersion(iter2, 1, 2)).wait();
+      console.log(`- setRoundVersion(${iter2}, 1, 2)`);
+    }
+
+    // ── Update iterations.local.json ─────────────────────────────────────────
+    const iterationsLocalPath = path.join(
+      process.cwd(), "../frontend/public/iterations.local.json"
+    );
+    const iterationsLocal = JSON.parse(fs.readFileSync(iterationsLocalPath, "utf8"));
+    const iter2Block = await ethers.provider.getBlockNumber();
+    iterationsLocal.push({
+      iteration: iter2,
+      name: "PoB Iteration #2",
+      jurySC: jury2Address,
+      pob: pob2Address,
+      chainId,
+      deployBlockHint: iter2Block,
+      link: "https://example.com/iteration",
+    });
+    fs.writeFileSync(iterationsLocalPath, JSON.stringify(iterationsLocal, null, 2));
+    console.log("- iterations.local.json updated with iteration 2");
+  }
 }
 
 main()

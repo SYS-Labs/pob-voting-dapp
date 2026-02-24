@@ -1,6 +1,6 @@
 export type IterationStatus = 'upcoming' | 'active' | 'ended';
 
-export type PageType = 'iterations' | 'iteration' | 'project' | 'badges' | 'certs' | 'cert-request' | 'profile' | 'faq' | 'forum';
+export type PageType = 'iterations' | 'iteration' | 'project' | 'badges' | 'certs' | 'cert-request' | 'cert' | 'profile' | 'faq' | 'forum';
 
 export interface PreviousRound {
   round: number;
@@ -49,6 +49,7 @@ export interface ProjectMetadata {
   chainId: number;
   account: string;
   name?: string;
+  app_url?: string;
   description?: string;
   yt_vid?: string;
   proposal?: string;
@@ -119,7 +120,7 @@ export interface IterationMetadata {
 
 export type CertType = 'participant' | 'winner' | 'organizer' | 'speaker' | string;
 
-export type CertStatus = 'Pending' | 'Minted' | 'Cancelled';
+export type CertStatus = 'Pending' | 'Minted' | 'Cancelled' | 'Requested';
 
 export interface Cert {
   tokenId: string;

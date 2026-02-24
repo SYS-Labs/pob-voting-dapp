@@ -5,7 +5,18 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "./ICertMiddleware.sol";
+import "./ICertGate.sol";
+
+/**
+ * @title IPoBRegistryForCert
+ * @notice Minimal interface for PoBRegistry template queries used by CertNFT
+ */
+interface IPoBRegistryForCert {
+    function getIterationTemplate(uint256 iterationId)
+        external
+        view
+        returns (bytes32 hash, uint32 version, string memory cid);
+}
 
 /**
  * @title CertNFT
@@ -24,10 +35,11 @@ contract CertNFT is
     uint256 public constant PENDING_PERIOD = 48 hours;
     uint256 public constant MAX_TEAM_MEMBERS = 20;
     uint256 public constant MAX_NAME_LENGTH = 64;
+    uint256 public constant MAX_TEMPLATE_SIZE = 102400; // 100KB
 
     // ========== Enums & Structs ==========
 
-    enum CertStatus { Pending, Minted, Cancelled }
+    enum CertStatus { Pending, Minted, Cancelled, Requested }
     enum MemberStatus { Proposed, Approved, Rejected }
 
     struct CertData {
@@ -55,6 +67,9 @@ contract CertNFT is
     /// @notice Account => iteration => tokenId (0 means no cert)
     mapping(address => mapping(uint256 => uint256)) public certOf;
 
+    /// @notice PoBRegistry contract address (source of truth for template hash + CID)
+    address public pobRegistry;
+
     /// @notice Next token ID to mint (starts at 1)
     uint256 public nextTokenId;
 
@@ -67,19 +82,24 @@ contract CertNFT is
     /// @notice Iteration => project => count of approved members
     mapping(uint256 => mapping(address => uint256)) public approvedMemberCount;
 
-    /// @notice Iteration => project => count of approved members with name set
+    /// @notice Iteration => project => count of members (Proposed or Approved) with name set
     mapping(uint256 => mapping(address => uint256)) public namedMemberCount;
 
     // ========== Events ==========
 
     event CertRequested(uint256 indexed tokenId, uint256 indexed iteration, address indexed account, string certType);
+    event CertApproved(uint256 indexed tokenId);
     event CertCancelled(uint256 indexed tokenId);
+    event CertFinalized(uint256 indexed tokenId);
     event MiddlewareSet(uint256 indexed iteration, address indexed addr);
 
     event TeamMemberProposed(uint256 indexed iteration, address indexed project, address indexed member);
     event TeamMemberApproved(uint256 indexed iteration, address indexed project, address indexed member);
     event TeamMemberRejected(uint256 indexed iteration, address indexed project, address indexed member);
     event TeamMemberNameSet(uint256 indexed iteration, address indexed project, address indexed member, string fullName);
+    event CertResubmitted(uint256 indexed tokenId, uint256 indexed iteration, address indexed account);
+    event TeamMemberRemoved(uint256 indexed iteration, address indexed project, address indexed member);
+    event PoBRegistrySet(address indexed addr);
 
     // ========== Errors ==========
 
@@ -88,6 +108,10 @@ contract CertNFT is
     error NotEligible();
     error InvalidToken();
     error NotPending();
+    error NotRequested();
+    error TemplateHashMismatch();
+    error TemplateTooLarge();
+    error NoActiveTemplate();
 
     error NotProjectForIteration();
     error MemberAlreadyExists();
@@ -99,8 +123,15 @@ contract CertNFT is
     error NameTooLong();
     error NameContainsInvalidBytes();
     error NoNamedTeamMembers();
+    error NoApprovedTeamMembers();
     error NotTeamMember();
     error CertAlreadyRequested();
+    error NotCancelled();
+    error AlreadyMinted();
+    error WrongStage();
+    error MissingPlaceholder();
+    error ZeroAddress();
+    error NotAContract();
 
     // ========== Initialization ==========
 
@@ -129,11 +160,10 @@ contract CertNFT is
         address mw = middleware[iteration];
         if (mw == address(0)) revert NoMiddleware();
 
-        (bool eligible, string memory certType) = ICertMiddleware(mw).validate(msg.sender);
+        (bool eligible, string memory certType) = ICertGate(mw).validate(msg.sender);
         if (!eligible) revert NotEligible();
 
-        // Only enforce team member requirement for project addresses
-        if (ICertMiddleware(mw).isProjectInAnyRound(msg.sender)) {
+        if (ICertGate(mw).isProjectInAnyRound(msg.sender)) {
             if (namedMemberCount[iteration][msg.sender] == 0) revert NoNamedTeamMembers();
         }
 
@@ -144,8 +174,8 @@ contract CertNFT is
             iteration: iteration,
             account: msg.sender,
             certType: certType,
-            status: CertStatus.Pending,
-            requestTime: block.timestamp
+            status: CertStatus.Requested,
+            requestTime: 0
         });
 
         certOf[msg.sender][iteration] = tokenId;
@@ -163,12 +193,45 @@ contract CertNFT is
         if (cert.account == address(0)) revert InvalidToken();
 
         if (cert.status == CertStatus.Cancelled) return CertStatus.Cancelled;
+        if (cert.status == CertStatus.Requested) return CertStatus.Requested;
 
         if (cert.status == CertStatus.Pending && block.timestamp >= cert.requestTime + PENDING_PERIOD) {
             return CertStatus.Minted;
         }
 
         return cert.status;
+    }
+
+    /**
+     * @notice Check if a certificate is valid (effective status is Minted)
+     * @dev All integrations must use this instead of ownerOf/balanceOf.
+     * @param tokenId The token ID
+     * @return Whether the certificate is valid (Minted)
+     */
+    function isValidCert(uint256 tokenId) external view returns (bool) {
+        CertData storage cert = certs[tokenId];
+        if (cert.account == address(0)) return false;
+        return certStatus(tokenId) == CertStatus.Minted;
+    }
+
+    /**
+     * @notice Resubmit a cancelled certificate request, reusing the same tokenId
+     * @param tokenId The token ID to resubmit
+     */
+    function resubmitCert(uint256 tokenId) external nonReentrant {
+        CertData storage cert = certs[tokenId];
+        if (cert.account == address(0)) revert InvalidToken();
+        if (cert.account != msg.sender) revert NotEligible();
+        if (certStatus(tokenId) != CertStatus.Cancelled) revert NotCancelled();
+
+        address mw = middleware[cert.iteration];
+        if (mw != address(0) && ICertGate(mw).isProjectInAnyRound(msg.sender)) {
+            if (namedMemberCount[cert.iteration][msg.sender] == 0) revert NoNamedTeamMembers();
+        }
+
+        cert.status = CertStatus.Requested;
+        cert.requestTime = 0;
+        emit CertResubmitted(tokenId, cert.iteration, msg.sender);
     }
 
     /**
@@ -193,7 +256,7 @@ contract CertNFT is
         ));
 
         string memory part2 = string(abi.encodePacked(
-            '{"trait_type":"Type","value":"', cert.certType, '"},',
+            '{"trait_type":"Type","value":"', _jsonEscape(cert.certType), '"},',
             '{"trait_type":"Status","value":"', statusStr, '"}',
             ']',
             templatePart,
@@ -207,15 +270,17 @@ contract CertNFT is
     function _statusString(CertStatus s) internal pure returns (string memory) {
         if (s == CertStatus.Pending) return "Pending";
         if (s == CertStatus.Minted) return "Minted";
+        if (s == CertStatus.Requested) return "Requested";
         return "Cancelled";
     }
 
     function _templatePart(uint256 iteration) internal view returns (string memory) {
-        address mw = middleware[iteration];
-        if (mw == address(0)) return "";
-        try ICertMiddleware(mw).templateCID() returns (string memory t) {
+        if (pobRegistry == address(0)) return "";
+        try IPoBRegistryForCert(pobRegistry).getIterationTemplate(iteration)
+            returns (bytes32, uint32, string memory t)
+        {
             if (bytes(t).length > 0) {
-                return string(abi.encodePacked(',"template":"', t, '"'));
+                return string(abi.encodePacked(',"template":"', _jsonEscape(t), '"'));
             }
         } catch {}
         return "";
@@ -264,8 +329,8 @@ contract CertNFT is
         if (member == address(0)) revert InvalidMemberIndex();
         address mw = middleware[iteration];
         if (mw == address(0)) revert NoMiddleware();
-        if (!ICertMiddleware(mw).isProjectInAnyRound(msg.sender)) revert NotProjectForIteration();
-        if (certOf[msg.sender][iteration] != 0) revert CertAlreadyRequested();
+        if (!ICertGate(mw).isProjectInAnyRound(msg.sender)) revert NotProjectForIteration();
+        if (_certStage(msg.sender, iteration) != 1) revert WrongStage();
         if (teamMemberIndex[iteration][msg.sender][member] != 0) revert MemberAlreadyExists();
         if (_teamMembers[iteration][msg.sender].length >= MAX_TEAM_MEMBERS) revert TooManyMembers();
 
@@ -286,7 +351,7 @@ contract CertNFT is
      * @param member The team member address to approve
      */
     function approveTeamMember(uint256 iteration, address project, address member) external onlyOwner {
-        if (certOf[project][iteration] != 0) revert CertAlreadyRequested();
+        if (_certStage(project, iteration) != 2) revert WrongStage();
 
         uint256 idx = teamMemberIndex[iteration][project][member];
         if (idx == 0) revert InvalidMemberIndex();
@@ -307,7 +372,7 @@ contract CertNFT is
      * @param member The team member address to reject
      */
     function rejectTeamMember(uint256 iteration, address project, address member) external onlyOwner {
-        if (certOf[project][iteration] != 0) revert CertAlreadyRequested();
+        if (_certStage(project, iteration) != 2) revert WrongStage();
 
         uint256 idx = teamMemberIndex[iteration][project][member];
         if (idx == 0) revert InvalidMemberIndex();
@@ -315,26 +380,62 @@ contract CertNFT is
         TeamMember storage tm = _teamMembers[iteration][project][idx - 1];
         if (tm.status != MemberStatus.Proposed) revert InvalidMemberIndex();
 
+        if (bytes(tm.fullName).length > 0) namedMemberCount[iteration][project]--;
         tm.status = MemberStatus.Rejected;
 
         emit TeamMemberRejected(iteration, project, member);
     }
 
     /**
-     * @notice Set own full name as an approved team member
+     * @notice Remove a team member (project only, Stage 1 only)
+     * @dev Removes members of any status (Proposed, Approved, Rejected).
+     *      Decrements approvedMemberCount and namedMemberCount as appropriate.
+     * @param iteration The iteration number
+     * @param member The address of the team member to remove
+     */
+    function removeTeamMember(uint256 iteration, address member) external {
+        if (_certStage(msg.sender, iteration) != 1) revert WrongStage();
+
+        address project = msg.sender;
+        uint256 idx = teamMemberIndex[iteration][project][member];
+        if (idx == 0) revert InvalidMemberIndex();
+
+        TeamMember storage tm = _teamMembers[iteration][project][idx - 1];
+
+        // Update counters before removal
+        if (tm.status == MemberStatus.Approved) approvedMemberCount[iteration][project]--;
+        // Rejected members already had namedMemberCount decremented in rejectTeamMember(); skip to avoid underflow
+        if (bytes(tm.fullName).length > 0 && tm.status != MemberStatus.Rejected) namedMemberCount[iteration][project]--;
+
+        // Swap-and-pop
+        uint256 lastIndex = _teamMembers[iteration][project].length - 1;
+        if (idx - 1 != lastIndex) {
+            TeamMember storage lastMember = _teamMembers[iteration][project][lastIndex];
+            _teamMembers[iteration][project][idx - 1] = lastMember;
+            teamMemberIndex[iteration][project][lastMember.memberAddress] = idx;
+        }
+        _teamMembers[iteration][project].pop();
+        delete teamMemberIndex[iteration][project][member];
+
+        emit TeamMemberRemoved(iteration, project, member);
+    }
+
+    /**
+     * @notice Set own full name as a proposed or approved team member (Stage 1 only)
+     * @dev Names can be set as soon as a member is proposed; no prior approval required.
+     *      Re-editable across Cancelled cycles. Rejected members cannot set names.
      * @param iteration The iteration number
      * @param project The project address
-     * @param fullName The full name to set (immutable once set)
+     * @param fullName The full name to set (re-editable in Stage 1)
      */
     function setTeamMemberName(uint256 iteration, address project, string calldata fullName) external {
-        if (certOf[project][iteration] != 0) revert CertAlreadyRequested();
+        if (_certStage(project, iteration) != 1) revert WrongStage();
 
         uint256 idx = teamMemberIndex[iteration][project][msg.sender];
         if (idx == 0) revert NotTeamMember();
 
         TeamMember storage tm = _teamMembers[iteration][project][idx - 1];
-        if (tm.status != MemberStatus.Approved) revert MemberNotApproved();
-        if (bytes(tm.fullName).length > 0) revert NameAlreadySet();
+        if (tm.status == MemberStatus.Rejected) revert MemberNotApproved();
         if (bytes(fullName).length == 0) revert EmptyName();
         if (bytes(fullName).length > MAX_NAME_LENGTH) revert NameTooLong();
 
@@ -344,8 +445,9 @@ contract CertNFT is
             if (b == 0x22 || b == 0x5C || b < 0x20) revert NameContainsInvalidBytes();
         }
 
+        bool wasNamed = bytes(tm.fullName).length > 0;
         tm.fullName = fullName;
-        namedMemberCount[iteration][project]++;
+        if (!wasNamed) namedMemberCount[iteration][project]++;
 
         emit TeamMemberNameSet(iteration, project, msg.sender, fullName);
     }
@@ -402,13 +504,45 @@ contract CertNFT is
     // ========== Admin Functions ==========
 
     /**
+     * @notice Set the PoBRegistry address (source of truth for template hash + CID)
+     * @param addr The PoBRegistry proxy address
+     */
+    function setPoBRegistry(address addr) external onlyOwner {
+        if (addr == address(0)) revert ZeroAddress();
+        if (addr.code.length == 0) revert NotAContract();
+        pobRegistry = addr;
+        emit PoBRegistrySet(addr);
+    }
+
+    /**
      * @notice Set the middleware contract for an iteration
      * @param iteration The iteration number
      * @param addr The middleware contract address
      */
     function setMiddleware(uint256 iteration, address addr) external onlyOwner {
+        if (addr == address(0)) revert ZeroAddress();
+        if (addr.code.length == 0) revert NotAContract();
         middleware[iteration] = addr;
         emit MiddlewareSet(iteration, addr);
+    }
+
+    /**
+     * @notice Approve a requested certificate, starting the 48h pending period
+     * @param tokenId The token ID to approve
+     */
+    function approveCert(uint256 tokenId) external onlyOwner {
+        CertData storage cert = certs[tokenId];
+        if (cert.account == address(0)) revert InvalidToken();
+        if (cert.status != CertStatus.Requested) revert NotRequested();
+
+        address mw = middleware[cert.iteration];
+        if (mw != address(0) && ICertGate(mw).isProjectInAnyRound(cert.account)) {
+            if (approvedMemberCount[cert.iteration][cert.account] == 0) revert NoApprovedTeamMembers();
+        }
+
+        cert.status = CertStatus.Pending;
+        cert.requestTime = block.timestamp;
+        emit CertApproved(tokenId);
     }
 
     /**
@@ -418,10 +552,25 @@ contract CertNFT is
     function cancelCert(uint256 tokenId) external onlyOwner {
         CertData storage cert = certs[tokenId];
         if (cert.account == address(0)) revert InvalidToken();
-        if (cert.status == CertStatus.Cancelled) revert NotPending();
+        CertStatus effective = certStatus(tokenId);
+        if (effective == CertStatus.Minted) revert AlreadyMinted();
+        if (effective == CertStatus.Cancelled) revert NotPending();
 
         cert.status = CertStatus.Cancelled;
+        cert.requestTime = 0;
         emit CertCancelled(tokenId);
+    }
+
+    /**
+     * @notice Finalize a pending certificate immediately (owner only, bypass 48h wait)
+     * @param tokenId The token ID to finalize
+     */
+    function finalizeCert(uint256 tokenId) external onlyOwner {
+        CertData storage cert = certs[tokenId];
+        if (cert.account == address(0)) revert InvalidToken();
+        if (cert.status != CertStatus.Pending) revert NotPending();
+        cert.status = CertStatus.Minted;
+        emit CertFinalized(tokenId);
     }
 
     // ========== Soulbound: Block Transfers ==========
@@ -438,6 +587,52 @@ contract CertNFT is
         return super._update(to, tokenId, auth);
     }
 
+    // ========== SVG Rendering ==========
+
+    /**
+     * @notice Render an SVG certificate by injecting on-chain data into a template
+     * @param tokenId The token ID to render
+     * @param templateBytes The raw SVG template bytes (fetched from IPFS by caller)
+     * @return The rendered SVG string with placeholders replaced
+     */
+    function renderSVG(uint256 tokenId, bytes calldata templateBytes) external view returns (string memory) {
+        CertData storage cert = certs[tokenId];
+        if (cert.account == address(0)) revert InvalidToken();
+        if (templateBytes.length > MAX_TEMPLATE_SIZE) revert TemplateTooLarge();
+
+        if (middleware[cert.iteration] == address(0)) revert NoMiddleware();
+
+        bytes32 expectedHash;
+        if (pobRegistry != address(0)) {
+            try IPoBRegistryForCert(pobRegistry).getIterationTemplate(cert.iteration)
+                returns (bytes32 h, uint32, string memory)
+            {
+                expectedHash = h;
+            } catch {}
+        }
+        if (expectedHash == bytes32(0)) revert NoActiveTemplate();
+        if (keccak256(templateBytes) != expectedHash) revert TemplateHashMismatch();
+
+        bytes memory result = templateBytes;
+
+        // Replace 6 fixed placeholders — revert if any is absent (template integrity)
+        bool found;
+        (result, found) = _replacePlaceholder(result, "{{CERT_TYPE}}", bytes(_xmlEscape(cert.certType)));
+        if (!found) revert MissingPlaceholder();
+        (result, found) = _replacePlaceholder(result, "{{ITERATION}}", bytes(_toString(cert.iteration)));
+        if (!found) revert MissingPlaceholder();
+        (result, found) = _replacePlaceholder(result, "{{TEAM_MEMBERS}}", bytes(_xmlEscape(_buildTeamString(cert.iteration, cert.account))));
+        if (!found) revert MissingPlaceholder();
+        (result, found) = _replacePlaceholder(result, "{{ACCOUNT}}", bytes(_addressToString(cert.account)));
+        if (!found) revert MissingPlaceholder();
+        (result, found) = _replacePlaceholder(result, "{{STATUS}}", bytes(_statusString(certStatus(tokenId))));
+        if (!found) revert MissingPlaceholder();
+        (result, found) = _replacePlaceholder(result, "{{TOKEN_ID}}", bytes(_toString(tokenId)));
+        if (!found) revert MissingPlaceholder();
+
+        return string(result);
+    }
+
     // ========== Version ==========
 
     function version() external pure returns (string memory) {
@@ -449,6 +644,20 @@ contract CertNFT is
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
     // ========== Internal Helpers ==========
+
+    /**
+     * @dev Determine the lifecycle stage of a project's cert for an iteration.
+     *      1 = No cert or Cancelled, 2 = Requested, 3 = Pending, 4 = Minted.
+     */
+    function _certStage(address project, uint256 iteration) private view returns (uint8) {
+        uint256 tokenId = certOf[project][iteration];
+        if (tokenId == 0) return 1;
+        CertStatus s = certStatus(tokenId);
+        if (s == CertStatus.Cancelled) return 1;
+        if (s == CertStatus.Requested) return 2;
+        if (s == CertStatus.Pending)   return 3;
+        return 4; // Minted
+    }
 
     /**
      * @dev Convert uint256 to string (minimal gas implementation)
@@ -468,5 +677,154 @@ contract CertNFT is
             value /= 10;
         }
         return string(buffer);
+    }
+
+    /**
+     * @dev XML-escape a string (escapes &, <, >, ", ')
+     */
+    function _xmlEscape(string memory input) internal pure returns (string memory) {
+        bytes memory b = bytes(input);
+        // First pass: count extra bytes needed
+        uint256 extra = 0;
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 c = b[i];
+            if (c == "&") extra += 4;       // & → &amp; (5-1=4)
+            else if (c == "<") extra += 3;  // < → &lt; (4-1=3)
+            else if (c == ">") extra += 3;  // > → &gt;
+            else if (c == '"') extra += 5;  // " → &quot; (6-1=5)
+            else if (c == "'") extra += 5;  // ' → &apos;
+        }
+        if (extra == 0) return input;
+
+        bytes memory result = new bytes(b.length + extra);
+        uint256 j = 0;
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 c = b[i];
+            if (c == "&") {
+                result[j++] = "&"; result[j++] = "a"; result[j++] = "m"; result[j++] = "p"; result[j++] = ";";
+            } else if (c == "<") {
+                result[j++] = "&"; result[j++] = "l"; result[j++] = "t"; result[j++] = ";";
+            } else if (c == ">") {
+                result[j++] = "&"; result[j++] = "g"; result[j++] = "t"; result[j++] = ";";
+            } else if (c == '"') {
+                result[j++] = "&"; result[j++] = "q"; result[j++] = "u"; result[j++] = "o"; result[j++] = "t"; result[j++] = ";";
+            } else if (c == "'") {
+                result[j++] = "&"; result[j++] = "a"; result[j++] = "p"; result[j++] = "o"; result[j++] = "s"; result[j++] = ";";
+            } else {
+                result[j++] = c;
+            }
+        }
+        return string(result);
+    }
+
+    /**
+     * @dev JSON-escape a string (escapes \ to \\ and " to \")
+     */
+    function _jsonEscape(string memory input) internal pure returns (string memory) {
+        bytes memory b = bytes(input);
+        uint256 extra = 0;
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 c = b[i];
+            if (c == 0x5C || c == 0x22) extra += 1; // \ or " each adds one extra byte
+        }
+        if (extra == 0) return input;
+
+        bytes memory result = new bytes(b.length + extra);
+        uint256 j = 0;
+        for (uint256 i = 0; i < b.length; i++) {
+            bytes1 c = b[i];
+            if (c == 0x5C) {
+                result[j++] = 0x5C; result[j++] = 0x5C; // \\
+            } else if (c == 0x22) {
+                result[j++] = 0x5C; result[j++] = 0x22; // \"
+            } else {
+                result[j++] = c;
+            }
+        }
+        return string(result);
+    }
+
+    /**
+     * @dev Replaces the FIRST occurrence of `placeholder` in `source` with `replacement`.
+     *      Single-occurrence replacement is by design; each SVG template must use each
+     *      placeholder exactly once — duplicate placeholders are a template integrity error.
+     *      Returns (result, true) when the placeholder was found and replaced.
+     *      Returns (source, false) when the placeholder is absent; callers must revert.
+     */
+    function _replacePlaceholder(bytes memory source, bytes memory placeholder, bytes memory replacement)
+        internal pure returns (bytes memory, bool)
+    {
+        // Find placeholder position
+        uint256 pos = type(uint256).max;
+        if (source.length >= placeholder.length) {
+            uint256 searchLen = source.length - placeholder.length + 1;
+            for (uint256 i = 0; i < searchLen; i++) {
+                bool found = true;
+                for (uint256 k = 0; k < placeholder.length; k++) {
+                    if (source[i + k] != placeholder[k]) {
+                        found = false;
+                        break;
+                    }
+                }
+                if (found) {
+                    pos = i;
+                    break;
+                }
+            }
+        }
+
+        // Not found — signal to caller
+        if (pos == type(uint256).max) return (source, false);
+
+        // Build result: before + replacement + after
+        bytes memory result = new bytes(source.length - placeholder.length + replacement.length);
+        uint256 j = 0;
+        for (uint256 i = 0; i < pos; i++) {
+            result[j++] = source[i];
+        }
+        for (uint256 i = 0; i < replacement.length; i++) {
+            result[j++] = replacement[i];
+        }
+        for (uint256 i = pos + placeholder.length; i < source.length; i++) {
+            result[j++] = source[i];
+        }
+        return (result, true);
+    }
+
+    /**
+     * @dev Convert an address to a lowercase hex string with 0x prefix
+     */
+    function _addressToString(address addr) internal pure returns (string memory) {
+        bytes memory result = new bytes(42);
+        result[0] = "0";
+        result[1] = "x";
+        bytes memory alphabet = "0123456789abcdef";
+        uint160 value = uint160(addr);
+        for (uint256 i = 41; i >= 2; i--) {
+            result[i] = alphabet[value & 0xf];
+            value >>= 4;
+        }
+        return string(result);
+    }
+
+    /**
+     * @dev Build a comma-separated string of approved named team members
+     */
+    function _buildTeamString(uint256 iteration, address project) internal view returns (string memory) {
+        TeamMember[] storage members = _teamMembers[iteration][project];
+        if (members.length == 0) return "";
+
+        bytes memory result;
+        bool first = true;
+        for (uint256 i = 0; i < members.length; i++) {
+            if (members[i].status == MemberStatus.Approved && bytes(members[i].fullName).length > 0) {
+                if (!first) {
+                    result = abi.encodePacked(result, ", ");
+                }
+                result = abi.encodePacked(result, members[i].fullName);
+                first = false;
+            }
+        }
+        return string(result);
     }
 }

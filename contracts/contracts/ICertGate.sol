@@ -2,10 +2,11 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title ICertMiddleware
- * @notice Interface for per-iteration certificate validation middleware
+ * @title ICertGate
+ * @notice Interface for per-iteration certificate validation gate (formerly ICertMiddleware).
+ *         Template storage has moved to PoBRegistry; this interface covers eligibility only.
  */
-interface ICertMiddleware {
+interface ICertGate {
     /**
      * @notice Check if an account is eligible for a certificate in this iteration
      * @param account The address to validate
@@ -13,12 +14,6 @@ interface ICertMiddleware {
      * @return certType The type of certificate ("participant", "winner", "organizer", "speaker", etc.)
      */
     function validate(address account) external view returns (bool eligible, string memory certType);
-
-    /**
-     * @notice Get the IPFS CID of the certificate template for this iteration
-     * @return The template CID string
-     */
-    function templateCID() external view returns (string memory);
 
     /**
      * @notice Check if an account is a registered project in any round
