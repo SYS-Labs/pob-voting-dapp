@@ -362,6 +362,52 @@ class IterationIndexer {
   }
 
   /**
+   * Store a placeholder snapshot for iterations that are registered but do not
+   * have any rounds yet. This allows the admin UI to surface the iteration and
+   * attach the first round.
+   */
+  private async indexRoundlessIteration(chainId: number, iterationId: number, provider: JsonRpcProvider): Promise<void> {
+    try {
+      const currentBlock = await provider.getBlockNumber();
+
+      this.iterationsDb.upsertSnapshot({
+        iteration_id: iterationId,
+        chain_id: chainId,
+        round: 0,
+        registry_address: NETWORKS[chainId].registryAddress,
+        pob_address: ethers.ZeroAddress,
+        jury_address: ethers.ZeroAddress,
+        deploy_block_hint: 0,
+        jury_state: 'deployed',
+        start_time: null,
+        end_time: null,
+        voting_mode: 0,
+        projects_locked: 0,
+        contract_locked: 0,
+        winner_address: null,
+        has_winner: 0,
+        devrel_vote: null,
+        daohic_vote: null,
+        community_vote: null,
+        project_scores: null,
+        devrel_count: 0,
+        daohic_count: 0,
+        community_count: 0,
+        devrel_account: null,
+        daohic_voters: JSON.stringify([]),
+        daohic_individual_votes: JSON.stringify({}),
+        projects: JSON.stringify([]),
+        last_block: currentBlock,
+        last_updated_at: Date.now()
+      });
+
+      logger.debug('Indexed roundless iteration placeholder', { chainId, iterationId });
+    } catch (error) {
+      logger.error('Failed to index roundless iteration placeholder', { chainId, iterationId, error });
+    }
+  }
+
+  /**
    * Index all iterations for a chain
    */
   private async indexChain(chainId: number): Promise<void> {
@@ -386,6 +432,10 @@ class IterationIndexer {
 
         // Get all rounds for this iteration
         const rounds = await registry.getRounds(iterationId);
+        if (!rounds || rounds.length === 0) {
+          await this.indexRoundlessIteration(chainId, iterationId, provider);
+          continue;
+        }
 
         // Index each round (but prioritize latest)
         for (const round of rounds) {

@@ -313,7 +313,7 @@ export function createIterationsDatabase(db: Database.Database) {
       // Get all rounds for this iteration and build prev_rounds
       const allRounds = getAllRounds(snapshot.chain_id, snapshot.iteration_id);
       const prevRounds: PreviousRoundAPI[] = allRounds
-        .filter(r => r.round < snapshot.round)
+        .filter(r => r.round > 0 && r.round < snapshot.round)
         .map(r => ({
           round: r.round,
           jurySC: r.jury_address,
