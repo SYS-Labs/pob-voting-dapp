@@ -152,6 +152,7 @@
   const chainId = $derived($walletStore.chainId);
 
   // Iterations state
+  const allIndexedIterations = $derived($iterationsStore.iterations);
   const filteredIterations = $derived($usableIterations);
   const iterationsLoading = $derived($iterationsStore.loading);
   const selectedIterationNumber = $derived($iterationsStore.selectedIterationNumber);
@@ -447,7 +448,7 @@
       <!-- Home page - Iterations list -->
       <Route path="/">
         <IterationsPage
-          {filteredIterations}
+          filteredIterations={allIndexedIterations}
           selectedIteration={selectedIterationNumber}
           iterationStatuses={iterationStatusesMap}
           onSelectIteration={(iteration) => {
