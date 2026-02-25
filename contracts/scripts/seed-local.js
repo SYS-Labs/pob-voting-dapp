@@ -282,6 +282,19 @@ async function ensureDaoHicVoters(jurySC, voters) {
   }
 }
 
+async function ensureSmtVoters(jurySC, voters) {
+  for (const voter of voters) {
+    const already = await jurySC.isSmtVoter(voter).catch(() => false);
+    if (already) {
+      console.log(`- SMT voter already registered: ${voter}`);
+      continue;
+    }
+    const tx = await jurySC.addSmtVoter(voter);
+    await tx.wait();
+    console.log(`- SMT voter added: ${voter}`);
+  }
+}
+
 async function ensureProjects(jurySC, projects) {
   const locked = await jurySC.projectsLocked().catch(() => false);
   if (locked && projects.length > 0) {
@@ -346,8 +359,9 @@ function resolveIterationAddresses() {
 function resolveIterationAddressesFromDeployment(deployment) {
   if (deployment) {
     const jurySCAddress =
+      deployment.contracts.JurySC_03?.proxy || deployment.contracts.JurySC_03 ||
       deployment.contracts.JurySC_02?.proxy || deployment.contracts.JurySC_02;
-    const pobAddress = deployment.contracts.PoB_02;
+    const pobAddress = deployment.contracts.PoB_03 || deployment.contracts.PoB_02;
     console.log("Using addresses from deployment file");
     return {
       juryAddress: ethers.getAddress(jurySCAddress),
@@ -439,8 +453,8 @@ async function main() {
   const roundId = Number(manifestEntry?.round ?? 1);
 
   console.log("Seeding iteration using:");
-  console.log("- JurySC_02:", juryAddress);
-  console.log("- PoB_02:", pobAddress);
+  console.log("- JurySC_03:", juryAddress);
+  console.log("- PoB_03:", pobAddress);
   console.log("- Network:", network.name);
   console.log("- Chain ID:", chainId);
   console.log("- Iteration:", iteration);
@@ -452,9 +466,10 @@ async function main() {
   }
   console.log("- Deployer:", deployer.address);
 
-  const jurySC = await ethers.getContractAt("JurySC_02", juryAddress);
+  const jurySC = await ethers.getContractAt("JurySC_03", juryAddress);
 
-  await ensureDevRel(jurySC, devRelAccount);
+  const smtVoters = devRelAccount ? [devRelAccount] : [];
+  await ensureSmtVoters(jurySC, smtVoters);
   await ensureDaoHicVoters(jurySC, daoHicVoters);
   await ensureProjects(jurySC, projectAddresses);
 
@@ -650,7 +665,7 @@ async function main() {
     const project1       = projectAddresses[0];
 
     // Connect pob contract
-    const pob = await ethers.getContractAt("PoB_02", pobAddress);
+    const pob = await ethers.getContractAt("PoB_03", pobAddress);
 
     // Activate (sets projectsLocked = true, opens 48h window)
     const txActivate = await jurySC.activate();
@@ -667,8 +682,8 @@ async function main() {
     console.log("- Community 2 minted token 1");
 
     // Votes — all for project 1 (consensus winner)
-    await (await jurySC.connect(devRelSigner).voteDevRel(project1)).wait();
-    console.log("- DevRel voted for project 1");
+    await (await jurySC.connect(devRelSigner).voteSmt(project1)).wait();
+    console.log("- SMT voted for project 1");
     await (await jurySC.connect(daoHic1Signer).voteDaoHic(project1)).wait();
     console.log("- DAO_HIC 1 voted for project 1");
     await (await jurySC.connect(daoHic2Signer).voteDaoHic(project1)).wait();
@@ -751,6 +766,80 @@ async function main() {
     });
     fs.writeFileSync(iterationsLocalPath, JSON.stringify(iterationsLocal, null, 2));
     console.log("- iterations.local.json updated with iteration 2");
+
+    // ── Deploy iteration 3 (V3 contracts, round WITHOUT setRoundVersion) ─────
+    console.log("\n=== Deploying Iteration 3 (V3, round without setRoundVersion) ===");
+
+    const iter3 = 3;
+    const PoB_03_Factory   = await ethers.getContractFactory("PoB_03");
+    const pob3 = await PoB_03_Factory.deploy(
+      "PoB Iteration #3", "POB3", iter3, deployer.address
+    );
+    await pob3.waitForDeployment();
+    const pob3Address = await pob3.getAddress();
+    console.log("- PoB_03 (iter 3):", pob3Address);
+
+    const JurySC_03_Factory = await ethers.getContractFactory("JurySC_03");
+    const jury3 = await upgrades.deployProxy(
+      JurySC_03_Factory,
+      [pob3Address, iter3, deployer.address],
+      { kind: "uups", initializer: "initialize" }
+    );
+    await jury3.waitForDeployment();
+    const jury3Address = await jury3.getAddress();
+    console.log("- JurySC_03 (iter 3):", jury3Address);
+
+    await (await pob3.transferOwnership(jury3Address)).wait();
+    console.log("- PoB_03 ownership transferred to JurySC_03");
+
+    if (registryAddress) {
+      const registry3 = await ethers.getContractAt("PoBRegistry", registryAddress);
+
+      // Deploy V3Adapter and wire it
+      const V3Adapter = await ethers.getContractFactory("V3Adapter");
+      const v3Adapter = await V3Adapter.deploy();
+      await v3Adapter.waitForDeployment();
+      const v3AdapterAddress = await v3Adapter.getAddress();
+      console.log("- V3Adapter deployed:", v3AdapterAddress);
+      await (await registry3.setAdapter(3, v3AdapterAddress)).wait();
+      console.log("- setAdapter(3, V3Adapter)");
+
+      const iter3Block = await ethers.provider.getBlockNumber();
+
+      const existingIter3 = await registry3.iterations(iter3).catch(() => ({ exists: false }));
+      if (!existingIter3.exists) {
+        await (await registry3.registerIteration(iter3, chainId)).wait();
+        console.log(`- Iteration ${iter3} registered in PoBRegistry`);
+      } else {
+        console.log(`- Iteration ${iter3} already registered`);
+      }
+
+      const existingRound3 = await registry3.rounds(iter3, 1).catch(() => ({ exists: false }));
+      if (!existingRound3.exists) {
+        await (await registry3.addRound(iter3, 1, jury3Address, iter3Block)).wait();
+        console.log(`- Round 1 registered for iteration ${iter3}`);
+      } else {
+        console.log(`- Round 1 for iteration ${iter3} already registered`);
+      }
+
+      // Intentionally skip setRoundVersion(3, 1, 3) — simulates pending state
+      console.log("- setRoundVersion(3, 1, 3) intentionally skipped");
+    }
+
+    // Update iterations.local.json with iteration 3
+    const iterationsLocal3 = JSON.parse(fs.readFileSync(iterationsLocalPath, "utf8"));
+    const iter3Block = await ethers.provider.getBlockNumber();
+    iterationsLocal3.push({
+      iteration: iter3,
+      name: "PoB Iteration #3",
+      jurySC: jury3Address,
+      pob: pob3Address,
+      chainId,
+      deployBlockHint: iter3Block,
+      link: "https://example.com/iteration",
+    });
+    fs.writeFileSync(iterationsLocalPath, JSON.stringify(iterationsLocal3, null, 2));
+    console.log("- iterations.local.json updated with iteration 3");
   }
 }
 

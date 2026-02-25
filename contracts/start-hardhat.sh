@@ -19,6 +19,10 @@ IPFS_PORT=${IPFS_PORT:-5001}
 FAKE_IPFS_SCRIPT="$(cd "$(dirname "$0")/.." && pwd)/scripts/fake-ipfs.js"
 
 cleanup() {
+  if [[ -n "${TAIL_PID:-}" ]] && ps -p "${TAIL_PID}" > /dev/null 2>&1; then
+    kill "${TAIL_PID}" >/dev/null 2>&1 || true
+    wait "${TAIL_PID}" 2>/dev/null || true
+  fi
   if [[ -n "${IPFS_PID:-}" ]] && ps -p "${IPFS_PID}" > /dev/null 2>&1; then
     echo "Stopping fake IPFS (PID ${IPFS_PID})"
     kill "${IPFS_PID}" >/dev/null 2>&1 || true
@@ -50,8 +54,11 @@ else
 fi
 
 echo "Starting Hardhat node on ${HOST}:${PORT}..."
-npx hardhat node --hostname "${HOST}" --port "${PORT}" > >(tee "${LOG_FILE}") 2>&1 &
+npx hardhat node --hostname "${HOST}" --port "${PORT}" >"${LOG_FILE}" 2>&1 &
 NODE_PID=$!
+# Stream log to terminal separately so $! unambiguously tracks the node process
+tail -f "${LOG_FILE}" &
+TAIL_PID=$!
 
 MAX_ATTEMPTS=30
 RPC_URL="http://${HOST}:${PORT}"

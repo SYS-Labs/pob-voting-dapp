@@ -64,21 +64,23 @@ async function main() {
   const registryProxy =
     deployment.contracts?.PoBRegistry?.proxy ||
     deployment.contracts?.PoBRegistry;
-  const pobAddress = deployment.contracts?.PoB_02;
+  const pobAddress =
+    deployment.contracts?.PoB_03 ||
+    deployment.contracts?.PoB_02;
   const juryAddress =
-    deployment.contracts?.JurySC_02?.proxy ||
-    deployment.contracts?.JurySC_02;
+    deployment.contracts?.JurySC_03?.proxy || deployment.contracts?.JurySC_03 ||
+    deployment.contracts?.JurySC_02?.proxy || deployment.contracts?.JurySC_02;
   const iteration = deployment.iteration || 1;
 
   if (!registryProxy || !pobAddress || !juryAddress) {
     throw new Error(
-      "Deployment file missing PoBRegistry, PoB_02, or JurySC_02 addresses."
+      "Deployment file missing PoBRegistry, PoB, or JurySC addresses."
     );
   }
 
-  console.log(`  Registry: ${registryProxy}`);
-  console.log(`  PoB_02:   ${pobAddress}`);
-  console.log(`  JurySC_02: ${juryAddress}`);
+  console.log(`  Registry:  ${registryProxy}`);
+  console.log(`  PoB:       ${pobAddress}`);
+  console.log(`  JurySC:    ${juryAddress}`);
   console.log(`  Iteration: ${iteration}`);
 
   // 2. Deploy CertNFT as UUPS proxy
@@ -94,6 +96,9 @@ async function main() {
   // 3. Upgrade PoBRegistry (adds profile storage)
   console.log("\n--- Upgrading PoBRegistry ---");
   const PoBRegistry = await ethers.getContractFactory("PoBRegistry");
+  // forceImport registers the manually-deployed proxy with the OZ upgrades plugin
+  // (deploy.js uses raw sendRaw, so the plugin's manifest doesn't know about it)
+  await upgrades.forceImport(registryProxy, PoBRegistry, { kind: "uups" });
   const upgraded = await upgrades.upgradeProxy(registryProxy, PoBRegistry);
   await upgraded.waitForDeployment();
   console.log(`PoBRegistry upgraded at: ${registryProxy}`);
