@@ -97,6 +97,28 @@ async function getAdapter(
   );
 }
 
+async function loadOwnerFallbackDirect(
+  currentIteration: Iteration,
+  publicProvider: JsonRpcProvider,
+  walletAddress: string | null
+): Promise<void> {
+  if (!walletAddress) return;
+
+  try {
+    const jury = new Contract(currentIteration.jurySC, ['function owner() view returns (address)'], publicProvider);
+    const ownerAddr = await jury.owner();
+
+    contractStateStore.update(s => ({
+      ...s,
+      isOwner: typeof ownerAddr === 'string' && ownerAddr.toLowerCase() === walletAddress.toLowerCase(),
+      rolesLoading: false,
+    }));
+  } catch (error) {
+    console.warn('[loadOwnerFallbackDirect] Failed to read owner() from JurySC:', error);
+    contractStateStore.update(s => ({ ...s, rolesLoading: false }));
+  }
+}
+
 // ============================================================================
 // Store
 // ============================================================================
@@ -754,17 +776,26 @@ export async function loadIterationState(
   contractStateStore.update(s => ({ ...s, loading: true, hasLoadError: false }));
 
   try {
-    // Resolve adapter for this iteration/round
-    const adapterConfig = await getAdapter(currentIteration, publicProvider);
-    if (!adapterConfig) {
-      throw new Error(`Failed to resolve adapter for iteration ${currentIteration.iteration}`);
-    }
-    const { adapter, jurySC } = adapterConfig;
-
     const isIterationLikePage = currentPage === 'iteration' || currentPage === 'project';
 
     // Phase 1: Try API
     const apiSnapshot = await loadFromAPI(currentIteration);
+
+    // Resolve adapter for this iteration/round
+    const adapterConfig = await getAdapter(currentIteration, publicProvider);
+    if (!adapterConfig) {
+      if (apiSnapshot && isIterationLikePage) {
+        console.warn(
+          `[loadIterationState] Adapter routing unavailable for iteration ${currentIteration.iteration}; rendering from API snapshot and waiting for round setup`
+        );
+        await loadOwnerFallbackDirect(currentIteration, publicProvider, walletAddress);
+        console.log('=== [loadIterationState] Complete (degraded: API-only) ===');
+        return;
+      }
+
+      throw new Error(`Failed to resolve adapter for iteration ${currentIteration.iteration}`);
+    }
+    const { adapter, jurySC } = adapterConfig;
 
     // Phase 2: Load user-specific data
     const loadTasks: Promise<unknown>[] = [];

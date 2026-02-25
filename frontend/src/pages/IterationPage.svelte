@@ -708,7 +708,7 @@
 {/if}
 
 <Modal
-  isOpen={showRoundSetupModal}
+  isOpen={showRoundSetupModal && !roundSetupConfirming && pendingAction === null}
   maxWidth="md"
   closeOnBackdropClick={false}
   closeOnEscape={false}
