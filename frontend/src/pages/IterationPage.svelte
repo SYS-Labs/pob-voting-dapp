@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Contract } from 'ethers';
   import type { Iteration, ParticipantRole, Project, Badge } from '~/interfaces';
   import IterationHeader from '~/components/IterationHeader.svelte';
   import PreviousRoundCard from '~/components/PreviousRoundCard.svelte';
@@ -9,8 +10,11 @@
   import BadgePanel from '~/components/BadgePanel.svelte';
   import DateTimePanel from '~/components/DateTimePanel.svelte';
   import ToolboxCard from '~/components/ToolboxCard.svelte';
+  import Modal from '~/components/Modal.svelte';
   import VoteConfirmationModal from '~/components/VoteConfirmationModal.svelte';
+  import PoBRegistryABI from '~/abis/PoBRegistry.json';
   import { NETWORKS } from '~/constants/networks';
+  import { REGISTRY_ADDRESSES } from '~/utils/registry';
 
   interface CommunityBadge {
     tokenId: string;
@@ -161,6 +165,15 @@
 
   // Vote confirmation modal state
   let pendingVote = $state<{ project: Project; tokenId?: string } | null>(null);
+  let roundSetupChecking = $state(false);
+  let roundSetupConfirming = $state(false);
+  let showRoundSetupModal = $state(false);
+  let roundSetupError = $state<string | null>(null);
+  let detectedRoundVersionId = $state<number | null>(null);
+  let detectedRoundTypeLabel = $state<string | null>(null);
+  let roundSetupTarget = $state<{ iterationId: number; roundId: number; jurySC: string } | null>(null);
+  let lastCheckedRoundKey = $state<string | null>(null);
+  let roundSetupCheckSeq = 0;
 
   // Handle resize
   $effect(() => {
@@ -182,6 +195,171 @@
 
   function handleToggleSidebar() {
     sidebarVisible = !sidebarVisible;
+  }
+
+  function describeRoundType(versionId: number): string {
+    if (versionId === 3) return 'SMT round (SMT + DAO HIC + Community)';
+    if (versionId === 2) return 'Role-isolated jury round';
+    return 'Classic jury round (DevRel + DAO HIC + Community)';
+  }
+
+  async function detectRoundVersion(juryAddress: string, provider: any): Promise<number> {
+    try {
+      const v3Probe = new Contract(juryAddress, ['function getSmtVoters() view returns (address[])'], provider);
+      await v3Probe.getSmtVoters();
+      return 3;
+    } catch {
+      // continue
+    }
+
+    try {
+      const v2Probe = new Contract(juryAddress, ['function getProjectAddresses() view returns (address[])'], provider);
+      await v2Probe.getProjectAddresses();
+      return 2;
+    } catch {
+      // continue
+    }
+
+    try {
+      const v1Probe = new Contract(juryAddress, ['function getDevRelEntityVote() view returns (address)'], provider);
+      await v1Probe.getDevRelEntityVote();
+      return 1;
+    } catch {
+      throw new Error('Unable to detect round type from contract');
+    }
+  }
+
+  async function checkRoundSetupRequirement() {
+    const iteration = currentIteration;
+    const round = iteration?.round;
+    const roundNumber = typeof round === 'number' ? round : 0;
+
+    const eligible = Boolean(
+      isOwner &&
+      chainId &&
+      iteration &&
+      roundNumber > 0
+    );
+
+    if (!eligible) {
+      showRoundSetupModal = false;
+      roundSetupChecking = false;
+      roundSetupConfirming = false;
+      roundSetupError = null;
+      detectedRoundVersionId = null;
+      detectedRoundTypeLabel = null;
+      roundSetupTarget = null;
+      lastCheckedRoundKey = null;
+      return;
+    }
+
+    if (!chainId || !iteration) return;
+    const registryAddress = REGISTRY_ADDRESSES[chainId];
+    const readProvider = publicProvider ?? signer?.provider;
+    if (!registryAddress || !readProvider) return;
+
+    const seq = ++roundSetupCheckSeq;
+    roundSetupChecking = true;
+    roundSetupError = null;
+    detectedRoundVersionId = null;
+    detectedRoundTypeLabel = null;
+    roundSetupTarget = null;
+    let roundKey: string | null = null;
+
+    try {
+      const registry = new Contract(registryAddress, PoBRegistryABI, readProvider);
+      const roundTargets = [
+        {
+          iterationId: iteration.iteration,
+          roundId: roundNumber,
+          jurySC: iteration.jurySC,
+        },
+        ...((iteration.prev_rounds ?? []).map((r) => ({
+          iterationId: iteration.iteration,
+          roundId: r.round,
+          jurySC: r.jurySC,
+        }))),
+      ]
+        .filter((r) => r.roundId > 0 && Boolean(r.jurySC))
+        .sort((a, b) => b.roundId - a.roundId);
+
+      let missingRound: { iterationId: number; roundId: number; jurySC: string } | null = null;
+      for (const target of roundTargets) {
+        const existingVersion = Number(await registry.roundVersion(target.iterationId, target.roundId));
+        if (seq !== roundSetupCheckSeq) return;
+        if (existingVersion === 0) {
+          missingRound = target;
+          break;
+        }
+      }
+
+      if (!missingRound) {
+        showRoundSetupModal = false;
+        lastCheckedRoundKey = `${chainId}:${iteration.iteration}:all-set`;
+        return;
+      }
+
+      roundKey = `${chainId}:${missingRound.iterationId}:${missingRound.roundId}:${missingRound.jurySC}`;
+      const detectedVersion = await detectRoundVersion(missingRound.jurySC, readProvider);
+      if (seq !== roundSetupCheckSeq) return;
+
+      roundSetupTarget = missingRound;
+      detectedRoundVersionId = detectedVersion;
+      detectedRoundTypeLabel = describeRoundType(detectedVersion);
+      showRoundSetupModal = true;
+      lastCheckedRoundKey = roundKey;
+    } catch (error) {
+      if (seq !== roundSetupCheckSeq) return;
+      roundSetupError = error instanceof Error ? error.message : 'Failed to check round setup.';
+      showRoundSetupModal = true;
+      lastCheckedRoundKey = roundKey ?? `${chainId}:${iteration.iteration}:setup-check-error`;
+    } finally {
+      if (seq === roundSetupCheckSeq) {
+        roundSetupChecking = false;
+      }
+    }
+  }
+
+  async function handleConfirmRoundSetup() {
+    if (roundSetupConfirming) return;
+    if (!signer || !chainId || !roundSetupTarget || !detectedRoundVersionId) return;
+
+    const registryAddress = REGISTRY_ADDRESSES[chainId];
+    if (!registryAddress) {
+      roundSetupError = 'Registry is not configured for this network.';
+      return;
+    }
+
+    roundSetupConfirming = true;
+    roundSetupError = null;
+
+    try {
+      const registry = new Contract(registryAddress, PoBRegistryABI, signer);
+      const success = await runTransaction(
+        'Finish Round Setup',
+        () => registry.setRoundVersion(roundSetupTarget.iterationId, roundSetupTarget.roundId, detectedRoundVersionId),
+        refreshVotingData,
+      );
+
+      if (success) {
+        showRoundSetupModal = false;
+        roundSetupTarget = null;
+        detectedRoundVersionId = null;
+        detectedRoundTypeLabel = null;
+        lastCheckedRoundKey = null;
+        void checkRoundSetupRequirement();
+      }
+    } catch (error) {
+      roundSetupError = error instanceof Error ? error.message : 'Failed to finish round setup.';
+    } finally {
+      roundSetupConfirming = false;
+    }
+  }
+
+  function retryRoundSetupCheck() {
+    roundSetupTarget = null;
+    lastCheckedRoundKey = null;
+    void checkRoundSetupRequirement();
   }
 
   // Filter badges for current iteration and round
@@ -263,6 +441,10 @@
   function handleCloseVoteModal() {
     pendingVote = null;
   }
+
+  $effect(() => {
+    void checkRoundSetupRequirement();
+  });
 
   // Combined projects for finalized state
   const allProjectsForFinalized = $derived.by(() => {
@@ -524,6 +706,78 @@
     {pendingAction}
   />
 {/if}
+
+<Modal
+  isOpen={showRoundSetupModal}
+  maxWidth="md"
+  closeOnBackdropClick={false}
+  closeOnEscape={false}
+  showCloseButton={false}
+>
+  {#snippet children()}
+    <div class="pob-pane">
+      <div class="pob-pane__heading">
+        <h3 class="pob-pane__title">Finish Round Setup</h3>
+      </div>
+
+      <div class="space-y-4">
+        <p class="text-sm text-[var(--pob-text-muted)]">
+          This round needs one final owner confirmation before admin actions are available.
+        </p>
+
+        {#if roundSetupTarget}
+          <div class="pob-info">
+            <p class="text-xs text-[var(--pob-text-muted)]">
+              Iteration {roundSetupTarget.iterationId} • Round {roundSetupTarget.roundId}
+            </p>
+          </div>
+        {/if}
+
+        {#if roundSetupChecking}
+          <div class="flex flex-col items-center justify-center gap-3 py-4">
+            <ProgressSpinner size={36} />
+            <p class="text-sm text-[var(--pob-text-muted)]">Checking round type...</p>
+          </div>
+        {:else if roundSetupError}
+          <div class="pob-warning">
+            <p class="text-xs">{roundSetupError}</p>
+          </div>
+        {:else if detectedRoundVersionId}
+          <div class="pob-fieldset space-y-2">
+            <p class="text-sm text-[var(--pob-text)]">
+              Detected round type: <span class="font-semibold">{detectedRoundTypeLabel}</span>
+            </p>
+            <p class="text-xs text-[var(--pob-text-muted)]">
+              This confirmation tells the app how to read this round correctly.
+            </p>
+          </div>
+        {/if}
+
+        <div class="flex gap-2 pt-1">
+          {#if roundSetupError}
+            <button
+              type="button"
+              class="pob-button pob-button--outline flex-1"
+              onclick={retryRoundSetupCheck}
+              disabled={roundSetupConfirming}
+            >
+              Retry
+            </button>
+          {/if}
+          <button
+            type="button"
+            class="pob-button flex-1"
+            onclick={handleConfirmRoundSetup}
+            disabled={roundSetupChecking || roundSetupConfirming || !detectedRoundVersionId}
+            style="opacity: {roundSetupChecking || roundSetupConfirming || !detectedRoundVersionId ? 0.6 : 1}; cursor: {roundSetupChecking || roundSetupConfirming || !detectedRoundVersionId ? 'not-allowed' : 'pointer'};"
+          >
+            {roundSetupConfirming ? 'Confirming...' : 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/snippet}
+</Modal>
 
 <!-- Vote Confirmation Modal -->
 {#if pendingVote}
