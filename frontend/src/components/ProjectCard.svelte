@@ -53,6 +53,7 @@
   const embedUrl = $derived(getYouTubeEmbedUrl(project.metadata?.yt_vid ?? null));
   const truncatedDescription = $derived(truncateText(project.metadata?.description, 50));
   const projectPageUrl = $derived(iterationNumber ? `/iteration/${iterationNumber}/project/${project.address}` : null);
+  const appUrl = $derived(project.metadata?.app_url?.trim() || null);
 
   function handleVote() {
     console.log('[ProjectCard] Vote button clicked for:', {
@@ -113,7 +114,7 @@
         ></iframe>
       </div>
     {/if}
-    <div class="flex flex-wrap items-center gap-2 justify-between" style="margin-top: 1rem;">
+    <div class="flex flex-wrap items-center gap-2" style="margin-top: 1rem;">
       <div class="flex flex-wrap items-center gap-2">
         {#if projectPageUrl}
           <Link
@@ -145,22 +146,38 @@
         {/if}
       </div>
 
-      <!-- Vote button/status for voting entities only -->
-      {#if votingRole !== null && !isOwner}
-        {#if hasVotedForProject}
-          <span class="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)]">
-            VOTED
-          </span>
-        {:else if canVote}
-          <button
-            type="button"
-            onclick={handleVote}
-            disabled={pendingAction !== null}
-            class="pob-button pob-button--compact"
-          >
-            VOTE
-          </button>
-        {/if}
+      {#if appUrl || (votingRole !== null && !isOwner)}
+        <div class="ml-auto flex flex-wrap items-center gap-2">
+          {#if appUrl}
+            <a
+              href={appUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="pob-button pob-button--outline pob-button--compact"
+              title="Project app"
+            >
+              Visit App
+            </a>
+          {/if}
+
+          <!-- Vote button/status for voting entities only -->
+          {#if votingRole !== null && !isOwner}
+            {#if hasVotedForProject}
+              <span class="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)]">
+                VOTED
+              </span>
+            {:else if canVote}
+              <button
+                type="button"
+                onclick={handleVote}
+                disabled={pendingAction !== null}
+                class="pob-button pob-button--compact"
+              >
+                VOTE
+              </button>
+            {/if}
+          {/if}
+        </div>
       {/if}
     </div>
   </div>
