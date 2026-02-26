@@ -15,6 +15,7 @@
   import PoBRegistryABI from '~/abis/PoBRegistry.json';
   import { NETWORKS } from '~/constants/networks';
   import { REGISTRY_ADDRESSES } from '~/utils/registry';
+  import { iterationsAPI, type UserIterationBadgeStatus } from '~/utils/iterations-api';
 
   interface CommunityBadge {
     tokenId: string;
@@ -165,6 +166,9 @@
 
   // Vote confirmation modal state
   let pendingVote = $state<{ project: Project; tokenId?: string } | null>(null);
+  let userIterationBadgeStatus = $state<UserIterationBadgeStatus | null>(null);
+  let userIterationBadgeStatusSeq = 0;
+  let userIterationBadgeStatusKey = $state<string | null>(null);
   let roundSetupChecking = $state(false);
   let roundSetupConfirming = $state(false);
   let showRoundSetupModal = $state(false);
@@ -191,6 +195,38 @@
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  });
+
+  $effect(() => {
+    const iteration = currentIteration;
+    const address = walletAddress;
+    if (!iteration || !address) {
+      userIterationBadgeStatus = null;
+      userIterationBadgeStatusKey = null;
+      return;
+    }
+
+    const nextKey = `${iteration.chainId}:${iteration.iteration}:${address.toLowerCase()}`;
+    if (userIterationBadgeStatusKey === nextKey) {
+      return;
+    }
+
+    const seq = ++userIterationBadgeStatusSeq;
+    userIterationBadgeStatusKey = nextKey;
+    const load = async () => {
+      try {
+        const data = await iterationsAPI.getUserIterationBadgeStatus(iteration.chainId, iteration.iteration, address);
+        if (seq !== userIterationBadgeStatusSeq) return;
+        userIterationBadgeStatus = data;
+      } catch (error) {
+        if (seq !== userIterationBadgeStatusSeq) return;
+        console.warn('[IterationPage] Failed to load user badge status from API', error);
+        userIterationBadgeStatus = null;
+        userIterationBadgeStatusKey = null;
+      }
+    };
+
+    load();
   });
 
   function handleToggleSidebar() {
@@ -507,6 +543,7 @@
       {isOwner}
       {walletAddress}
       {chainId}
+      hasMintedStatus={currentIteration?.round ? (userIterationBadgeStatus?.rounds?.[String(currentIteration.round)]?.hasMinted ?? null) : null}
       {pendingAction}
       {roles}
       badges={currentIterationBadges}
@@ -532,6 +569,7 @@
           {refreshBadges}
           iterationNumber={currentIteration.iteration}
           userBadges={badges.filter(b => b.iteration === currentIteration.iteration && b.round === round.round)}
+          hasMintedStatus={userIterationBadgeStatus?.rounds?.[String(round.round)]?.hasMinted ?? null}
         />
       {/each}
     {/if}

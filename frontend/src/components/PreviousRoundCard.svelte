@@ -19,6 +19,7 @@
     refreshBadges: () => Promise<void>;
     iterationNumber?: number;
     userBadges?: Badge[];
+    hasMintedStatus?: boolean | null;
   }
 
   let {
@@ -34,13 +35,15 @@
     refreshBadges,
     iterationNumber,
     userBadges = [],
+    hasMintedStatus = null,
   }: Props = $props();
 
   let isExpanded = $state(false);
+  const hasKnownBadge = $derived(userBadges.length > 0 || hasMintedStatus === true);
 
   // Can the user mint a badge for this round? (computed from parent data, no RPC needed)
   const canMintEagerly = $derived.by(() => {
-    if (!walletAddress || userBadges.length > 0) return false;
+    if (!walletAddress || hasKnownBadge) return false;
     const w = walletAddress.toLowerCase();
     if (round.smtVoters?.some(v => v.toLowerCase() === w)) return true;
     if (round.daoHicVoters?.some(v => v.toLowerCase() === w)) return true;
@@ -167,7 +170,7 @@
       {/if}
     </div>
     <div class="flex items-center gap-2">
-      {#if walletAddress && userBadges.length > 0}
+      {#if walletAddress && hasKnownBadge}
         {@const communityBadge = userBadges.find(b => b.role === 'community')}
         {#if isExpanded && communityBadge && !communityBadge.claimed}
           <button

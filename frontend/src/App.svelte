@@ -276,6 +276,12 @@
   // Load iteration state when iteration changes
   // Use untrack for values that shouldn't trigger re-runs (isOwner, filteredIterations)
   $effect(() => {
+    const needsIterationState =
+      currentPage === 'iteration' ||
+      currentPage === 'project' ||
+      currentPage === 'badges';
+
+    if (!needsIterationState) return;
     if (!selectedIteration || !publicProvider) return;
 
     // Track only the values that should trigger a reload

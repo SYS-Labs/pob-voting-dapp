@@ -56,6 +56,26 @@ export interface IterationSnapshot {
   prevRounds?: PreviousRoundSnapshot[];
 }
 
+export interface UserRoundBadgeStatus {
+  round: number;
+  pobAddress: string;
+  juryAddress: string;
+  hasMinted: boolean | null;
+  badges: Array<{
+    tokenId: string;
+    role: string;
+    claimed: boolean;
+  }>;
+  error?: string;
+}
+
+export interface UserIterationBadgeStatus {
+  chainId: number;
+  iterationId: number;
+  address: string;
+  rounds: Record<string, UserRoundBadgeStatus>;
+}
+
 function getApiBaseUrl(): string {
   const envBaseUrl = import.meta.env.VITE_API_BASE_URL;
   return envBaseUrl ? `${envBaseUrl}/api` : '/api';
@@ -101,6 +121,25 @@ export class IterationsAPI {
 
     const data = await response.json();
     return data.iteration || null;
+  }
+
+  async getUserIterationBadgeStatus(
+    chainId: number,
+    iterationId: number,
+    address: string,
+  ): Promise<UserIterationBadgeStatus | null> {
+    const response = await fetch(`${this.baseUrl}/iterations/${chainId}/${iterationId}/badges/${address}`);
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch badge status: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.badgeStatus || null;
   }
 
   /**

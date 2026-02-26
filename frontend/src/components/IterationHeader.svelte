@@ -27,6 +27,7 @@
     isOwner?: boolean;
     walletAddress?: string | null;
     chainId?: number | null;
+    hasMintedStatus?: boolean | null;
     pendingAction?: string | null;
     roles?: RoleStatuses;
     badges?: Badge[];
@@ -49,6 +50,7 @@
     getProjectLabel,
     isOwner = false,
     walletAddress,
+    hasMintedStatus = null,
     pendingAction,
     roles,
     badges,
@@ -81,9 +83,9 @@
   });
 
   // Determine user's role and mint button visibility
-  let hasSmtBadge = $derived(badges?.some(badge => badge.role === 'smt') ?? false);
-  let hasDaoHicBadge = $derived(badges?.some(badge => badge.role === 'dao_hic') ?? false);
-  let hasProjectBadge = $derived(badges?.some(badge => badge.role === 'project') ?? false);
+  let hasSmtBadge = $derived((badges?.some(badge => badge.role === 'smt') ?? false) || (roles?.smt && hasMintedStatus === true));
+  let hasDaoHicBadge = $derived((badges?.some(badge => badge.role === 'dao_hic') ?? false) || (roles?.dao_hic && hasMintedStatus === true));
+  let hasProjectBadge = $derived((badges?.some(badge => badge.role === 'project') ?? false) || (roles?.project && hasMintedStatus === true));
 
   // Has the user already minted their non-community badge?
   let hasMintedBadge = $derived(

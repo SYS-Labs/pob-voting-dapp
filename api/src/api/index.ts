@@ -8,7 +8,7 @@
 
 import http, { IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
-import { ethers } from 'ethers';
+import { ethers, Contract, Interface, JsonRpcProvider } from 'ethers';
 import { config } from '../config.js';
 import { initDatabase } from '../db/init.js';
 import { createPostDatabase } from '../db/queries.js';
@@ -45,6 +45,211 @@ const templatesDb = createTemplatesDatabase(db);
 // Initialize IPFS and metadata services
 const ipfsService = new IPFSService();
 const metadataService = new MetadataService(ipfsService);
+
+const POB_BADGE_DISCOVERY_ABI = [
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
+  'function ownerOf(uint256 tokenId) view returns (address)',
+  'function roleOf(uint256 tokenId) view returns (string)',
+  'function claimed(uint256 tokenId) view returns (bool)',
+];
+
+const POB_MINT_STATUS_ABI = [
+  'function hasMintedBadge(address account) view returns (bool)',
+];
+
+const POB_V1_MINT_STATUS_ABI = [
+  'function hasMinted(address account) view returns (bool)',
+];
+
+interface UserRoundBadgeRecord {
+  tokenId: string;
+  role: string;
+  claimed: boolean;
+}
+
+interface UserRoundBadgeStatus {
+  round: number;
+  pobAddress: string;
+  juryAddress: string;
+  hasMinted: boolean | null;
+  badges: UserRoundBadgeRecord[];
+  error?: string;
+}
+
+interface UserIterationBadgeStatusResponse {
+  chainId: number;
+  iterationId: number;
+  address: string;
+  rounds: Record<string, UserRoundBadgeStatus>;
+}
+
+const apiProviders = new Map<number, JsonRpcProvider>();
+const userIterationBadgeStatusCache = new Map<string, { expiresAt: number; payload: UserIterationBadgeStatusResponse }>();
+const USER_BADGE_STATUS_TTL_MS = 15_000;
+
+function getApiProvider(chainId: number): JsonRpcProvider | null {
+  const existing = apiProviders.get(chainId);
+  if (existing) return existing;
+
+  const cfg = NETWORKS[chainId];
+  if (!cfg?.rpcUrl) return null;
+
+  const provider = new JsonRpcProvider(cfg.rpcUrl);
+  apiProviders.set(chainId, provider);
+  return provider;
+}
+
+function getCachedUserIterationBadgeStatus(cacheKey: string): UserIterationBadgeStatusResponse | null {
+  const cached = userIterationBadgeStatusCache.get(cacheKey);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    userIterationBadgeStatusCache.delete(cacheKey);
+    return null;
+  }
+  return cached.payload;
+}
+
+function setCachedUserIterationBadgeStatus(cacheKey: string, payload: UserIterationBadgeStatusResponse): void {
+  userIterationBadgeStatusCache.set(cacheKey, {
+    expiresAt: Date.now() + USER_BADGE_STATUS_TTL_MS,
+    payload,
+  });
+}
+
+async function readPobHasMinted(pobAddress: string, account: string, provider: JsonRpcProvider): Promise<boolean | null> {
+  try {
+    const contract = new Contract(pobAddress, POB_MINT_STATUS_ABI, provider);
+    return Boolean(await contract.hasMintedBadge(account));
+  } catch {
+    // v1 fallback
+  }
+
+  try {
+    const contract = new Contract(pobAddress, POB_V1_MINT_STATUS_ABI, provider);
+    return Boolean(await contract.hasMinted(account));
+  } catch {
+    return null;
+  }
+}
+
+async function readUserOwnedPobBadges(
+  pobAddress: string,
+  account: string,
+  provider: JsonRpcProvider,
+  deployBlockHint?: number | null,
+): Promise<UserRoundBadgeRecord[]> {
+  const iface = new Interface(POB_BADGE_DISCOVERY_ABI);
+  const transferTopic = iface.getEvent('Transfer')?.topicHash;
+  if (!transferTopic) return [];
+
+  const pob = new Contract(pobAddress, POB_BADGE_DISCOVERY_ABI, provider);
+  const fromBlock = deployBlockHint !== undefined && deployBlockHint !== null ? deployBlockHint : 0;
+
+  const logs = await provider.getLogs({
+    address: pobAddress,
+    fromBlock,
+    toBlock: 'latest',
+    topics: [transferTopic, null, ethers.zeroPadValue(account, 32)],
+  });
+
+  if (!logs?.length) return [];
+
+  const tokenIds: string[] = [];
+  for (const log of logs) {
+    try {
+      const parsed = iface.parseLog(log);
+      const tokenId = parsed?.args?.tokenId ?? parsed?.args?.[2];
+      if (tokenId !== undefined && tokenId !== null) {
+        tokenIds.push(tokenId.toString());
+      }
+    } catch {
+      // Ignore malformed/unknown logs
+    }
+  }
+
+  if (tokenIds.length === 0) return [];
+
+  const uniqueTokenIds = Array.from(new Set(tokenIds));
+  const calls = uniqueTokenIds.flatMap((tokenId) => ([
+    pob.ownerOf(tokenId),
+    pob.roleOf(tokenId),
+    pob.claimed(tokenId).catch(() => false),
+  ]));
+
+  const results = await Promise.allSettled(calls);
+  const badges: UserRoundBadgeRecord[] = [];
+  const normalized = account.toLowerCase();
+
+  for (let i = 0; i < uniqueTokenIds.length; i++) {
+    const ownerRes = results[i * 3];
+    const roleRes = results[i * 3 + 1];
+    const claimedRes = results[i * 3 + 2];
+
+    if (ownerRes.status !== 'fulfilled' || typeof ownerRes.value !== 'string') continue;
+    if (ownerRes.value.toLowerCase() !== normalized) continue;
+    if (roleRes.status !== 'fulfilled') continue;
+
+    badges.push({
+      tokenId: uniqueTokenIds[i],
+      role: String(roleRes.value).toLowerCase(),
+      claimed: claimedRes.status === 'fulfilled' ? Boolean(claimedRes.value) : false,
+    });
+  }
+
+  return badges;
+}
+
+async function buildUserIterationBadgeStatus(
+  chainId: number,
+  iterationId: number,
+  address: string,
+): Promise<UserIterationBadgeStatusResponse | null> {
+  const snapshot = iterationsDb.getSnapshot(chainId, iterationId);
+  if (!snapshot) return null;
+
+  const provider = getApiProvider(chainId);
+  if (!provider) {
+    throw new Error(`Unsupported chain ${chainId}`);
+  }
+
+  const rounds = iterationsDb.getAllRounds(chainId, iterationId)
+    .filter((row) => row.round > 0 && row.pob_address && row.pob_address !== ethers.ZeroAddress);
+
+  const roundStatuses = await Promise.all(rounds.map(async (row): Promise<[string, UserRoundBadgeStatus]> => {
+    const key = String(row.round);
+    try {
+      const hasMinted = await readPobHasMinted(row.pob_address, address, provider);
+      const badges = hasMinted === false
+        ? []
+        : await readUserOwnedPobBadges(row.pob_address, address, provider, row.deploy_block_hint);
+
+      return [key, {
+        round: row.round,
+        pobAddress: row.pob_address,
+        juryAddress: row.jury_address,
+        hasMinted,
+        badges,
+      }];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return [key, {
+        round: row.round,
+        pobAddress: row.pob_address,
+        juryAddress: row.jury_address,
+        hasMinted: null,
+        badges: [],
+        error: message,
+      }];
+    }
+  }));
+
+  return {
+    chainId,
+    iterationId,
+    address,
+    rounds: Object.fromEntries(roundStatuses),
+  };
+}
 
 type Handler = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
 
@@ -106,6 +311,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Iteration endpoints (dynamic routes)
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/iterations\/\d+\/\d+\/badges\/0x[a-fA-F0-9]{40}$/)) {
+    await handleGetIterationUserBadges(req, res, url);
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname.match(/^\/api\/iterations\/\d+\/\d+$/)) {
     await handleGetIteration(req, res, url);
     return;
@@ -291,6 +501,54 @@ async function handleGetIteration(
   }
 
   sendJson(res, 200, { iteration });
+}
+
+async function handleGetIterationUserBadges(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // /api/iterations/:chainId/:iterationId/badges/:address
+  const parts = url.pathname.replace('/api/iterations/', '').split('/');
+  if (parts.length !== 4 || parts[2] !== 'badges') {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/iterations/:chainId/:iterationId/badges/:address' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+  const iterationId = parseInt(parts[1], 10);
+  const address = parts[3];
+
+  if (isNaN(chainId) || isNaN(iterationId)) {
+    sendJson(res, 400, { error: 'Invalid chainId or iterationId format' });
+    return;
+  }
+
+  if (!ethers.isAddress(address)) {
+    sendJson(res, 400, { error: 'Invalid address format' });
+    return;
+  }
+
+  const normalizedAddress = address.toLowerCase();
+  const cacheKey = `${chainId}:${iterationId}:${normalizedAddress}`;
+  const cached = getCachedUserIterationBadgeStatus(cacheKey);
+  if (cached) {
+    sendJson(res, 200, { badgeStatus: cached, cached: true });
+    return;
+  }
+
+  try {
+    const badgeStatus = await buildUserIterationBadgeStatus(chainId, iterationId, normalizedAddress);
+    if (!badgeStatus) {
+      sendJson(res, 404, { error: 'Iteration not found' });
+      return;
+    }
+    setCachedUserIterationBadgeStatus(cacheKey, badgeStatus);
+    sendJson(res, 200, { badgeStatus, cached: false });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch user badge status';
+    sendJson(res, 500, { error: message });
+  }
 }
 
 async function handleDeployment(req: IncomingMessage, res: ServerResponse): Promise<void> {
