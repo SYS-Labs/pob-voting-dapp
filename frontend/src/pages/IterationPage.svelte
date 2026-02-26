@@ -178,6 +178,8 @@
   let roundSetupTarget = $state<{ iterationId: number; roundId: number; jurySC: string } | null>(null);
   let lastCheckedRoundKey = $state<string | null>(null);
   let roundSetupCheckSeq = 0;
+  let regInitComplete = $state<boolean | null>(null);
+  let regInitCheckSeq = 0;
 
   // Handle resize
   $effect(() => {
@@ -396,6 +398,35 @@
     roundSetupTarget = null;
     lastCheckedRoundKey = null;
     void checkRoundSetupRequirement();
+  }
+
+  async function loadRegistryInitStatus() {
+    if (!isOwner || !currentIteration) {
+      regInitComplete = null;
+      return;
+    }
+    const registryAddress = REGISTRY_ADDRESSES[currentIteration.chainId];
+    const readProvider = publicProvider ?? signer?.provider;
+    if (!registryAddress || !readProvider) {
+      regInitComplete = null;
+      return;
+    }
+    const seq = ++regInitCheckSeq;
+    try {
+      const registry = new Contract(registryAddress, PoBRegistryABI, readProvider);
+      const v = await registry.initializationComplete();
+      if (seq === regInitCheckSeq) regInitComplete = Boolean(v);
+    } catch {
+      if (seq === regInitCheckSeq) regInitComplete = null;
+    }
+  }
+
+  $effect(() => {
+    void loadRegistryInitStatus();
+  });
+
+  function refreshRegistryInitStatus() {
+    void loadRegistryInitStatus();
   }
 
   // Filter badges for current iteration and round
@@ -722,6 +753,8 @@
         {refreshBadges}
         {setPendingRemovalVoter}
         {setError}
+        registryInitComplete={regInitComplete}
+        {refreshRegistryInitStatus}
       />
     {/if}
   </div>

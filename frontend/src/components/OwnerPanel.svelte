@@ -3,6 +3,9 @@
   import { formatAddress } from '~/utils';
   import Modal from './Modal.svelte';
   import { createWriteDispatcher } from '~/utils/writeDispatch';
+  import { REGISTRY_ADDRESSES } from '~/utils/registry';
+  import PoBRegistryABI from '~/abis/PoBRegistry.json';
+  import { Contract } from 'ethers';
 
   interface StatusFlags {
     isActive: boolean;
@@ -36,6 +39,8 @@
     refreshBadges: () => Promise<void>;
     setPendingRemovalVoter: (voter: string | null) => void;
     setError: (error: string) => void;
+    registryInitComplete: boolean | null;
+    refreshRegistryInitStatus: () => void;
   }
 
   let {
@@ -60,6 +65,8 @@
     refreshBadges,
     setPendingRemovalVoter,
     setError,
+    registryInitComplete,
+    refreshRegistryInitStatus,
   }: Props = $props();
 
   let showActivationConfirm = $state(false);
@@ -142,6 +149,20 @@
     isDeactivateMode ? (isBusy ? 'Ending...' : 'Yes, end voting') : (isBusy ? 'Activating...' : 'Yes, activate now')
   );
   const confirmClass = $derived(`pob-button flex-1 justify-center${isDeactivateMode ? ' pob-button--danger' : ''}`);
+
+  async function handleCompleteInitialization() {
+    if (!signer || !currentIteration?.chainId) return;
+    const registryAddress = REGISTRY_ADDRESSES[currentIteration.chainId];
+    if (!registryAddress) return;
+    const registry = new Contract(registryAddress, PoBRegistryABI, signer);
+    const success = await runTransaction(
+      'Open Project Editing',
+      () => registry.completeInitialization(),
+    );
+    if (success) {
+      refreshRegistryInitStatus();
+    }
+  }
 
   function handlePrimaryClick() {
     if (primaryButtonDisabled) return;
@@ -231,6 +252,26 @@
       </button>
       {#if openAdminSection === 'activate'}
         <div class="pob-accordion-content space-y-3" id="owner-activate">
+          {#if registryInitComplete === false}
+            <div class="space-y-3" style="padding-bottom: 0.75rem; border-bottom: 1px solid var(--pob-border);">
+              <p class="text-sm text-[var(--pob-text-muted)]">
+                The metadata registry is in <strong class="text-white">initialization mode</strong>. While in this mode, the registry owner can set metadata on behalf of any project. Once you open project editing:
+              </p>
+              <ul class="text-sm text-[var(--pob-text-muted)]" style="padding-left: 1.25rem; list-style: disc; line-height: 1.7;">
+                <li>Each project wallet manages its own metadata independently</li>
+                <li>The registry owner can no longer edit project metadata on behalf of others</li>
+                <li>Iteration metadata becomes read-only for iterations with a locked contract</li>
+              </ul>
+              <button
+                type="button"
+                onclick={handleCompleteInitialization}
+                disabled={isBusy}
+                class="pob-button pob-button--outline pob-button--full"
+              >
+                Open Project Editing
+              </button>
+            </div>
+          {/if}
           <p class="pob-form-hint">{activationHint}</p>
           <button
             type="button"
