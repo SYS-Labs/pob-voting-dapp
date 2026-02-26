@@ -379,6 +379,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Has-role endpoint (used for menu visibility)
+  if (req.method === 'GET' && url.pathname.match(/^\/api\/certs\/\d+\/has-role\/0x[a-fA-F0-9]{40}$/)) {
+    await handleGetCertRole(req, res, url);
+    return;
+  }
+
   // Profile endpoints
   if (req.method === 'GET' && url.pathname.match(/^\/api\/profile\/\d+\/0x[a-fA-F0-9]{40}$/)) {
     await handleGetProfile(req, res, url);
@@ -1174,6 +1180,53 @@ async function handleGetEligibility(
     .map((row) => eligibilityDb.toAPI(row));
 
   sendJson(res, 200, { eligibility });
+}
+
+async function handleGetCertRole(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  url: URL
+): Promise<void> {
+  // Parse URL: /api/certs/:chainId/has-role/:address
+  const parts = url.pathname.replace('/api/certs/', '').split('/');
+  if (parts.length !== 3 || parts[1] !== 'has-role') {
+    sendJson(res, 400, { error: 'Invalid URL format. Expected: /api/certs/:chainId/has-role/:address' });
+    return;
+  }
+
+  const chainId = parseInt(parts[0], 10);
+  const address = parts[2];
+
+  if (isNaN(chainId)) {
+    sendJson(res, 400, { error: 'Invalid chainId format' });
+    return;
+  }
+
+  if (!ethers.isAddress(address)) {
+    sendJson(res, 400, { error: 'Invalid address format' });
+    return;
+  }
+
+  // Short-circuit checks — all SQLite, essentially instant
+  const eligible = eligibilityDb.getEligibleForAccount(chainId, address);
+  if (eligible.some((r) => r.eligible)) {
+    sendJson(res, 200, { hasRole: true });
+    return;
+  }
+
+  const memberships = teamMembersDb.getTeamMembersForMember(chainId, address);
+  if (memberships.some((m) => m.status !== 'rejected')) {
+    sendJson(res, 200, { hasRole: true });
+    return;
+  }
+
+  const certs = certsDb.getCertsForAccount(chainId, address);
+  if (certs.some((c) => c.status !== 'cancelled')) {
+    sendJson(res, 200, { hasRole: true });
+    return;
+  }
+
+  sendJson(res, 200, { hasRole: false });
 }
 
 async function handleGetProfile(

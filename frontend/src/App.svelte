@@ -85,6 +85,7 @@
     certStateStore,
     loadCertState,
     resetCertState,
+    checkCertMenuVisibility,
   } from '~/stores/certState';
 
   // Write dispatcher and constants
@@ -204,6 +205,8 @@
   const certEligibility = $derived($certStateStore.eligibility);
   const certLoading = $derived($certStateStore.loading);
 
+  let certMenuVisible = $state(false);
+
   // Admin panel state
   const openAdminSection = $derived($adminPanelStore);
 
@@ -305,6 +308,12 @@
         console.error('[App] loadIterationState failed:', err);
       });
     });
+  });
+
+  // Check cert role on wallet connect — drives menu visibility
+  $effect(() => {
+    if (!walletAddress || !chainId) { certMenuVisible = false; return; }
+    checkCertMenuVisibility(chainId, walletAddress).then((v) => { certMenuVisible = v; });
   });
 
   // Load cert state when navigating to the certs or cert-request page
@@ -445,7 +454,7 @@
       }}
       showIterationTab={Boolean(selectedIteration)}
       showBadgesTab={walletAddress !== null && !isOwner}
-      showCertsTab={walletAddress !== null}
+      showCertsTab={certMenuVisible || isOwner}
       currentIteration={selectedIteration?.iteration ?? null}
     />
 

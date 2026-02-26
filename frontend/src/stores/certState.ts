@@ -111,3 +111,14 @@ export function refreshCerts(
 export function resetCertState(): void {
   certStateStore.set(initialState);
 }
+
+export async function checkCertMenuVisibility(chainId: number, account: string): Promise<boolean> {
+  try {
+    const resp = await fetch(`${getApiBaseUrl()}/certs/${chainId}/has-role/${account}`);
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    return data.hasRole === true;
+  } catch {
+    return false;
+  }
+}
