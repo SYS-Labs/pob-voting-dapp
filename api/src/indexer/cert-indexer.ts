@@ -421,6 +421,12 @@ class CertIndexer {
       if (snapshot.devrel_account) {
         candidates.add(snapshot.devrel_account.toLowerCase());
       }
+      if (snapshot.smt_voters) {
+        try {
+          const voters: string[] = JSON.parse(snapshot.smt_voters);
+          for (const v of voters) candidates.add(v.toLowerCase());
+        } catch { /* ignore */ }
+      }
       if (snapshot.daohic_voters) {
         try {
           const voters: string[] = JSON.parse(snapshot.daohic_voters);
@@ -538,6 +544,14 @@ class CertIndexer {
       for (const snapshot of snapshots) {
         if (snapshot.devrel_account) {
           certAccounts.add(snapshot.devrel_account.toLowerCase());
+        }
+        if (snapshot.smt_voters) {
+          try {
+            const voters: string[] = JSON.parse(snapshot.smt_voters);
+            for (const voter of voters) {
+              certAccounts.add(voter.toLowerCase());
+            }
+          } catch { /* ignore parse errors */ }
         }
         if (snapshot.daohic_voters) {
           try {

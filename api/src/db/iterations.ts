@@ -27,6 +27,7 @@ export interface IterationSnapshot {
   daohic_count: number;
   community_count: number;
   devrel_account: string | null;
+  smt_voters: string | null;  // JSON array
   daohic_voters: string | null;  // JSON array
   daohic_individual_votes: string | null;  // JSON object: { voterAddress: projectAddress }
   projects: string | null;  // JSON array
@@ -45,6 +46,7 @@ export interface PreviousRoundAPI {
   winner: { projectAddress: string | null; hasWinner: boolean };
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
   devRelAccount: string | null;
+  smtVoters: string[];
   daoHicVoters: string[];
   daoHicIndividualVotes: Record<string, string>;
   projects: ProjectSnapshot[];
@@ -69,6 +71,7 @@ export interface IterationSnapshotAPI {
   projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null;
   totals: { devRel: number; daoHic: number; community: number };
   devRelAccount: string | null;
+  smtVoters: string[];
   daoHicVoters: string[];
   daoHicIndividualVotes: Record<string, string>;  // voterAddress -> projectAddress
   projects: ProjectSnapshot[];
@@ -114,6 +117,7 @@ function toAPIFormat(row: IterationSnapshot): IterationSnapshotAPI {
       community: row.community_count
     },
     devRelAccount: row.devrel_account,
+    smtVoters: row.smt_voters ? JSON.parse(row.smt_voters) : [],
     daoHicVoters: row.daohic_voters ? JSON.parse(row.daohic_voters) : [],
     daoHicIndividualVotes: row.daohic_individual_votes ? JSON.parse(row.daohic_individual_votes) : {},
     projects: row.projects ? JSON.parse(row.projects) : [],
@@ -123,6 +127,13 @@ function toAPIFormat(row: IterationSnapshot): IterationSnapshotAPI {
 }
 
 export function createIterationsDatabase(db: Database.Database) {
+  const tableInfo = db.prepare(`PRAGMA table_info(iteration_snapshots)`).all() as Array<{ name: string }>;
+  const columnNames = new Set(tableInfo.map((column) => column.name));
+
+  if (!columnNames.has('smt_voters')) {
+    db.exec(`ALTER TABLE iteration_snapshots ADD COLUMN smt_voters TEXT`);
+  }
+
   /**
    * Upsert an iteration snapshot (insert or update)
    */
@@ -133,9 +144,9 @@ export function createIterationsDatabase(db: Database.Database) {
         deploy_block_hint, jury_state, start_time, end_time, voting_mode, projects_locked, contract_locked,
         winner_address, has_winner, devrel_vote, daohic_vote, community_vote,
         project_scores, devrel_count, daohic_count, community_count,
-        devrel_account, daohic_voters, daohic_individual_votes, projects, last_block, last_updated_at
+        devrel_account, smt_voters, daohic_voters, daohic_individual_votes, projects, last_block, last_updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(chain_id, iteration_id, round) DO UPDATE SET
         registry_address = excluded.registry_address,
         pob_address = excluded.pob_address,
@@ -157,6 +168,7 @@ export function createIterationsDatabase(db: Database.Database) {
         daohic_count = excluded.daohic_count,
         community_count = excluded.community_count,
         devrel_account = excluded.devrel_account,
+        smt_voters = excluded.smt_voters,
         daohic_voters = excluded.daohic_voters,
         daohic_individual_votes = excluded.daohic_individual_votes,
         projects = excluded.projects,
@@ -188,6 +200,7 @@ export function createIterationsDatabase(db: Database.Database) {
       snapshot.daohic_count,
       snapshot.community_count,
       snapshot.devrel_account,
+      snapshot.smt_voters,
       snapshot.daohic_voters,
       snapshot.daohic_individual_votes,
       snapshot.projects,
@@ -332,6 +345,7 @@ export function createIterationsDatabase(db: Database.Database) {
             community: r.community_vote
           },
           devRelAccount: r.devrel_account,
+          smtVoters: r.smt_voters ? JSON.parse(r.smt_voters) : [],
           daoHicVoters: r.daohic_voters ? JSON.parse(r.daohic_voters) : [],
           daoHicIndividualVotes: r.daohic_individual_votes ? JSON.parse(r.daohic_individual_votes) : {},
           projects: r.projects ? JSON.parse(r.projects) : []

@@ -198,6 +198,7 @@ CREATE TABLE IF NOT EXISTS iteration_snapshots (
   daohic_count INTEGER NOT NULL DEFAULT 0,
   community_count INTEGER NOT NULL DEFAULT 0,
   devrel_account TEXT,
+  smt_voters TEXT,  -- JSON array of SMT voter addresses
   daohic_voters TEXT,  -- JSON array of addresses
   daohic_individual_votes TEXT,  -- JSON object: { voterAddress: projectAddress }
   projects TEXT,  -- JSON array of project objects

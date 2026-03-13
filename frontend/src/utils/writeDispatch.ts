@@ -29,10 +29,51 @@ const WRITE_MAP: Record<string, Record<string, string>> = {
   removeSmtVoter: { '003': 'removeSmtVoter' },
 };
 
+const LEGACY_WRITE_VERSION = '002';
+const V3_WRITE_VERSION = '003';
+const versionProbeCache = new Map<string, Promise<string>>();
+
 function resolve(action: string, version: string): string {
   const mapping = WRITE_MAP[action];
   if (!mapping) return action;
   return mapping[version] ?? mapping['003'] ?? action;
+}
+
+function getVersionCacheKey(target: WriteTarget): string {
+  return `${target.chainId ?? 0}:${target.jurySC.toLowerCase()}`;
+}
+
+/**
+ * Current-round API snapshots still use a legacy placeholder version.
+ * Probe the jury contract so write actions route correctly on v3 rounds.
+ */
+export async function resolveWriteVersion(target: WriteTarget, signer: Signer): Promise<string> {
+  if (target.version === V3_WRITE_VERSION) {
+    return V3_WRITE_VERSION;
+  }
+
+  const cacheKey = getVersionCacheKey(target);
+  const cached = versionProbeCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const probe = (async () => {
+    try {
+      const juryV3Probe = new Contract(
+        target.jurySC,
+        ['function getSmtVoters() view returns (address[])'],
+        signer
+      );
+      await juryV3Probe.getSmtVoters();
+      return V3_WRITE_VERSION;
+    } catch {
+      return target.version || LEGACY_WRITE_VERSION;
+    }
+  })();
+
+  versionProbeCache.set(cacheKey, probe);
+  return probe;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +84,7 @@ export interface WriteTarget {
   jurySC: string;
   pob: string;
   version: string;
+  chainId?: number;
 }
 
 export interface WriteDispatcher {
@@ -78,19 +120,19 @@ export interface WriteDispatcher {
 // ---------------------------------------------------------------------------
 
 export function createWriteDispatcher(target: WriteTarget, signer: Signer): WriteDispatcher {
-  const version = target.version || '003';
   const jury = new Contract(target.jurySC, JurySCWriteAllABI, signer);
   const pob  = new Contract(target.pob, PoBWriteAllABI, signer);
+  const getVersion = () => resolveWriteVersion(target, signer);
 
   return {
     // Voting
-    voteSmt:       (project) => jury[resolve('voteSmt', version)](project),
+    voteSmt:       async (project) => jury[resolve('voteSmt', await getVersion())](project),
     voteDaoHic:    (project) => jury.voteDaoHic(project),
     voteCommunity: (tokenId, project) => jury.voteCommunity(tokenId, project),
 
     // Minting
     mintCommunity: (value) => pob.mint({ value }),
-    mintSmt:       () => pob[resolve('mintSmt', version)](),
+    mintSmt:       async () => pob[resolve('mintSmt', await getVersion())](),
     mintDaoHic:    () => pob.mintDaoHic(),
     mintProject:   () => pob.mintProject(),
 
@@ -102,10 +144,10 @@ export function createWriteDispatcher(target: WriteTarget, signer: Signer): Writ
     closeManually:          () => jury.closeManually(),
     registerProject:        (addr) => jury.registerProject(addr),
     removeProject:          (addr) => jury.removeProject(addr),
-    addSmtVoter:            (addr) => jury[resolve('addSmtVoter', version)](addr),
+    addSmtVoter:            async (addr) => jury[resolve('addSmtVoter', await getVersion())](addr),
     addDaoHicVoter:         (addr) => jury.addDaoHicVoter(addr),
     removeDaoHicVoter:      (addr) => jury.removeDaoHicVoter(addr),
-    removeSmtVoter:         (addr) => jury[resolve('removeSmtVoter', version)](addr),
+    removeSmtVoter:         async (addr) => jury[resolve('removeSmtVoter', await getVersion())](addr),
     lockContractForHistory: () => jury.lockContractForHistory(),
     setVotingMode:          (mode) => jury.setVotingMode(mode),
   };

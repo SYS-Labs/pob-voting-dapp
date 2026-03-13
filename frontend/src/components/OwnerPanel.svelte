@@ -2,7 +2,7 @@
   import type { Iteration } from '~/interfaces';
   import { formatAddress } from '~/utils';
   import Modal from './Modal.svelte';
-  import { createWriteDispatcher } from '~/utils/writeDispatch';
+  import { createWriteDispatcher, resolveWriteVersion } from '~/utils/writeDispatch';
   import { REGISTRY_ADDRESSES } from '~/utils/registry';
   import PoBRegistryABI from '~/abis/PoBRegistry.json';
   import { Contract } from 'ethers';
@@ -71,6 +71,7 @@
 
   let showActivationConfirm = $state(false);
   let activationMode = $state<'activate' | 'deactivate'>('activate');
+  let resolvedWriteVersion = $state<string | null>(null);
 
   async function handleActivationAction() {
     if (!signer || !currentIteration) return;
@@ -216,6 +217,32 @@
     const newMode = votingMode === 0 ? 1 : 0;
     await setVotingMode(newMode, refreshVotingData);
   }
+
+  $effect(() => {
+    const iteration = currentIteration;
+    const nextSigner = signer;
+
+    if (!iteration || !nextSigner) {
+      resolvedWriteVersion = iteration?.version ?? null;
+      return;
+    }
+
+    resolvedWriteVersion = iteration.version ?? null;
+
+    const loadVersion = async () => {
+      try {
+        resolvedWriteVersion = await resolveWriteVersion(iteration, nextSigner);
+      } catch {
+        resolvedWriteVersion = iteration.version ?? null;
+      }
+    };
+
+    void loadVersion();
+  });
+
+  const supportsMultipleSmtVoters = $derived(
+    (resolvedWriteVersion ?? currentIteration?.version ?? '002') === '003'
+  );
 </script>
 
 <section class="pob-pane">
@@ -454,7 +481,7 @@
                 No SMT voters registered yet.
               </div>
             {/if}
-            {#if currentIteration?.version !== '003' && smtVoters.length >= 1}
+            {#if !supportsMultipleSmtVoters && smtVoters.length >= 1}
               <p class="pob-form-hint" style="margin-top: 0.75rem; padding: 0 1.25rem;">
                 This iteration supports only 1 SMT voter.
               </p>

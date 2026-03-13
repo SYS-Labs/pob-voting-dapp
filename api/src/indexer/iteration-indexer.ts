@@ -20,6 +20,7 @@ const REGISTRY_ABI = [
   'function getAllIterationIds() external view returns (uint256[])',
   'function getIteration(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 chainId, string name, uint256 roundCount))',
   'function getRounds(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 roundId, address jurySC, uint256 deployBlockHint, bool exists)[])',
+  'function roundVersion(uint256 iterationId, uint256 roundId) external view returns (uint32)',
   'function getProjectMetadata(uint256 chainId, address jurySC, address project) external view returns (string)',
   'function batchGetProjectMetadata(uint256 chainId, address jurySC, address[] projects) external view returns (string[])',
   'function votingModeOverride(address jurySC) external view returns (uint8)'
@@ -35,9 +36,11 @@ const JURY_ABI = [
   'function projectsLocked() external view returns (bool)',
   'function locked() external view returns (bool)',
   'function devRelAccount() external view returns (address)',
+  'function getSmtVoters() external view returns (address[])',
   'function getDaoHicVoters() external view returns (address[])',
   'function daoHicVoteOf(address voter) external view returns (address)',
   'function getDevRelEntityVote() external view returns (address)',
+  'function getSmtEntityVote() external view returns (address)',
   'function getDaoHicEntityVote() external view returns (address)',
   'function getCommunityEntityVote() external view returns (address)',
   'function getVoteParticipationCounts() external view returns (uint256, uint256, uint256)',
@@ -205,6 +208,15 @@ class IterationIndexer {
     try {
       // Check for voting mode override in registry
       const votingModeOverrideRaw: number = await registry.votingModeOverride(round.jurySC).catch(() => 0);
+      const roundVersionRaw: number = await registry.roundVersion(iterationId, round.roundId).catch(() => 0);
+
+      const smtVotersRead = jurySC.getSmtVoters()
+        .then((voters: string[]) => ({ supported: true, voters }))
+        .catch(() => ({ supported: false, voters: [] as string[] }));
+
+      const smtEntityVoteRead = jurySC.getSmtEntityVote()
+        .then((vote: string) => ({ supported: true, vote }))
+        .catch(() => ({ supported: false, vote: null as string | null }));
 
       // Batch fetch all contract state
       const [
@@ -217,8 +229,10 @@ class IterationIndexer {
         projectsLocked,
         locked,
         devRelAccount,
+        smtVotersReadResult,
         daoHicVoters,
         devRelVote,
+        smtEntityVoteReadResult,
         daoHicVote,
         communityVote,
         voteCounts,
@@ -234,8 +248,10 @@ class IterationIndexer {
         jurySC.projectsLocked().catch(() => false),
         jurySC.locked().catch(() => false),
         jurySC.devRelAccount().catch(() => null),
+        smtVotersRead,
         jurySC.getDaoHicVoters().catch(() => []),
         jurySC.getDevRelEntityVote().catch(() => null),
+        smtEntityVoteRead,
         jurySC.getDaoHicEntityVote().catch(() => null),
         jurySC.getCommunityEntityVote().catch(() => null),
         jurySC.getVoteParticipationCounts().catch(() => [BigInt(0), BigInt(0), BigInt(0)]),
@@ -244,6 +260,16 @@ class IterationIndexer {
       ]);
 
       const votingMode = Number(votingModeRaw);
+      const isV3Round = roundVersionRaw === 3 || smtVotersReadResult.supported;
+      const smtVoters = isV3Round
+        ? smtVotersReadResult.voters.filter((voter) => voter && voter !== ethers.ZeroAddress)
+        : [];
+      const entityZeroVote = isV3Round
+        ? smtEntityVoteReadResult.vote
+        : devRelVote;
+      const entityZeroAccount = !isV3Round && devRelAccount && devRelAccount !== ethers.ZeroAddress
+        ? devRelAccount
+        : null;
 
       // Get project scores if voting has ended
       let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
@@ -329,14 +355,15 @@ class IterationIndexer {
         contract_locked: locked ? 1 : 0,
         winner_address: winner[0] && winner[0] !== ethers.ZeroAddress ? winner[0] : null,
         has_winner: winner[1] ? 1 : 0,
-        devrel_vote: devRelVote && devRelVote !== ethers.ZeroAddress ? devRelVote : null,
+        devrel_vote: entityZeroVote && entityZeroVote !== ethers.ZeroAddress ? entityZeroVote : null,
         daohic_vote: daoHicVote && daoHicVote !== ethers.ZeroAddress ? daoHicVote : null,
         community_vote: communityVote && communityVote !== ethers.ZeroAddress ? communityVote : null,
         project_scores: projectScores ? JSON.stringify(projectScores) : null,
         devrel_count: Number(voteCounts[0]),
         daohic_count: Number(voteCounts[1]),
         community_count: Number(voteCounts[2]),
-        devrel_account: devRelAccount && devRelAccount !== ethers.ZeroAddress ? devRelAccount : null,
+        devrel_account: entityZeroAccount,
+        smt_voters: JSON.stringify(smtVoters),
         daohic_voters: JSON.stringify(daoHicVoters),
         daohic_individual_votes: JSON.stringify(daoHicIndividualVotes),
         projects: JSON.stringify(projects),
@@ -394,6 +421,7 @@ class IterationIndexer {
         daohic_count: 0,
         community_count: 0,
         devrel_account: null,
+        smt_voters: JSON.stringify([]),
         daohic_voters: JSON.stringify([]),
         daohic_individual_votes: JSON.stringify({}),
         projects: JSON.stringify([]),
