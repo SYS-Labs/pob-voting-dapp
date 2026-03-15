@@ -215,6 +215,37 @@
     chainId === SYS_COIN_ID || chainId === SYS_TESTNET_ID || chainId === HARDHAT_ID || chainId === null
   );
 
+  const routeIterationNumber = $derived.by(() => {
+    const match = currentPath.match(/^\/iteration\/(\d+)/);
+    return match ? Number(match[1]) : null;
+  });
+
+  const routeIterationExists = $derived.by(() => (
+    routeIterationNumber === null ||
+    filteredIterations.some((iteration) => iteration.iteration === routeIterationNumber)
+  ));
+
+  const routeIterationReady = $derived.by(() => (
+    routeIterationNumber === null ||
+    selectedIteration?.iteration === routeIterationNumber
+  ));
+
+  const headerIterationNumber = $derived(routeIterationNumber ?? selectedIteration?.iteration ?? null);
+
+  const showIterationPage = $derived.by(() => {
+    if (!selectedIteration) return false;
+    return routeIterationReady;
+  });
+
+  const showIterationLoader = $derived.by(() => {
+    if (routeIterationNumber !== null) {
+      if (iterationsLoading) return true;
+      if (!routeIterationExists) return false;
+      return !routeIterationReady || loading;
+    }
+    return !showIterationPage && (iterationsLoading || loading);
+  });
+
   // Public provider for selected iteration
   const publicProvider = $derived.by(() => {
     if (!selectedIteration) return null;
@@ -244,9 +275,6 @@
     return { label: 'Active', color: 'pob-pill pob-pill--active' };
   });
 
-  const showIterationPage = $derived(Boolean(selectedIteration));
-  const showIterationLoader = $derived(!showIterationPage && (iterationsLoading || loading));
-
   // Get project label helper
   function getProjectLabel(address: string | null): string | null {
     if (!address) return null;
@@ -260,8 +288,16 @@
 
   // Update status from statusFlags
   $effect(() => {
+    if (routeIterationNumber === null) return;
+    if (iterationsLoading || !routeIterationExists) return;
+    if (selectedIterationNumber === routeIterationNumber) return;
+
+    setSelectedIteration(routeIterationNumber);
+  });
+
+  $effect(() => {
     if (currentPage !== 'iteration') return;
-    if (!selectedIteration || !statusFlags) return;
+    if (!routeIterationReady || !selectedIteration || !statusFlags) return;
 
     let newStatus: IterationStatus = 'upcoming';
     if (statusFlags.votingEnded) {
@@ -285,6 +321,7 @@
       currentPage === 'badges';
 
     if (!needsIterationState) return;
+    if (currentPage !== 'badges' && (!routeIterationExists || !routeIterationReady)) return;
     if (!selectedIteration || !publicProvider) return;
 
     // Track only the values that should trigger a reload
@@ -452,10 +489,10 @@
       onNavigate={(page) => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }}
-      showIterationTab={Boolean(selectedIteration)}
+      showIterationTab={Boolean(headerIterationNumber)}
       showBadgesTab={walletAddress !== null && !isOwner}
       showCertsTab={certMenuVisible || isOwner}
-      currentIteration={selectedIteration?.iteration ?? null}
+      currentIteration={headerIterationNumber}
     />
 
     <!-- Main content with Routes -->
@@ -483,7 +520,6 @@
       <Route path="/iteration/:iterationNumber" let:params>
         {#if showIterationPage}
           <IterationPage
-            iterationNumber={params.iterationNumber}
             currentIteration={selectedIteration}
             {statusBadge}
             {iterationTimes}
