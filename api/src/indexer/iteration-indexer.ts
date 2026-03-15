@@ -207,8 +207,12 @@ class IterationIndexer {
 
     try {
       // Check for voting mode override in registry
-      const votingModeOverrideRaw: number = await registry.votingModeOverride(round.jurySC).catch(() => 0);
-      const roundVersionRaw: number = await registry.roundVersion(iterationId, round.roundId).catch(() => 0);
+      const votingModeOverrideRaw = Number(
+        await registry.votingModeOverride(round.jurySC).catch(() => 0)
+      );
+      const roundVersionRaw = Number(
+        await registry.roundVersion(iterationId, round.roundId).catch(() => 0)
+      );
 
       const smtVotersRead = jurySC.getSmtVoters()
         .then((voters: string[]) => ({ supported: true, voters }))
