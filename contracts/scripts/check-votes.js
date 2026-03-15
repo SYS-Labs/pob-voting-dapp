@@ -1,7 +1,5 @@
 import pkg from "hardhat";
-const { ethers, network } = pkg;
-import fs from "fs";
-import path from "path";
+const { ethers } = pkg;
 
 /**
  * Script to check voting status for an iteration
@@ -43,14 +41,38 @@ const REGISTRY_ADDRESSES = {
 const REGISTRY_ABI = [
   'function getIteration(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 chainId, uint256 roundCount, bool exists))',
   'function getRounds(uint256 iterationId) external view returns (tuple(uint256 iterationId, uint256 roundId, address jurySC, uint256 deployBlockHint, bool exists)[])',
+  'function roundVersion(uint256 iterationId, uint256 roundId) external view returns (uint32)',
 ];
 
-// Vote weights per entity (customize as needed)
-const VOTE_WEIGHTS = {
-  DevRel: 1,
-  DAO_HIC: 1,
-  Community: 1,
-};
+// Minimal union ABI covering v1/v2/v3 read paths used by this script.
+const JURY_ABI = [
+  'function isActive() view returns (bool)',
+  'function votingEnded() view returns (bool)',
+  'function startTime() view returns (uint64)',
+  'function endTime() view returns (uint64)',
+  'function projectCount() view returns (uint256)',
+  'function projectAddress(uint256) view returns (address)',
+  'function votingMode() view returns (uint8)',
+  'function devRelAccount() view returns (address)',
+  'function devRelVote() view returns (address)',
+  'function getDaoHicVoters() view returns (address[])',
+  'function daoHicHasVoted(address) view returns (bool)',
+  'function daoHicVoteOf(address) view returns (address)',
+  'function getDaoHicEntityVote() view returns (address)',
+  'function getSmtVoters() view returns (address[])',
+  'function smtHasVoted(address) view returns (bool)',
+  'function smtVoteOf(address) view returns (address)',
+  'function getSmtEntityVote() view returns (address)',
+  'function communityVotesCast() view returns (uint256)',
+  'function getCommunityEntityVote() view returns (address)',
+  'function getWinnerConsensus() view returns (address,bool)',
+  'function getWinnerWeighted() view returns (address,bool)',
+  'function getWinnerWithScores() view returns (address[],uint256[],uint256)',
+  'event VotedDevRel(address indexed voter, uint256 indexed projectId)',
+  'event VotedSmt(address indexed voter, uint256 indexed projectId)',
+  'event VotedDaoHic(address indexed voter, uint256 indexed projectId)',
+  'event VotedCommunity(address indexed voter, address indexed projectAddress)',
+];
 
 // Color codes for output
 const colors = {
@@ -72,6 +94,41 @@ function log(msg, color = 'reset') {
 function formatAddress(addr) {
   if (!addr) return 'Unknown';
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function isSameAddress(a, b) {
+  return !!a && !!b && a.toLowerCase() === b.toLowerCase();
+}
+
+function buildVoteBreakdown(project, entityZeroLabel, isV3Round) {
+  const breakdown = [];
+
+  if (project.voteCounts.entity0 > 0) {
+    if (isV3Round) {
+      breakdown.push(`${entityZeroLabel} (${project.voteCounts.entity0} vote${project.voteCounts.entity0 !== 1 ? 's' : ''})`);
+    } else {
+      breakdown.push(entityZeroLabel);
+    }
+  }
+  if (project.voteCounts.daoHic > 0) {
+    breakdown.push(`DAO_HIC (${project.voteCounts.daoHic} vote${project.voteCounts.daoHic !== 1 ? 's' : ''})`);
+  }
+  if (project.voteCounts.community > 0) {
+    breakdown.push(`Community (${project.voteCounts.community} vote${project.voteCounts.community !== 1 ? 's' : ''})`);
+  }
+
+  return breakdown;
+}
+
+async function readProjectVoteBreakdown(provider, jurySCAddress, projectAddress, isV3Round) {
+  const iface = new ethers.Interface([
+    isV3Round
+      ? 'function getProjectVoteBreakdown(address) view returns (uint256,uint256,uint256)'
+      : 'function getProjectVoteBreakdown(address) view returns (uint256,uint256)'
+  ]);
+  const data = iface.encodeFunctionData('getProjectVoteBreakdown', [projectAddress]);
+  const result = await provider.call({ to: jurySCAddress, data });
+  return iface.decodeFunctionResult('getProjectVoteBreakdown', result);
 }
 
 /**
@@ -170,20 +227,20 @@ async function main() {
   const jurySCAddress = selectedRound.jurySC;
   const deployBlockHint = Number(selectedRound.deployBlockHint);
   const roundId = Number(selectedRound.roundId);
+  const roundVersion = Number(await registry.roundVersion(ITERATION_NUMBER, roundId).catch(() => 0));
 
   log(`Iteration: ${ITERATION_NUMBER}`, 'cyan');
   log(`Round: ${roundId}${ROUND_NUMBER === undefined ? ' (latest)' : ''}`, 'cyan');
   log(`Chain ID: ${CHAIN_ID}`, 'cyan');
   log(`Jury Contract: ${jurySCAddress}`, 'cyan');
+  log(`Round Version: ${roundVersion || 'unknown'}`, 'cyan');
   log(`Deploy Block: ${deployBlockHint}`, 'dim');
   log(`Connected to: ${rpcUrl}\n`, 'dim');
 
-  // Load contract ABIs
-  const JurySC_ABI = JSON.parse(
-    fs.readFileSync(path.join(process.cwd(), '../frontend/src/abis/JurySC_02_v001.json'), 'utf8')
-  );
-
-  const juryContract = new ethers.Contract(jurySCAddress, JurySC_ABI, provider);
+  const juryContract = new ethers.Contract(jurySCAddress, JURY_ABI, provider);
+  const smtVotersProbe = await juryContract.getSmtVoters().catch(() => null);
+  const isV3Round = roundVersion === 3 || Array.isArray(smtVotersProbe);
+  const entityZeroLabel = isV3Round ? 'SMT' : 'DevRel';
 
   // Get contract state
   const [
@@ -205,6 +262,7 @@ async function main() {
     juryContract.getDaoHicVoters(),
     juryContract.votingMode(),
   ]);
+  const entityZeroVoters = isV3Round ? (smtVotersProbe || []) : [];
 
   const startTime = Number(startTimeRaw);
   const endTime = Number(endTimeRaw);
@@ -254,16 +312,15 @@ async function main() {
       address,
       name: metadata?.name || `Project #${i}`,
       votes: {
-        DevRel: 0,
-        DAO_HIC: 0,
-        Community: 0,
-      },
-      // Actual vote counts (not just consensus flags)
-      voteCounts: {
+        entity0: 0,
         daoHic: 0,
         community: 0,
       },
-      totalWeight: 0,
+      voteCounts: {
+        entity0: 0,
+        daoHic: 0,
+        community: 0,
+      },
     });
   }
 
@@ -275,20 +332,21 @@ async function main() {
   log('─────────────────────────────────────────────────────', 'dim');
 
   const currentBlock = await provider.getBlockNumber();
-  const [devRelLogs, daoHicLogs, communityLogs] = await Promise.all([
-    juryContract.queryFilter(juryContract.filters.VotedDevRel(), deployBlockHint, 'latest'),
+  const entityZeroEvent = isV3Round ? 'VotedSmt' : 'VotedDevRel';
+  const [entityZeroLogs, daoHicLogs, communityLogs] = await Promise.all([
+    juryContract.queryFilter(juryContract.filters[entityZeroEvent](), deployBlockHint, 'latest').catch(() => []),
     juryContract.queryFilter(juryContract.filters.VotedDaoHic(), deployBlockHint, 'latest'),
     juryContract.queryFilter(juryContract.filters.VotedCommunity(), deployBlockHint, 'latest'),
   ]);
 
   const allVoteEvents = [
-    ...devRelLogs.map(log => ({ ...log, voterType: 'DevRel' })),
+    ...entityZeroLogs.map(log => ({ ...log, voterType: entityZeroLabel })),
     ...daoHicLogs.map(log => ({ ...log, voterType: 'DAO_HIC' })),
     ...communityLogs.map(log => ({ ...log, voterType: 'Community' })),
   ].sort((a, b) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex);
 
   log(`Found ${allVoteEvents.length} vote events (scanning blocks ${deployBlockHint} → ${currentBlock})`, 'cyan');
-  log(`  DevRel: ${devRelLogs.length}`, 'dim');
+  log(`  ${entityZeroLabel}: ${entityZeroLogs.length}`, 'dim');
   log(`  DAO_HIC: ${daoHicLogs.length}`, 'dim');
   log(`  Community: ${communityLogs.length}`, 'dim');
   log(`  (includes vote changes - only latest vote per voter counts)`, 'dim');
@@ -343,57 +401,87 @@ async function main() {
   log('2. FINAL VOTE PER VOTER', 'bright');
   log('─────────────────────────────────────────────────────', 'dim');
 
-  // DevRel
-  const devRelVoteAddress = await juryContract.devRelVote().catch(() => ethers.ZeroAddress);
-  const devRelProject = projects.find(p => p.address.toLowerCase() === devRelVoteAddress.toLowerCase());
+  let entityZeroVoteAddress = ethers.ZeroAddress;
 
-  log('DevRel Entity:', 'cyan');
-  if (devRelAccount !== ethers.ZeroAddress) {
-    log(`  Account: ${devRelAccount}`, 'dim');
-    if (devRelProject) {
-      log(`  ✓ Voted for: ${devRelProject.name}`, 'green');
-      devRelProject.votes.DevRel = 1;
-    } else {
-      log(`  ✗ No vote cast`, 'yellow');
+  if (isV3Round) {
+    log(`${entityZeroLabel} Entity (${entityZeroVoters.length} authorized voters):`, 'cyan');
+    for (let i = 0; i < entityZeroVoters.length; i++) {
+      const voterAddress = entityZeroVoters[i];
+      const hasVoted = await juryContract.smtHasVoted(voterAddress);
+      const voteFor = hasVoted ? await juryContract.smtVoteOf(voterAddress) : null;
+      const project = voteFor ? projects.find(p => isSameAddress(p.address, voteFor)) : null;
+
+      log(`  [${i + 1}] ${voterAddress}`, 'dim');
+      if (hasVoted && project) {
+        log(`      ✓ Voted for: ${project.name}`, 'green');
+      } else {
+        log(`      ✗ No vote cast`, 'yellow');
+      }
     }
+
+    entityZeroVoteAddress = await juryContract.getSmtEntityVote().catch(() => ethers.ZeroAddress);
   } else {
-    log(`  Not configured`, 'dim');
+    entityZeroVoteAddress = await juryContract.devRelVote().catch(() => ethers.ZeroAddress);
+    const entityZeroProject = projects.find(p => isSameAddress(p.address, entityZeroVoteAddress));
+
+    log(`${entityZeroLabel} Entity:`, 'cyan');
+    if (devRelAccount !== ethers.ZeroAddress) {
+      log(`  Account: ${devRelAccount}`, 'dim');
+      if (entityZeroProject) {
+        log(`  ✓ Voted for: ${entityZeroProject.name}`, 'green');
+      } else {
+        log(`  ✗ No vote cast`, 'yellow');
+      }
+    } else {
+      log(`  Not configured`, 'dim');
+    }
+  }
+
+  const entityZeroEntityProject = projects.find(p => isSameAddress(p.address, entityZeroVoteAddress));
+  if (entityZeroEntityProject) {
+    entityZeroEntityProject.votes.entity0 = 1;
   }
   log('');
 
+  // Fetch per-project vote counts through the version-agnostic breakdown getter.
+  for (const project of projects) {
+    const breakdown = await readProjectVoteBreakdown(provider, jurySCAddress, project.address, isV3Round);
+    if (isV3Round) {
+      project.voteCounts.entity0 = Number(breakdown[0]);
+      project.voteCounts.daoHic = Number(breakdown[1]);
+      project.voteCounts.community = Number(breakdown[2]);
+    } else {
+      project.voteCounts.entity0 = isSameAddress(entityZeroVoteAddress, project.address) ? 1 : 0;
+      project.voteCounts.daoHic = Number(breakdown[0]);
+      project.voteCounts.community = Number(breakdown[1]);
+    }
+  }
+
   // DAO_HIC
   log(`DAO_HIC Entity (${daoHicVoters.length} authorized voters):`, 'cyan');
-  const daoHicVotesByVoter = new Map();
 
   for (let i = 0; i < daoHicVoters.length; i++) {
     const voterAddress = daoHicVoters[i];
     const hasVoted = await juryContract.daoHicHasVoted(voterAddress);
     const voteFor = hasVoted ? await juryContract.daoHicVoteOf(voterAddress) : null;
-    const project = voteFor ? projects.find(p => p.address.toLowerCase() === voteFor.toLowerCase()) : null;
+    const project = voteFor ? projects.find(p => isSameAddress(p.address, voteFor)) : null;
 
     log(`  [${i + 1}] ${voterAddress}`, 'dim');
     if (hasVoted && project) {
       log(`      ✓ Voted for: ${project.name}`, 'green');
-      daoHicVotesByVoter.set(voterAddress.toLowerCase(), project);
     } else {
       log(`      ✗ No vote cast`, 'yellow');
     }
   }
 
-  // Fetch actual DAO_HIC vote counts per project
-  for (const project of projects) {
-    const daoVotes = await juryContract.daoHicProjectVotes(project.address);
-    project.voteCounts.daoHic = Number(daoVotes);
-  }
-
   // DAO_HIC consensus
   const daoHicEntityVote = await juryContract.getDaoHicEntityVote().catch(() => ethers.ZeroAddress);
-  const daoHicEntityProject = projects.find(p => p.address.toLowerCase() === daoHicEntityVote.toLowerCase());
+  const daoHicEntityProject = projects.find(p => isSameAddress(p.address, daoHicEntityVote));
 
   log(`  Entity consensus:`, 'cyan');
   if (daoHicEntityProject) {
     log(`  ✓ ${daoHicEntityProject.name}`, 'green');
-    daoHicEntityProject.votes.DAO_HIC = 1;
+    daoHicEntityProject.votes.daoHic = 1;
   } else {
     log(`  ✗ No consensus`, 'yellow');
   }
@@ -404,13 +492,10 @@ async function main() {
   log(`Community Entity (${totalCommunityVoters} votes cast):`, 'cyan');
 
   if (Number(totalCommunityVoters) > 0) {
-    // Get community votes per project and store actual counts
     const communityVotesByProject = new Map();
     for (const project of projects) {
-      const votes = await juryContract.communityProjectVotes(project.address);
-      project.voteCounts.community = Number(votes);
-      if (Number(votes) > 0) {
-        communityVotesByProject.set(project.address.toLowerCase(), Number(votes));
+      if (project.voteCounts.community > 0) {
+        communityVotesByProject.set(project.address.toLowerCase(), project.voteCounts.community);
       }
     }
 
@@ -422,12 +507,12 @@ async function main() {
 
     // Community entity consensus
     const communityEntityVote = await juryContract.getCommunityEntityVote().catch(() => ethers.ZeroAddress);
-    const communityEntityProject = projects.find(p => p.address.toLowerCase() === communityEntityVote.toLowerCase());
+    const communityEntityProject = projects.find(p => isSameAddress(p.address, communityEntityVote));
 
     log(`  Entity consensus:`, 'cyan');
     if (communityEntityProject) {
       log(`  ✓ ${communityEntityProject.name}`, 'green');
-      communityEntityProject.votes.Community = 1;
+      communityEntityProject.votes.community = 1;
     } else {
       log(`  ✗ No consensus`, 'yellow');
     }
@@ -480,17 +565,7 @@ async function main() {
       log(`  Weighted Score: ${project.percentage}%`, weightColor);
       log(`    (${ethers.formatEther(project.score)} / ${ethers.formatEther(totalPossible)})`, 'dim');
 
-      // Show breakdown using actual vote counts
-      const breakdown = [];
-      if (devRelVoteAddress.toLowerCase() === project.address.toLowerCase()) {
-        breakdown.push(`DevRel`);
-      }
-      if (project.voteCounts.daoHic > 0) {
-        breakdown.push(`DAO_HIC (${project.voteCounts.daoHic} vote${project.voteCounts.daoHic !== 1 ? 's' : ''})`);
-      }
-      if (project.voteCounts.community > 0) {
-        breakdown.push(`Community (${project.voteCounts.community} vote${project.voteCounts.community !== 1 ? 's' : ''})`);
-      }
+      const breakdown = buildVoteBreakdown(project, entityZeroLabel, isV3Round);
 
       if (breakdown.length > 0) {
         log(`  Votes from: ${breakdown.join(', ')}`, 'green');
@@ -542,24 +617,16 @@ async function main() {
           // CONSENSUS mode
           // Calculate consensus weight for winner (entity-level, not individual votes)
           let winnerWeight = 0;
-          if (devRelVoteAddress.toLowerCase() === winningProject?.address.toLowerCase()) winnerWeight++;
-          if (winningProject?.votes.DAO_HIC > 0) winnerWeight++;
-          if (winningProject?.votes.Community > 0) winnerWeight++;
+          if (isSameAddress(entityZeroVoteAddress, winningProject?.address)) winnerWeight++;
+          if (winningProject?.votes.daoHic > 0) winnerWeight++;
+          if (winningProject?.votes.community > 0) winnerWeight++;
 
           log(`Consensus Weight: ${winnerWeight}/3 entities (${(winnerWeight * 100 / 3).toFixed(2)}%)`, 'green');
           log('');
 
-          // Show breakdown with actual vote counts
-          const breakdown = [];
-          if (devRelVoteAddress.toLowerCase() === winningProject?.address.toLowerCase()) {
-            breakdown.push('DevRel');
-          }
-          if (winningProject?.voteCounts.daoHic > 0) {
-            breakdown.push(`DAO_HIC (${winningProject.voteCounts.daoHic} vote${winningProject.voteCounts.daoHic !== 1 ? 's' : ''})`);
-          }
-          if (winningProject?.voteCounts.community > 0) {
-            breakdown.push(`Community (${winningProject.voteCounts.community} vote${winningProject.voteCounts.community !== 1 ? 's' : ''})`);
-          }
+          const breakdown = winningProject
+            ? buildVoteBreakdown(winningProject, entityZeroLabel, isV3Round)
+            : [];
 
           if (breakdown.length > 0) {
             log(`Winning votes from: ${breakdown.join(', ')}`, 'cyan');
@@ -574,9 +641,9 @@ async function main() {
             .filter(p => p.address.toLowerCase() !== selectedWinner.toLowerCase())
             .map(project => {
               let weight = 0;
-              if (devRelVoteAddress.toLowerCase() === project.address.toLowerCase()) weight++;
-              if (project.votes.DAO_HIC > 0) weight++;
-              if (project.votes.Community > 0) weight++;
+              if (isSameAddress(entityZeroVoteAddress, project.address)) weight++;
+              if (project.votes.daoHic > 0) weight++;
+              if (project.votes.community > 0) weight++;
               return { ...project, consensusWeight: weight };
             })
             .sort((a, b) => b.consensusWeight - a.consensusWeight);
@@ -588,17 +655,7 @@ async function main() {
             log(`  ${project.name} (ID: ${project.id})`, 'bright');
             log(`    Consensus Weight: ${project.consensusWeight}/3 entities (${percentage}%)`, weightColor);
 
-            // Show breakdown with actual vote counts
-            const breakdown = [];
-            if (devRelVoteAddress.toLowerCase() === project.address.toLowerCase()) {
-              breakdown.push('DevRel');
-            }
-            if (project.voteCounts.daoHic > 0) {
-              breakdown.push(`DAO_HIC (${project.voteCounts.daoHic} vote${project.voteCounts.daoHic !== 1 ? 's' : ''})`);
-            }
-            if (project.voteCounts.community > 0) {
-              breakdown.push(`Community (${project.voteCounts.community} vote${project.voteCounts.community !== 1 ? 's' : ''})`);
-            }
+            const breakdown = buildVoteBreakdown(project, entityZeroLabel, isV3Round);
 
             if (breakdown.length > 0) {
               log(`    Votes from: ${breakdown.join(', ')}`, 'dim');
@@ -620,17 +677,9 @@ async function main() {
               log(`  (${ethers.formatEther(score)} / ${ethers.formatEther(totalPossible)})`, 'dim');
               log('');
 
-              // Show contribution breakdown using actual vote counts
-              const breakdown = [];
-              if (devRelVoteAddress.toLowerCase() === winningProject?.address.toLowerCase()) {
-                breakdown.push('DevRel');
-              }
-              if (winningProject?.voteCounts.daoHic > 0) {
-                breakdown.push(`DAO_HIC (${winningProject.voteCounts.daoHic} vote${winningProject.voteCounts.daoHic !== 1 ? 's' : ''})`);
-              }
-              if (winningProject?.voteCounts.community > 0) {
-                breakdown.push(`Community (${winningProject.voteCounts.community} vote${winningProject.voteCounts.community !== 1 ? 's' : ''})`);
-              }
+              const breakdown = winningProject
+                ? buildVoteBreakdown(winningProject, entityZeroLabel, isV3Round)
+                : [];
 
               if (breakdown.length > 0) {
                 log(`Votes from: ${breakdown.join(', ')}`, 'cyan');
@@ -666,17 +715,7 @@ async function main() {
               log(`  ${project.name} (ID: ${project.id})`, 'bright');
               log(`    Score: ${project.percentage}% (${ethers.formatEther(project.score)} / ${ethers.formatEther(totalPossible)})`, weightColor);
 
-              // Show breakdown using actual vote counts
-              const breakdown = [];
-              if (devRelVoteAddress.toLowerCase() === project.address.toLowerCase()) {
-                breakdown.push('DevRel');
-              }
-              if (project.voteCounts.daoHic > 0) {
-                breakdown.push(`DAO_HIC (${project.voteCounts.daoHic} vote${project.voteCounts.daoHic !== 1 ? 's' : ''})`);
-              }
-              if (project.voteCounts.community > 0) {
-                breakdown.push(`Community (${project.voteCounts.community} vote${project.voteCounts.community !== 1 ? 's' : ''})`);
-              }
+              const breakdown = buildVoteBreakdown(project, entityZeroLabel, isV3Round);
 
               if (breakdown.length > 0) {
                 log(`    Votes from: ${breakdown.join(', ')}`, 'dim');
@@ -692,7 +731,7 @@ async function main() {
         log('⚠️  NO WINNER', 'yellow');
         log('');
         if (effectiveVotingMode === 0) {
-          log(`No project achieved 2-out-of-3 entity consensus`, 'dim');
+          log(`No winner under consensus mode (tie or zero entity approvals)`, 'dim');
         } else {
           log(`No clear winner (tie or no votes)`, 'dim');
         }
@@ -700,7 +739,7 @@ async function main() {
 
         // Show participation
         const participation = [];
-        if (devRelProject) participation.push('DevRel');
+        if (entityZeroEntityProject) participation.push(entityZeroLabel);
         if (daoHicEntityProject) participation.push('DAO_HIC');
         if (Number(totalCommunityVoters) > 0) participation.push(`Community (${totalCommunityVoters})`);
 
