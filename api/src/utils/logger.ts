@@ -22,8 +22,36 @@ class Logger {
     return LOG_LEVELS[level] >= LOG_LEVELS[this.level];
   }
 
+  private serialize(value: unknown): string {
+    return JSON.stringify(value, (_key, currentValue) => {
+      if (typeof currentValue === 'bigint') {
+        return currentValue.toString();
+      }
+
+      if (currentValue instanceof Error) {
+        const serialized: Record<string, unknown> = {
+          name: currentValue.name,
+          message: currentValue.message,
+        };
+
+        if (currentValue.stack) {
+          serialized.stack = currentValue.stack;
+        }
+
+        const errorWithCause = currentValue as Error & { cause?: unknown };
+        if (errorWithCause.cause !== undefined) {
+          serialized.cause = errorWithCause.cause;
+        }
+
+        return serialized;
+      }
+
+      return currentValue;
+    });
+  }
+
   private format(level: LogLevel, message: string, data?: unknown): string {
-    const dataStr = data ? ` ${JSON.stringify(data, (_, v) => typeof v === 'bigint' ? v.toString() : v)}` : '';
+    const dataStr = data ? ` ${this.serialize(data)}` : '';
     return `[${level.toUpperCase()}] ${message}${dataStr}`;
   }
 
