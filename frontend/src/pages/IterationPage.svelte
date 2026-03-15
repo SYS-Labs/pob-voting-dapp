@@ -690,9 +690,7 @@
 
 {#if sidebarVisible}
   <div class="pob-stack lg:pl-4" style={showToolbox ? 'grid-column: 1 / -1;' : ''}>
-    {#if isOwner}
-      <DateTimePanel />
-    {/if}
+    <DateTimePanel endTime={iterationTimes.endTime} />
 
     {#if !showToolbox && !isOwner}
       <ParticipantPanel

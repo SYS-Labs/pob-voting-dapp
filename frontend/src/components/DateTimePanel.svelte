@@ -1,20 +1,28 @@
 <script lang="ts">
-  let currentTime = $state(new Date());
+  interface Props {
+    endTime: number | null;
+  }
 
-  function formatDateTime(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
+  let { endTime }: Props = $props();
+  let nowMs = $state(Date.now());
 
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  function formatCountdown(targetUnixSeconds: number | null, currentMillis: number): string {
+    if (!targetUnixSeconds) {
+      return 'Countdown unavailable';
+    }
+
+    const remainingSeconds = Math.max(0, targetUnixSeconds - Math.floor(currentMillis / 1000));
+    const days = Math.floor(remainingSeconds / 86400);
+    const hours = String(Math.floor((remainingSeconds % 86400) / 3600)).padStart(2, '0');
+    const minutes = String(Math.floor((remainingSeconds % 3600) / 60)).padStart(2, '0');
+    const seconds = String(remainingSeconds % 60).padStart(2, '0');
+
+    return `${days} days, ${hours}:${minutes}:${seconds} left`;
   }
 
   $effect(() => {
     const interval = setInterval(() => {
-      currentTime = new Date();
+      nowMs = Date.now();
     }, 1000);
 
     return () => clearInterval(interval);
@@ -22,5 +30,5 @@
 </script>
 
 <div style="font-family: monospace; font-size: 14px; color: var(--pob-text-muted); padding: 0.75rem 0;">
-  {formatDateTime(currentTime)}
+  {formatCountdown(endTime, nowMs)}
 </div>
