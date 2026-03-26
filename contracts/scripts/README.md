@@ -110,6 +110,46 @@ CHAIN_ID=5700 ITERATION=1 ROUND=1 node scripts/check-votes.js
 CHAIN_ID=31337 ITERATION=1 node scripts/check-votes.js
 ```
 
+### `list-community-voters.js`
+
+Lists unique community voter addresses for a specific iteration/round in the
+order they first cast a community vote on-chain (oldest first).
+
+This is intended for giveaway eligibility: the script scans only from the
+particular `JurySC` proxy deployment block for the requested round, de-duplicates
+repeat voters by address, and prints a plain ordered address list at the end.
+
+**Usage:**
+```bash
+# Latest round for iteration 1 on testnet
+CHAIN_ID=5700 ITERATION=1 node scripts/list-community-voters.js
+
+# Specific round
+CHAIN_ID=5700 ITERATION=1 ROUND=2 node scripts/list-community-voters.js
+
+# Pick a random winner automatically
+CHAIN_ID=5700 ITERATION=1 ROUND=2 PICK_RANDOM=1 node scripts/list-community-voters.js
+```
+
+**Environment Variables:**
+- `CHAIN_ID`: Network chain ID (default: 5700)
+  - `5700` - Syscoin NEVM testnet
+  - `57` - Syscoin NEVM mainnet
+  - `31337` - Local hardhat network
+- `ITERATION`: Iteration number (required in practice; default: 1)
+- `ROUND`: Optional round number
+  - If omitted: uses the latest registered round for the iteration
+- `PICK_RANDOM`: Set to `1` to randomly select a winner from the entrant list
+  - Prints the drawn index (1-based) and the winning address
+
+**What it does:**
+1. Resolves the target round through `PoBRegistry`
+2. Infers the actual `JurySC` proxy deployment block (using historical bytecode lookup)
+3. Scans `VotedCommunity` events from that block forward
+4. Uses transaction `from` addresses as the entrant identity
+5. Keeps only the first vote per address and preserves oldest-first ordering
+6. Prints both a detailed report and a plain address list
+
 ### `upgrade.js`
 
 Upgrades an existing JurySC_01 proxy to a new implementation (UUPS upgrade).
