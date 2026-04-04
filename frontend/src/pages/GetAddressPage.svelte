@@ -582,8 +582,8 @@
     return copied;
   }
 
-  async function copyPrivateKey(): Promise<void> {
-    if (!hiddenPrivateKey) return;
+  async function copyText(text: string, successMessage: string): Promise<void> {
+    if (!text) return;
     resetCopyFeedback();
 
     try {
@@ -591,16 +591,15 @@
 
       if (navigator.clipboard?.writeText) {
         try {
-          await navigator.clipboard.writeText(hiddenPrivateKey);
+          await navigator.clipboard.writeText(text);
           copied = true;
         } catch (clipboardError) {
-          // Fallback for browsers/contexts that expose the API but reject writes.
           console.warn('[GetAddressPage] navigator.clipboard.writeText failed; trying legacy copy fallback', clipboardError);
         }
       }
 
       if (!copied) {
-        copied = tryLegacyClipboardCopy(hiddenPrivateKey);
+        copied = tryLegacyClipboardCopy(text);
       }
 
       if (!copied) {
@@ -611,7 +610,7 @@
       }
 
       copyStatus = 'copied';
-      copyMessage = 'Private key copied. Store it immediately in a secure location.';
+      copyMessage = successMessage;
     } catch (error) {
       console.error('[GetAddressPage] Clipboard copy failed', error);
       copyStatus = 'error';
@@ -755,17 +754,36 @@
       {#if generatedAddress || copyMessage || generationError}
         <div class="entropy-result">
           {#if generatedAddress}
-            <div class="entropy-result__row entropy-result__row--stack">
+            <div class="entropy-result__field">
               <span class="entropy-result__label">Address</span>
-              <code class="entropy-address mono">{generatedAddress}</code>
-              <button
-                type="button"
-                class="pob-button pob-button--outline entropy-copy-inline"
-                onclick={copyPrivateKey}
-                disabled={!hiddenPrivateKey}
-              >
-                Copy Private Key
-              </button>
+              <div class="entropy-result__input-row">
+                <code class="entropy-address mono">{generatedAddress}</code>
+                <button
+                  type="button"
+                  class="pob-button pob-button--outline entropy-copy-button"
+                  onclick={() => copyText(generatedAddress!, 'Address copied to clipboard.')}
+                  disabled={!generatedAddress}
+                  title="Copy address"
+                >
+                  Copy Address
+                </button>
+              </div>
+            </div>
+
+            <div class="entropy-result__field">
+              <span class="entropy-result__label">Private Key</span>
+              <div class="entropy-result__input-row">
+                <code class="entropy-masked-key mono">{'•'.repeat(66)}</code>
+                <button
+                  type="button"
+                  class="pob-button pob-button--outline entropy-copy-button"
+                  onclick={() => copyText(hiddenPrivateKey!, 'Private key copied. Store it immediately in a secure location.')}
+                  disabled={!hiddenPrivateKey}
+                  title="Copy private key"
+                >
+                  Copy Priv Key
+                </button>
+              </div>
             </div>
           {/if}
 
@@ -978,6 +996,17 @@
     justify-content: initial;
   }
 
+  .entropy-result__field {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .entropy-result__input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
   .entropy-result__label {
     font-size: 0.72rem;
     text-transform: uppercase;
@@ -985,9 +1014,10 @@
     color: var(--pob-text-dim);
   }
 
-  .entropy-address {
+  .entropy-address,
+  .entropy-masked-key {
     display: block;
-    width: 100%;
+    flex: 1;
     border-radius: 8px;
     border: 1px solid rgba(247,147,26,0.15);
     background: rgba(247,147,26,0.04);
@@ -996,14 +1026,18 @@
     font-size: 0.72rem;
     overflow-wrap: anywhere;
     white-space: pre-wrap;
+    min-width: 0;
   }
 
-  .entropy-copy-inline {
-    width: 100%;
-    margin-top: 0.2rem;
-    min-height: 2.1rem;
+  .entropy-masked-key {
+    letter-spacing: 0.08em;
+  }
+
+  .entropy-copy-button {
+    white-space: nowrap;
     font-size: 0.78rem;
-    padding: 0.4rem 0.5rem;
+    padding: 0.4rem 0.55rem;
+    flex-shrink: 0;
   }
 
   .entropy-feedback {
