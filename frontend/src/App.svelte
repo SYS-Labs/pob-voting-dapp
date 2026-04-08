@@ -29,6 +29,8 @@
   import GetAddressPage from '~/pages/GetAddressPage.svelte';
   import FaqPage from '~/pages/FaqPage.svelte';
   import ForumPage from '~/pages/ForumPage.svelte';
+  import PrivacyPage from '~/pages/PrivacyPage.svelte';
+  import TermsPage from '~/pages/TermsPage.svelte';
   import NotFoundPage from '~/pages/NotFoundPage.svelte';
 
   // Stores
@@ -786,6 +788,15 @@
       <!-- FAQ page -->
       <Route path="/faq">
         <FaqPage {chainId} />
+      </Route>
+
+      <!-- Legal pages -->
+      <Route path="/privacy">
+        <PrivacyPage />
+      </Route>
+
+      <Route path="/terms">
+        <TermsPage />
       </Route>
 
       <!-- Forum pages -->

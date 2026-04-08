@@ -42,6 +42,12 @@
           GitHub
         </a>
       </div>
+
+      <div style="margin-top: 1.25rem; display: flex; align-items: center; justify-content: center; gap: 1.25rem; flex-wrap: wrap;">
+        <Link to="/privacy" class="footer-link">Privacy Policy</Link>
+        <span style="color: var(--pob-text-dim); font-size: 0.875rem;">·</span>
+        <Link to="/terms" class="footer-link">Terms</Link>
+      </div>
     </div>
   </div>
 </footer>

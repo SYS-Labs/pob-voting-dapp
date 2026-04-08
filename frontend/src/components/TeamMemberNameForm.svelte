@@ -48,9 +48,15 @@
   <h3 class="text-sm font-semibold text-[var(--pob-text)] mb-3">Certificate Name</h3>
 
   <div class="space-y-4">
-    <p class="text-sm text-[var(--pob-text-muted)]">
-      Enter your full name as it will appear on the certificate. If you submit this via an on-chain transaction, it will be public and may be permanent.
-    </p>
+    <label for="name-consent" class="name-consent-label">
+      <input
+        id="name-consent"
+        type="checkbox"
+        bind:checked={confirmed}
+        disabled={$pendingAction !== null}
+      />
+      I understand my name will appear publicly on the certificate and will be recorded permanently on the blockchain, per the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.
+    </label>
 
     <div class="pob-form-group">
       <label for="member-name" class="pob-form-label">
@@ -80,3 +86,28 @@
     </button>
   </div>
 </div>
+
+<style>
+.name-consent-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--pob-text-muted);
+  line-height: 1.4;
+}
+.name-consent-label input[type="checkbox"] {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--pob-primary, #6366f1);
+}
+.name-consent-label a {
+  color: var(--pob-text);
+  text-decoration: underline;
+}
+.name-consent-label a:hover {
+  color: var(--pob-primary, #6366f1);
+}
+</style>
