@@ -11,7 +11,6 @@ export type PageType =
   | 'cert'
   | 'profile'
   | 'faq'
-  | 'forum'
   | 'get-address';
 
 export interface PreviousRound {

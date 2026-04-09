@@ -1,78 +1,46 @@
 /**
  * Worker orchestration
  *
- * Runs all queue workers in sequence at regular intervals.
+ * Runs only the metadata confirmation worker in the migration runtime.
  */
 
 import { logger } from '../utils/logger.js';
-import { config } from '../config.js';
+import Database from 'better-sqlite3';
 import { initDatabase } from '../db/init.js';
-import { KnowledgeBaseWorker } from '../queues/kb-worker.js';
-import { EmbeddingWorker } from '../queues/embedding-worker.js';
-import { EvaluationWorker } from '../queues/eval-worker.js';
-import { ReplyGenerationWorker } from '../queues/reply-worker.js';
-import { PublicationWorker } from '../queues/pub-worker.js';
-import { TxConfirmationWorker } from '../queues/tx-confirmation-worker.js';
-import { TxRetryWorker } from '../queues/tx-retry-worker.js';
 import { MetadataConfirmationWorker } from '../queues/metadata-confirmation-worker.js';
 
 class WorkerOrchestrator {
-  private kbWorker = new KnowledgeBaseWorker();
-  private embeddingWorker = new EmbeddingWorker();
-  private evalWorker = new EvaluationWorker();
-  private replyWorker = new ReplyGenerationWorker();
-  private pubWorker = new PublicationWorker();
-  private txConfirmationWorker = new TxConfirmationWorker();
-  private txRetryWorker = new TxRetryWorker();
+  private db: Database.Database;
   private metadataWorker: MetadataConfirmationWorker;
 
   constructor() {
-    const db = initDatabase(config.database.path);
-    this.metadataWorker = new MetadataConfirmationWorker(db);
-  }
-
-  async processAll(): Promise<void> {
-    logger.info('Running all workers...');
-
-    try {
-      // Run workers in sequence (pipeline)
-      await this.kbWorker.process();
-      await this.embeddingWorker.process(); // Backfill embeddings after KB updates
-      await this.evalWorker.process();
-      await this.replyWorker.process();
-      await this.pubWorker.process();
-
-      // Transaction management workers
-      await this.txConfirmationWorker.process(); // Check transaction confirmations
-      await this.txRetryWorker.process(); // Retry disappeared transactions
-
-      // Metadata IPFS management
-      await this.metadataWorker.process(); // Check metadata tx confirmations and unpin old CIDs
-
-      logger.info('All workers completed');
-    } catch (error) {
-      logger.error('Worker processing failed', error);
-    }
+    this.db = initDatabase(process.env.DB_PATH || './data/index.db');
+    this.metadataWorker = new MetadataConfirmationWorker(this.db);
   }
 
   start(): void {
-    logger.info('Starting worker orchestrator', {
-      interval: config.worker.interval
-    });
+    logger.info('Starting metadata worker runtime');
+    this.metadataWorker.start();
+  }
 
-
-    // Run legacy workers immediately
-    this.processAll();
-
-    // Set up interval for legacy workers
-    setInterval(() => {
-      this.processAll();
-    }, config.worker.interval);
+  stop(): void {
+    this.metadataWorker.stop();
+    this.db.close();
+    logger.info('Stopped metadata worker runtime');
   }
 }
 
-// Start the orchestrator (will run when this file is executed)
 const orchestrator = new WorkerOrchestrator();
 orchestrator.start();
+
+process.on('SIGINT', () => {
+  orchestrator.stop();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  orchestrator.stop();
+  process.exit(0);
+});
 
 export { WorkerOrchestrator };

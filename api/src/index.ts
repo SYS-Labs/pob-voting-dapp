@@ -1,28 +1,28 @@
 /**
- * Main entry point for PoB Onboarding DApp
+ * Main entry point for the iteration indexer runtime.
  */
 
 import { logger } from './utils/logger.js';
-import { config } from './config.js';
-import { XIndexer } from './indexer/index.js';
+import { IterationIndexer } from './indexer/iteration-indexer.js';
 
 async function main() {
-  logger.info('Starting PoB Onboarding DApp');
-  logger.info('Configuration loaded', {
-    trustedUsers: config.indexer.trustedUsers.length,
-    pollInterval: config.indexer.pollInterval,
-    contractAddress: config.blockchain.contractAddress
+  logger.info('Starting iteration indexer runtime', {
+    chainId: process.env.CHAIN_ID || 'all-configured-chains',
   });
 
-  // Initialize and start indexer (this also initializes the database)
-  logger.info('Starting indexer...');
-  const indexer = new XIndexer();
+  const indexer = new IterationIndexer();
+
+  process.on('SIGINT', () => {
+    indexer.stop();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    indexer.stop();
+    process.exit(0);
+  });
+
   await indexer.start();
-
-  // TODO: Start workers
-  logger.info('Workers: Not yet implemented');
-
-  logger.info('All systems operational');
 }
 
 main().catch((error) => {

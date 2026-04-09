@@ -87,6 +87,20 @@ const apiProviders = new Map<number, JsonRpcProvider>();
 const userIterationBadgeStatusCache = new Map<string, { expiresAt: number; payload: UserIterationBadgeStatusResponse }>();
 const USER_BADGE_STATUS_TTL_MS = 15_000;
 
+function isForumRoute(pathname: string): boolean {
+  return pathname === '/api/threads'
+    || pathname.startsWith('/api/threads/')
+    || pathname === '/api/admin/threads'
+    || pathname === '/api/admin/threads/stats'
+    || pathname.startsWith('/api/admin/threads/');
+}
+
+function sendForumDisabled(res: ServerResponse): void {
+  sendJson(res, 410, {
+    error: 'Forum is deactivated and not available on the migration runtime.',
+  });
+}
+
 function getApiProvider(chainId: number): JsonRpcProvider | null {
   const existing = apiProviders.get(chainId);
   if (existing) return existing;
@@ -302,6 +316,11 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  if (isForumRoute(url.pathname)) {
+    sendForumDisabled(res);
     return;
   }
 

@@ -1,14 +1,14 @@
-# PoB Forum API
+# PoB API
 
-Backend services for the Proof-of-Builders Forum - X/Twitter thread indexing, AI-powered responses, and blockchain recording.
+Backend services for Proof-of-Builders iteration state, metadata, and migration support.
 
 ## Architecture
 
 This backend consists of 3 microservices managed by PM2:
 
-1. **Indexer** (`src/indexer/`) - Monitors registered X threads and indexes posts
+1. **Iteration indexer** (`src/index.ts`, `src/indexer/iteration-indexer.ts`) - Polls PoB contracts and caches iteration snapshots
 2. **API Server** (`src/api/`) - HTTP API for frontend (port 4000)
-3. **Workers** (`src/workers/`) - AI processing pipeline (7 workers)
+3. **Metadata worker** (`src/workers/`) - Confirms metadata transactions and updates DB cache state
 
 ## Setup
 
@@ -28,16 +28,18 @@ nano .env
 ```
 
 **Required variables:**
-- `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` (X OAuth 1.0a)
-- `AI_API_KEY` (OpenAI API key)
-- `PRIVATE_KEY` (Wallet for blockchain recording)
-- `CONTRACT_ADDRESS`, `ADMIN_ADDRESS`
+- `ADMIN_ADDRESS`
 
 **Optional variables** (have defaults):
 - `DB_PATH=./data/index.db`
 - `POLL_INTERVAL=300000` (5 minutes)
 - `WORKER_INTERVAL=60000` (1 minute)
 - `API_PORT=4000`
+
+Feature-specific optional variables:
+- `PRIVATE_KEY` if metadata submission flows need a signing wallet
+- `RPC_URL`, `CHAIN_ID`, `EXPLORER_URL` for custom chain targeting
+- `AI_API_KEY` and X-related variables only for legacy forum/AI tooling that is no longer part of the migration runtime
 
 ### 3. Initialize Database
 
@@ -61,10 +63,10 @@ Run services individually for development:
 # Terminal 1: API server
 npm run dev:api
 
-# Terminal 2: Indexer
+# Terminal 2: Iteration indexer
 npm run dev:indexer
 
-# Terminal 3: Workers
+# Terminal 3: Metadata worker
 npm run dev:workers
 ```
 
@@ -90,9 +92,9 @@ npm run pm2:stop
 ```
 
 PM2 will manage 3 processes:
-- `forum-indexer` - Polls X for new posts
-- `forum-api` - HTTP server on port 4000
-- `forum-workers` - AI processing pipeline
+- `iteration-indexer` - Polls PoB contract state into SQLite caches
+- `pob-api` - HTTP server on port 4000
+- `metadata-workers` - Metadata confirmation worker runtime
 
 **Note**: PM2 automatically loads environment variables from `/sandbox/api/.env` file via the `env_file` property in `ecosystem.config.cjs`.
 
@@ -101,30 +103,26 @@ PM2 will manage 3 processes:
 ### Public Endpoints
 
 - `GET /health` - Health check
-- `GET /api/threads` - List indexed root threads
-- `GET /api/threads/:conversationId` - Get thread detail with posts
 - `GET /api/deployments` - List contract deployments
-- `GET /api/admin/threads` - List monitored threads
+- `GET /api/iterations` - List cached iteration snapshots
+- `GET /api/iterations/:chainId/:iterationId` - Get one iteration snapshot
+- `GET /api/iterations/:chainId/:iterationId/badges/:address` - Get per-round badge status for an address
+
+Forum endpoints remain disabled in the migration runtime and return `410 Gone`.
 
 ### Admin Endpoints (require signature)
 
-- `POST /api/admin/threads` - Register new thread for monitoring
-- `PATCH /api/admin/threads/:id` - Update thread status (pause/resume)
-- `POST /api/admin/threads/:id/deploy` - Deploy contract
+- `POST /api/deployments` - Create a tracked deployment record
+- `POST /api/metadata/preview` - Preview metadata CID
+- `POST /api/metadata/submit` - Submit validated metadata proof record
 
-## Worker Pipeline
+## Worker Runtime
 
-The 7-worker AI pipeline processes posts automatically:
+The migration runtime keeps only the metadata confirmation worker active.
 
-1. **KB Worker** - Indexes trusted posts into knowledge base
-2. **Embedding Worker** - Generates OpenAI embeddings for semantic search
-3. **Evaluation Worker** - AI decides if reply is needed (RESPOND/IGNORE/STOP)
-4. **Reply Generation Worker** - AI generates reply (under 280 chars)
-5. **Publication Worker** - Posts to X + records on blockchain
-6. **TX Confirmation Worker** - Monitors transaction confirmations
-7. **TX Retry Worker** - Retries failed/missing transactions
+1. **Metadata confirmation worker** - Polls pending metadata tx hashes and marks them confirmed once the required confirmation threshold is reached
 
-All workers run every `WORKER_INTERVAL` (default: 60 seconds).
+The worker runs every `WORKER_INTERVAL` (default: 60 seconds).
 
 ## Database
 
@@ -144,7 +142,7 @@ SQLite database with 8 tables:
 - **No dotenv**: Environment variables are loaded via `tsx --env-file=.env` (per CLAUDE.md)
 - **X Authentication**: OAuth 1.0a is recommended (tokens never expire)
 - **AI Model**: Default is `gpt-4-turbo` (configurable via `AI_MODEL`)
-- **Blockchain**: Default is Syscoin NEVM Testnet (Tanenbaum, chainId 5700)
+- **Blockchain**: Default target is Syscoin NEVM Mainnet (`57`); local rehearsal can use Hardhat (`31337`)
 
 ## Troubleshooting
 
@@ -161,6 +159,5 @@ SQLite database with 8 tables:
 - Monitor OpenAI usage dashboard
 
 **Workers not processing:**
-- Check logs: `npm run pm2:logs forum-workers`
-- Verify `AI_API_KEY` is valid
+- Check logs: `npm run pm2:logs metadata-workers`
 - Check `WORKER_INTERVAL` setting

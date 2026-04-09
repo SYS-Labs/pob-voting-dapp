@@ -1,7 +1,6 @@
 import { ethers } from 'ethers';
 import { IPFSService } from './ipfs.js';
 import { logger } from '../utils/logger.js';
-import { config } from '../config.js';
 import { NETWORKS, getRpcUrl } from '../constants/networks.js';
 
 // PoBRegistry ABI - only the functions we need for metadata
@@ -45,24 +44,20 @@ export interface ProjectMetadata {
 
 export class MetadataService {
   private ipfs: IPFSService;
-  private privateKey: string;
 
   constructor(ipfs: IPFSService) {
     this.ipfs = ipfs;
-    this.privateKey = config.blockchain.privateKey;
   }
 
   /**
-   * Get provider and wallet for a specific chain
+   * Get provider for a specific chain
    */
-  private getProviderAndWallet(chainId: number): { provider: ethers.JsonRpcProvider; wallet: ethers.Wallet } {
+  private getProvider(chainId: number): ethers.JsonRpcProvider {
     const rpcUrl = getRpcUrl(chainId);
     if (!rpcUrl) {
       throw new Error(`No RPC URL configured for chain ${chainId}`);
     }
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
-    const wallet = new ethers.Wallet(this.privateKey, provider);
-    return { provider, wallet };
+    return new ethers.JsonRpcProvider(rpcUrl);
   }
 
   /**
@@ -73,8 +68,7 @@ export class MetadataService {
     if (!registryAddress) {
       throw new Error(`No PoBRegistry address configured for chain ${chainId}`);
     }
-    const { wallet } = this.getProviderAndWallet(chainId);
-    return new ethers.Contract(registryAddress, REGISTRY_ABI, wallet);
+    return new ethers.Contract(registryAddress, REGISTRY_ABI, this.getProvider(chainId));
   }
 
 

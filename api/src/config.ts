@@ -38,16 +38,16 @@ export const config: AppConfig = {
   ai: {
     provider: optional('AI_API_PROVIDER', 'openai') as 'openai',
     endpoint: optional('AI_API_ENDPOINT', 'https://api.openai.com/v1'),
-    apiKey: required('AI_API_KEY'),
+    apiKey: optional('AI_API_KEY', ''),
     model: optional('AI_MODEL', 'gpt-4-turbo')
   },
 
   blockchain: {
-    privateKey: required('PRIVATE_KEY'),
-    rpcUrl: optional('RPC_URL', 'https://rpc.tanenbaum.io'),
-    chainId: parseInt(optional('CHAIN_ID', '5700')),
-    contractAddress: required('CONTRACT_ADDRESS'),
-    explorerUrl: optional('EXPLORER_URL', 'https://explorer.tanenbaum.io')
+    privateKey: optional('PRIVATE_KEY', ''),
+    rpcUrl: optional('RPC_URL', 'https://rpc.syscoin.org'),
+    chainId: parseInt(optional('CHAIN_ID', '57')),
+    contractAddress: optional('CONTRACT_ADDRESS', ''),
+    explorerUrl: optional('EXPLORER_URL', 'https://explorer.syscoin.org')
   },
 
   database: {

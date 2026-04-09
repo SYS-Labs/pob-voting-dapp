@@ -50,7 +50,6 @@
   const tabs = $derived([
     { id: 'iterations' as const, label: 'Home', show: true, path: '/' },
     { id: 'iteration' as const, label: iterationLabel, show: showIterationTab, path: currentIteration ? `/iteration/${currentIteration}` : '/iteration/1' },
-    { id: 'forum' as const, label: 'Forum', show: true, path: '/forum' },
     { id: 'badges' as const, label: 'Badges', show: showBadgesTab, path: '/badges' },
     { id: 'certs' as const, label: 'Certs', show: showCertsTab, path: '/certs' },
     { id: 'get-address' as const, label: 'Key Tool', show: true, path: '/get-address' },
@@ -67,7 +66,7 @@
     return false;
   }
 
-  function handleNavigate(tabId: 'iterations' | 'iteration' | 'badges' | 'certs' | 'faq' | 'forum' | 'get-address') {
+  function handleNavigate(tabId: 'iterations' | 'iteration' | 'badges' | 'certs' | 'faq' | 'get-address') {
     onNavigate(tabId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }

@@ -24,10 +24,14 @@
           <p class="pob-mono text-xs text-[var(--pob-text-muted)]">Chain ID: 57</p>
         </div>
         <div class="pob-fieldset space-y-1">
-          <p class="font-semibold text-white">NEVM Testnet</p>
-          <p class="pob-mono text-xs text-[var(--pob-text-muted)]">Chain ID: 5700</p>
+          <p class="font-semibold text-white">Local Hardhat Rehearsal</p>
+          <p class="pob-mono text-xs text-[var(--pob-text-muted)]">Chain ID: 31337</p>
         </div>
       </div>
+
+      <p class="text-xs text-[var(--pob-text-muted)]">
+        Legacy testnet is not a post-migration runtime target.
+      </p>
 
       <div class="pt-2">
         <button

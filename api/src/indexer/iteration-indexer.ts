@@ -552,11 +552,12 @@ class IterationIndexer {
   }
 }
 
-// Start the indexer when this file is executed directly
-const indexer = new IterationIndexer();
-indexer.start().catch(error => {
-  logger.error('Iteration indexer failed to start', { error });
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const indexer = new IterationIndexer();
+  indexer.start().catch(error => {
+    logger.error('Iteration indexer failed to start', { error });
+    process.exit(1);
+  });
+}
 
 export { IterationIndexer };

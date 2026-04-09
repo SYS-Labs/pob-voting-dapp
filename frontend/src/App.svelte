@@ -28,7 +28,6 @@
   import ProfilePage from '~/pages/ProfilePage.svelte';
   import GetAddressPage from '~/pages/GetAddressPage.svelte';
   import FaqPage from '~/pages/FaqPage.svelte';
-  import ForumPage from '~/pages/ForumPage.svelte';
   import PrivacyPage from '~/pages/PrivacyPage.svelte';
   import TermsPage from '~/pages/TermsPage.svelte';
   import NotFoundPage from '~/pages/NotFoundPage.svelte';
@@ -142,7 +141,6 @@
     if (pathname.startsWith('/profile/')) return 'profile';
     if (pathname.startsWith('/get-address')) return 'get-address';
     if (pathname === '/faq') return 'faq';
-    if (pathname.startsWith('/forum')) return 'forum';
     return 'iterations';
   }
 
@@ -797,15 +795,6 @@
 
       <Route path="/terms">
         <TermsPage />
-      </Route>
-
-      <!-- Forum pages -->
-      <Route path="/forum">
-        <ForumPage {walletAddress} />
-      </Route>
-
-      <Route path="/forum/:tweetId" let:params>
-        <ForumPage tweetId={params.tweetId} {walletAddress} />
       </Route>
 
       <!-- 404 - catch all -->

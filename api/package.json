@@ -1,7 +1,7 @@
 {
-  "name": "pob-forum-api",
+  "name": "pob-api",
   "version": "0.1.0",
-  "description": "Backend API for PoB Forum - X/Twitter indexing, AI workers, and blockchain recording",
+  "description": "Backend API for PoB iteration state, metadata, and migration support",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc && cp src/db/schema.sql dist/db/schema.sql",
-    "dev:indexer": "tsx --env-file=.env src/indexer/index.ts",
+    "dev:indexer": "tsx --env-file=.env src/index.ts",
     "dev:api": "tsx --env-file=.env src/api/index.ts",
     "dev:workers": "tsx --env-file=.env src/workers/index.ts",
     "db:init": "tsx --env-file=.env src/db/init.ts",

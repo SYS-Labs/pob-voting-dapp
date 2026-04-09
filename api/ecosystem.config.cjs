@@ -15,8 +15,8 @@
 module.exports = {
   apps: [
     {
-      name: 'forum-indexer',
-      script: 'dist/indexer/index.js',
+      name: 'iteration-indexer',
+      script: 'dist/index.js',
       cwd: '/sandbox/api',
       instances: 1,
       autorestart: true,
@@ -29,8 +29,8 @@ module.exports = {
       env_development: {
         NODE_ENV: 'development',
       },
-      error_file: './logs/indexer-error.log',
-      out_file: './logs/indexer-out.log',
+      error_file: './logs/iteration-indexer-error.log',
+      out_file: './logs/iteration-indexer-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
     },
@@ -56,13 +56,13 @@ module.exports = {
       merge_logs: true,
     },
     {
-      name: 'forum-workers',
+      name: 'metadata-workers',
       script: 'dist/workers/index.js',
       cwd: '/sandbox/api',
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G', // Workers may need more memory for AI operations
+      max_memory_restart: '500M',
       node_args: '--env-file=/sandbox/api/.env',  // Load .env file using Node's native flag
       env: {
         NODE_ENV: 'production',
@@ -75,26 +75,6 @@ module.exports = {
       },
       error_file: './logs/workers-error.log',
       out_file: './logs/workers-out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
-    },
-    {
-      name: 'iteration-indexer',
-      script: 'dist/indexer/iteration-indexer.js',
-      cwd: '/sandbox/api',
-      instances: 1,
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
-      node_args: '--env-file=/sandbox/api/.env',
-      env: {
-        NODE_ENV: 'production',
-      },
-      env_development: {
-        NODE_ENV: 'development',
-      },
-      error_file: './logs/iteration-indexer-error.log',
-      out_file: './logs/iteration-indexer-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
     },
