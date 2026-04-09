@@ -3,7 +3,7 @@ import hre from "hardhat";
 const { ethers, upgrades } = hre;
 
 describe("PoBRegistry - Adapter Routing", function () {
-  let registry, v1Adapter, v2Adapter;
+  let registry, v1Adapter, v2Adapter, v4Adapter;
   let mockJurySC;
   let owner, user1;
 
@@ -33,14 +33,18 @@ describe("PoBRegistry - Adapter Routing", function () {
     v2Adapter = await V2Adapter.deploy();
     await v2Adapter.waitForDeployment();
 
+    const V4Adapter = await ethers.getContractFactory("V4Adapter");
+    v4Adapter = await V4Adapter.deploy();
+    await v4Adapter.waitForDeployment();
+
     // Register iteration and round
     await registry.registerIteration(1, CHAIN_ID);
     await registry.addRound(1, 1, await mockJurySC.getAddress(), 100);
   });
 
   describe("version()", function () {
-    it("returns '3'", async function () {
-      expect(await registry.version()).to.equal("3");
+    it("returns '4'", async function () {
+      expect(await registry.version()).to.equal("4");
     });
   });
 
@@ -84,6 +88,7 @@ describe("PoBRegistry - Adapter Routing", function () {
     beforeEach(async function () {
       await registry.setAdapter(1, await v1Adapter.getAddress());
       await registry.setAdapter(2, await v2Adapter.getAddress());
+      await registry.setAdapter(4, await v4Adapter.getAddress());
     });
 
     it("sets version for a round", async function () {
@@ -123,6 +128,7 @@ describe("PoBRegistry - Adapter Routing", function () {
     beforeEach(async function () {
       await registry.setAdapter(1, await v1Adapter.getAddress());
       await registry.setAdapter(2, await v2Adapter.getAddress());
+      await registry.setAdapter(4, await v4Adapter.getAddress());
     });
 
     it("returns correct jurySC and adapter", async function () {
@@ -139,6 +145,14 @@ describe("PoBRegistry - Adapter Routing", function () {
       const [jurySC, adapter] = await registry.getAdapterConfig(1, 1);
       expect(jurySC).to.equal(await mockJurySC.getAddress());
       expect(adapter).to.equal(await v2Adapter.getAddress());
+    });
+
+    it("returns V4 adapter when version 4 is set", async function () {
+      await registry.setRoundVersion(1, 1, 4);
+
+      const [jurySC, adapter] = await registry.getAdapterConfig(1, 1);
+      expect(jurySC).to.equal(await mockJurySC.getAddress());
+      expect(adapter).to.equal(await v4Adapter.getAddress());
     });
 
     it("reverts for non-existent round", async function () {
@@ -176,6 +190,7 @@ describe("PoBRegistry - Adapter Routing", function () {
       // Set adapters
       await registry.setAdapter(1, await v1Adapter.getAddress());
       await registry.setAdapter(2, await v2Adapter.getAddress());
+      await registry.setAdapter(4, await v4Adapter.getAddress());
 
       // Set versions
       await registry.setRoundVersion(1, 1, 1); // Iteration 1 uses V1

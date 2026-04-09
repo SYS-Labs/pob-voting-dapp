@@ -124,6 +124,18 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice iterationId => certificate template
     mapping(uint256 => IterationTemplate) public iterationTemplates;
 
+    /// @notice Imported-history tracking by iteration
+    mapping(uint256 => bool) public importedIterations;
+
+    /// @notice Imported-history tracking by iteration/round
+    mapping(uint256 => mapping(uint256 => bool)) public importedRounds;
+
+    /// @notice Seal flag for imported rounds; once sealed, metadata writes are blocked
+    mapping(uint256 => mapping(uint256 => bool)) public importedRoundSealed;
+
+    /// @notice Monotonic batch id used by imported-history events
+    uint256 public importBatchCount;
+
     // ========== Events ==========
 
     event IterationRegistered(
@@ -166,11 +178,38 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     event RoundVersionSet(uint256 indexed iterationId, uint256 indexed roundId, uint256 indexed versionId);
     event VotingModeOverrideSet(address indexed jurySC, uint8 mode);
     event TemplateSet(uint256 indexed iterationId, bytes32 indexed templateHash, string cid);
+    event ImportedIteration(uint256 indexed iterationId, uint256 indexed chainId, uint256 indexed batchId, string proofCid);
+    event ImportedRound(
+        uint256 indexed iterationId,
+        uint256 indexed roundId,
+        address indexed jurySC,
+        uint256 batchId,
+        uint256 versionId,
+        string proofCid
+    );
+    event ImportedIterationMetadata(
+        uint256 indexed iterationId,
+        uint256 indexed roundId,
+        address indexed jurySC,
+        uint256 batchId,
+        string cid,
+        string proofCid
+    );
+    event ImportedProjectMetadata(
+        uint256 indexed iterationId,
+        uint256 indexed roundId,
+        address indexed projectAddress,
+        uint256 batchId,
+        string cid,
+        string proofCid
+    );
+    event ImportedHistorySealed(uint256 indexed iterationId, uint256 indexed roundId, uint256 indexed batchId, string proofCid);
 
     // ========== Errors ==========
 
     error ZeroAddress();
     error NotAContract();
+    error ImportedRoundSealed(uint256 iterationId, uint256 roundId);
 
     // ========== Initialization ==========
 
@@ -196,18 +235,24 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         emit InitializationCompleted(msg.sender, block.timestamp);
     }
 
-    // ========== Admin Functions - Iteration/Round Registry ==========
+    function _nextImportBatchId() internal returns (uint256) {
+        importBatchCount++;
+        return importBatchCount;
+    }
 
-    /**
-     * @notice Register a new iteration (owner only)
-     * @dev Name is stored in PoB NFT contract and IPFS metadata, not duplicated here
-     * @param iterationId Iteration number (1, 2, 3, ...)
-     * @param chainId Chain ID (57, 5700, 31337)
-     */
-    function registerIteration(
-        uint256 iterationId,
-        uint256 chainId
-    ) external onlyOwner {
+    function _validateProofCid(string calldata proofCid) internal pure {
+        require(bytes(proofCid).length > 0, "Proof CID cannot be empty");
+        require(bytes(proofCid).length <= MAX_CID_LENGTH, "Proof CID too long");
+    }
+
+    function _requireRoundNotSealed(uint256 chainId, address jurySC) internal view {
+        RoundRef memory ref = roundByContract[chainId][jurySC];
+        if (ref.exists && importedRoundSealed[ref.iterationId][ref.roundId]) {
+            revert ImportedRoundSealed(ref.iterationId, ref.roundId);
+        }
+    }
+
+    function _registerIterationInternal(uint256 iterationId, uint256 chainId) internal {
         require(iterationId > 0, "Invalid iteration ID");
         require(chainId > 0, "Invalid chain ID");
         require(!iterations[iterationId].exists, "Iteration already registered");
@@ -221,35 +266,23 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         });
 
         iterationCount++;
-        emit IterationRegistered(iterationId, chainId);
     }
 
-    /**
-     * @notice Add a round to an iteration (owner only)
-     * @param iterationId Parent iteration ID
-     * @param roundId Round number within iteration (1, 2, 3, ...)
-     * @param jurySC JurySC_01 contract address
-     * @param deployBlockHint Block number hint for event queries (optimization)
-     */
-    function addRound(
+    function _addRoundInternal(
         uint256 iterationId,
         uint256 roundId,
         address jurySC,
         uint256 deployBlockHint
-    ) external onlyOwner {
+    ) internal returns (address pob) {
         require(iterations[iterationId].exists, "Iteration not registered");
         require(roundId > 0, "Invalid round ID");
         require(roundId <= MAX_ROUNDS_PER_ITERATION, "Round ID exceeds max");
         require(jurySC != address(0), "Invalid jurySC address");
         require(!rounds[iterationId][roundId].exists, "Round already exists");
 
-        // Use iteration's chainId for roundByContract lookup
         uint256 chainId = iterations[iterationId].chainId;
         require(!roundByContract[chainId][jurySC].exists, "JurySC already registered");
-        require(
-            iterations[iterationId].roundCount < MAX_ROUNDS_PER_ITERATION,
-            "Max rounds reached"
-        );
+        require(iterations[iterationId].roundCount < MAX_ROUNDS_PER_ITERATION, "Max rounds reached");
 
         rounds[iterationId][roundId] = RoundInfo({
             iterationId: iterationId,
@@ -267,15 +300,114 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         iterations[iterationId].roundCount++;
 
-        // Query PoB from JurySC for event emission
-        address pob = address(0);
+        pob = address(0);
         try IJurySC(jurySC).pob() returns (address pobAddress) {
             pob = pobAddress;
         } catch {
-            // If query fails, emit with zero address
+            // No-op, used for event emission only.
         }
+    }
+
+    function _setRoundVersionInternal(uint256 iterationId, uint256 roundId, uint256 versionId) internal {
+        require(rounds[iterationId][roundId].exists, "Round not found");
+        require(versionId > 0, "Invalid version ID");
+        require(versionAdapters[versionId] != address(0), "Adapter not set for version");
+        roundVersion[iterationId][roundId] = versionId;
+    }
+
+    function _setIterationMetadataInternal(
+        uint256 chainId,
+        address jurySC,
+        string calldata cid
+    ) internal {
+        require(jurySC != address(0), "Invalid contract address");
+        require(bytes(cid).length > 0, "CID cannot be empty");
+        require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
+        _requireRoundNotSealed(chainId, jurySC);
+        iterationMetadata[chainId][jurySC] = cid;
+    }
+
+    function _setProjectMetadataInternal(
+        uint256 chainId,
+        address jurySC,
+        address projectAddress,
+        string calldata cid
+    ) internal {
+        require(jurySC != address(0), "Invalid contract address");
+        require(projectAddress != address(0), "Invalid project address");
+        require(bytes(cid).length > 0, "CID cannot be empty");
+        require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
+        _requireRoundNotSealed(chainId, jurySC);
+        projectMetadata[chainId][jurySC][projectAddress] = cid;
+    }
+
+    // ========== Admin Functions - Iteration/Round Registry ==========
+
+    /**
+     * @notice Register a new iteration (owner only)
+     * @dev Name is stored in PoB NFT contract and IPFS metadata, not duplicated here
+     * @param iterationId Iteration number (1, 2, 3, ...)
+     * @param chainId Chain ID (57, 5700, 31337)
+     */
+    function registerIteration(
+        uint256 iterationId,
+        uint256 chainId
+    ) external onlyOwner {
+        _registerIterationInternal(iterationId, chainId);
+        emit IterationRegistered(iterationId, chainId);
+    }
+
+    function registerImportedIteration(
+        uint256 iterationId,
+        uint256 chainId,
+        string calldata proofCid
+    ) external onlyOwner {
+        _validateProofCid(proofCid);
+        _registerIterationInternal(iterationId, chainId);
+        importedIterations[iterationId] = true;
+
+        uint256 batchId = _nextImportBatchId();
+        emit IterationRegistered(iterationId, chainId);
+        emit ImportedIteration(iterationId, chainId, batchId, proofCid);
+    }
+
+    /**
+     * @notice Add a round to an iteration (owner only)
+     * @param iterationId Parent iteration ID
+     * @param roundId Round number within iteration (1, 2, 3, ...)
+     * @param jurySC JurySC_01 contract address
+     * @param deployBlockHint Block number hint for event queries (optimization)
+     */
+    function addRound(
+        uint256 iterationId,
+        uint256 roundId,
+        address jurySC,
+        uint256 deployBlockHint
+    ) external onlyOwner {
+        uint256 chainId = iterations[iterationId].chainId;
+        address pob = _addRoundInternal(iterationId, roundId, jurySC, deployBlockHint);
 
         emit RoundAdded(iterationId, roundId, jurySC, pob, chainId);
+    }
+
+    function registerImportedRound(
+        uint256 iterationId,
+        uint256 roundId,
+        address jurySC,
+        uint256 deployBlockHint,
+        uint256 versionId,
+        string calldata proofCid
+    ) external onlyOwner {
+        _validateProofCid(proofCid);
+        uint256 chainId = iterations[iterationId].chainId;
+        address pob = _addRoundInternal(iterationId, roundId, jurySC, deployBlockHint);
+        _setRoundVersionInternal(iterationId, roundId, versionId);
+        importedRounds[iterationId][roundId] = true;
+
+        uint256 batchId = _nextImportBatchId();
+        emit RoundAdded(iterationId, roundId, jurySC, pob, chainId);
+        emit RoundVersionSet(iterationId, roundId, versionId);
+        emit ImportedRound(iterationId, roundId, jurySC, batchId, versionId, proofCid);
     }
 
     // ========== Admin Functions - Metadata ==========
@@ -293,19 +425,31 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address jurySC,
         string calldata cid
     ) external onlyOwner {
-        require(jurySC != address(0), "Invalid contract address");
-        require(bytes(cid).length > 0, "CID cannot be empty");
-        require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
+        _setIterationMetadataInternal(chainId, jurySC, cid);
 
         // After initialization: check if JurySC is locked for history
         if (initializationComplete) {
             IJurySC jury = IJurySC(jurySC);
             require(!jury.locked(), "Iteration locked (cannot modify historical data)");
         }
-        // During initialization: no lock check (allows importing historical data)
 
-        iterationMetadata[chainId][jurySC] = cid;
         emit IterationMetadataSet(chainId, jurySC, cid, msg.sender);
+    }
+
+    function importIterationMetadata(
+        uint256 chainId,
+        address jurySC,
+        string calldata cid,
+        string calldata proofCid
+    ) external onlyOwner {
+        _validateProofCid(proofCid);
+        RoundRef memory ref = roundByContract[chainId][jurySC];
+        require(ref.exists, "Round not found");
+        _setIterationMetadataInternal(chainId, jurySC, cid);
+
+        uint256 batchId = _nextImportBatchId();
+        emit IterationMetadataSet(chainId, jurySC, cid, msg.sender);
+        emit ImportedIterationMetadata(ref.iterationId, ref.roundId, jurySC, batchId, cid, proofCid);
     }
 
     /**
@@ -324,11 +468,6 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         address projectAddress,
         string calldata cid
     ) external {
-        require(jurySC != address(0), "Invalid contract address");
-        require(projectAddress != address(0), "Invalid project address");
-        require(bytes(cid).length > 0, "CID cannot be empty");
-        require(bytes(cid).length <= MAX_CID_LENGTH, "CID too long");
-
         bool isOwner = msg.sender == owner();
 
         // Access control logic:
@@ -347,8 +486,49 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
             require(!jury.projectsLocked(), "Metadata editing closed (voting started)");
         }
 
-        projectMetadata[chainId][jurySC][projectAddress] = cid;
+        _setProjectMetadataInternal(chainId, jurySC, projectAddress, cid);
         emit ProjectMetadataSet(chainId, jurySC, projectAddress, cid, msg.sender);
+    }
+
+    function importProjectMetadataBatch(
+        uint256 chainId,
+        address jurySC,
+        address[] calldata projectAddresses,
+        string[] calldata cids,
+        string calldata proofCid
+    ) external onlyOwner {
+        _validateProofCid(proofCid);
+        uint256 length = projectAddresses.length;
+        require(length > 0, "Empty batch");
+        require(length <= MAX_BATCH_SIZE, "Batch too large");
+        require(cids.length == length, "Array length mismatch");
+
+        RoundRef memory ref = roundByContract[chainId][jurySC];
+        require(ref.exists, "Round not found");
+
+        uint256 batchId = _nextImportBatchId();
+        for (uint256 i = 0; i < length; i++) {
+            IJurySC jury = IJurySC(jurySC);
+            require(jury.isRegisteredProject(projectAddresses[i]), "Project not registered in JurySC");
+            _setProjectMetadataInternal(chainId, jurySC, projectAddresses[i], cids[i]);
+            emit ProjectMetadataSet(chainId, jurySC, projectAddresses[i], cids[i], msg.sender);
+            emit ImportedProjectMetadata(ref.iterationId, ref.roundId, projectAddresses[i], batchId, cids[i], proofCid);
+        }
+    }
+
+    function sealImportedRound(
+        uint256 iterationId,
+        uint256 roundId,
+        string calldata proofCid
+    ) external onlyOwner {
+        _validateProofCid(proofCid);
+        require(rounds[iterationId][roundId].exists, "Round not found");
+        require(importedRounds[iterationId][roundId], "Round not imported");
+        require(!importedRoundSealed[iterationId][roundId], "Imported round already sealed");
+        importedRoundSealed[iterationId][roundId] = true;
+
+        uint256 batchId = _nextImportBatchId();
+        emit ImportedHistorySealed(iterationId, roundId, batchId, proofCid);
     }
 
     // ========== View Functions - Iterations/Rounds ==========
@@ -560,10 +740,7 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      * @param versionId Version number (must have adapter set)
      */
     function setRoundVersion(uint256 iterationId, uint256 roundId, uint256 versionId) external onlyOwner {
-        require(rounds[iterationId][roundId].exists, "Round not found");
-        require(versionId > 0, "Invalid version ID");
-        require(versionAdapters[versionId] != address(0), "Adapter not set for version");
-        roundVersion[iterationId][roundId] = versionId;
+        _setRoundVersionInternal(iterationId, roundId, versionId);
         emit RoundVersionSet(iterationId, roundId, versionId);
     }
 
@@ -632,13 +809,13 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      * @notice Get the certificate template for an iteration
      * @param iterationId Iteration number
      * @return hash keccak256 of the sanitized SVG bytes (zero if not set)
-     * @return version Auto-incremented version counter
+     * @return templateVersion Auto-incremented version counter
      * @return cid IPFS CID of the sanitized SVG (empty if not set)
      */
     function getIterationTemplate(uint256 iterationId)
         external
         view
-        returns (bytes32 hash, uint32 version, string memory cid)
+        returns (bytes32 hash, uint32 templateVersion, string memory cid)
     {
         IterationTemplate storage t = iterationTemplates[iterationId];
         return (t.hash, t.version, t.cid);
@@ -649,7 +826,7 @@ contract PoBRegistry is Initializable, OwnableUpgradeable, UUPSUpgradeable {
      * @return Version string
      */
     function version() external pure returns (string memory) {
-        return "3";
+        return "4";
     }
 
     // ========== UUPS Upgrade Authorization ==========

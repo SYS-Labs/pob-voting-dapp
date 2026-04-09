@@ -1,5 +1,5 @@
 /**
- * Deploy V1Adapter, V2Adapter, V3Adapter and optionally upgrade PoBRegistry.
+ * Deploy V1Adapter, V2Adapter, V3Adapter, V4Adapter and optionally upgrade PoBRegistry.
  *
  * Uses the same raw-tx + custom polling approach as deploy.js to work around
  * the Syscoin NEVM testnet RPC bug (truncated txHash from eth_sendRawTransaction).
@@ -12,6 +12,7 @@
  *   V1_ADDRESS         - Reuse existing V1Adapter (skips V1 deploy)
  *   V2_ADDRESS         - Reuse existing V2Adapter (skips V2 deploy)
  *   V3_ADDRESS         - Reuse existing V3Adapter (skips V3 deploy)
+ *   V4_ADDRESS         - Reuse existing V4Adapter (skips V4 deploy)
  *
  * Usage:
  *   POB_REGISTRY=0x... npx hardhat run scripts/deploy-adapters.js --network testnet
@@ -57,6 +58,11 @@ let _nonce = null;
 let _gasPrice = null;
 
 async function sendRaw(signer, txData) {
+  if (hre.network.name === "localhost" || hre.network.name === "hardhat") {
+    const tx = await signer.sendTransaction(txData);
+    return await tx.wait();
+  }
+
   if (_nonce === null) {
     _nonce = await ethers.provider.getTransactionCount(signer.address, "latest");
   }
@@ -90,11 +96,17 @@ async function deployContract(signer, factory, args = []) {
 // ═══════════════════════════════════════════════════════════
 
 async function main() {
-  if (!process.env.OWNER_PRIVATE_KEY) throw new Error("OWNER_PRIVATE_KEY not set in .env");
-  const signer = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY.trim(), ethers.provider);
-
   const network = hre.network.name;
   const chainId = (await ethers.provider.getNetwork()).chainId;
+  const isLocal = network === "localhost" || network === "hardhat";
+
+  let signer;
+  if (isLocal) {
+    [signer] = await ethers.getSigners();
+  } else {
+    if (!process.env.OWNER_PRIVATE_KEY) throw new Error("OWNER_PRIVATE_KEY not set in .env");
+    signer = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY.trim(), ethers.provider);
+  }
 
   const registryAddress  = process.env.POB_REGISTRY?.trim();
   const upgradeRegistry  = process.env.UPGRADE_REGISTRY === "true";
@@ -103,6 +115,7 @@ async function main() {
   const existingV1       = process.env.V1_ADDRESS?.trim();
   const existingV2       = process.env.V2_ADDRESS?.trim();
   const existingV3       = process.env.V3_ADDRESS?.trim();
+  const existingV4       = process.env.V4_ADDRESS?.trim();
 
   console.log("╔════════════════════════════════════════════╗");
   console.log("║   ADAPTER DEPLOYMENT                       ║");
@@ -121,9 +134,10 @@ async function main() {
   console.log(existingV1 ? `  1. V1Adapter    → REUSE ${existingV1}` : "  1. V1Adapter    → deploy");
   console.log(existingV2 ? `  2. V2Adapter    → REUSE ${existingV2}` : "  2. V2Adapter    → deploy");
   console.log(existingV3 ? `  3. V3Adapter    → REUSE ${existingV3}` : "  3. V3Adapter    → deploy");
+  console.log(existingV4 ? `  4. V4Adapter    → REUSE ${existingV4}` : "  4. V4Adapter    → deploy");
   console.log(dryRun
     ? "  4. setAdapter    → SKIP (DRY_RUN)  "
-    : "  4. setAdapter(1/2/3) → wire to registry");
+    : "  5. setAdapter(1/2/3/4) → wire to registry");
   console.log("");
 
   // ═══════════════════════════════════════════════════════════
@@ -227,10 +241,30 @@ async function main() {
   console.log("");
 
   // ═══════════════════════════════════════════════════════════
-  // STEP 4: Wire adapters to registry
+  // STEP 4: V4Adapter
   // ═══════════════════════════════════════════════════════════
   console.log("┌─────────────────────────────────────────┐");
-  console.log("│ STEP 4: Wiring adapters to registry     │");
+  console.log("│ STEP 4: V4Adapter                       │");
+  console.log("└─────────────────────────────────────────┘");
+
+  let v4Address;
+  if (existingV4) {
+    v4Address = existingV4;
+    console.log("Reusing existing V4Adapter:", v4Address);
+  } else {
+    const V4Adapter = await ethers.getContractFactory("V4Adapter");
+    console.log("Deploying V4Adapter...");
+    const v4Receipt = await deployContract(signer, V4Adapter);
+    v4Address = v4Receipt.contractAddress;
+    console.log("✓ impl:  ", v4Address);
+  }
+  console.log("");
+
+  // ═══════════════════════════════════════════════════════════
+  // STEP 5: Wire adapters to registry
+  // ═══════════════════════════════════════════════════════════
+  console.log("┌─────────────────────────────────────────┐");
+  console.log("│ STEP 5: Wiring adapters to registry     │");
   console.log("└─────────────────────────────────────────┘");
 
   if (!registryAddress) {
@@ -251,6 +285,10 @@ async function main() {
     console.log("setAdapter(3, V3Adapter)...");
     await sendRaw(signer, await registry.setAdapter.populateTransaction(3, v3Address));
     console.log("  ✓ version 3 →", v3Address);
+
+    console.log("setAdapter(4, V4Adapter)...");
+    await sendRaw(signer, await registry.setAdapter.populateTransaction(4, v4Address));
+    console.log("  ✓ version 4 →", v4Address);
   }
   console.log("");
 
@@ -268,6 +306,7 @@ async function main() {
   console.log("V1Adapter:        ", v1Address);
   console.log("V2Adapter:        ", v2Address);
   console.log("V3Adapter:        ", v3Address);
+  console.log("V4Adapter:        ", v4Address);
   console.log("");
 
   // Save deployment info
@@ -283,6 +322,7 @@ async function main() {
       V1Adapter: v1Address,
       V2Adapter: v2Address,
       V3Adapter: v3Address,
+      V4Adapter: v4Address,
       ...(upgradeRegistry && registryAddress ? {
         PoBRegistry: { proxy: registryAddress, implementation: registryImpl }
       } : {})
@@ -297,7 +337,7 @@ async function main() {
   if (!dryRun && registryAddress) {
     console.log("NEXT STEPS:");
     console.log("  For each round, call registry.setRoundVersion(iterationId, roundId, versionId)");
-    console.log("  e.g. iter 3 round 1 uses V3: setRoundVersion(3, 1, 3)");
+    console.log("  e.g. iter 3 round 1 uses V4: setRoundVersion(3, 1, 4)");
     console.log("");
   }
 }
