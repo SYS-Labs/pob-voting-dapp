@@ -108,8 +108,8 @@
             <p class="font-semibold text-white text-base">How does voting work?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Each voting round lasts 48 hours. Community members mint a voting NFT during the active period. On v4 rounds they can mint for free or optionally donate any desired amount of {tokenSymbol}, which is forwarded directly by the badge contract.
-                Results are determined automatically by the smart contract. If no winner is determined, a new 48-hour round begins.
+                Voting rounds last 48 hours by default, but the owner can configure the window in hours before activation. Community members mint a voting NFT during the active period. On v4 rounds they can mint for free or optionally donate any desired amount of {tokenSymbol}, which is forwarded directly by the badge contract.
+                Results are determined automatically by the smart contract. If no winner is determined, a new round can be started with its own configured voting window.
               </p>
             </div>
           </div>
@@ -140,7 +140,7 @@
             <p class="font-semibold text-white text-base">Can a vote be changed?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Yes, all voters (DAO HIC, Community, and SMT) can change their vote during the active 48-hour voting period.
+                Yes, all voters (DAO HIC, Community, and SMT) can change their vote during the active voting period.
                 Simply submit a new vote transaction for a different project, and the previous vote from that wallet will be updated.
                 Once voting ends, votes become final and cannot be changed.
               </p>

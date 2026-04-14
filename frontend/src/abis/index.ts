@@ -33,9 +33,26 @@ function mergeABIs(...abis: any[][]): any[] {
   return merged;
 }
 
+const JurySC_04_ExtensionsABI = [
+  {
+    type: 'function',
+    name: 'setVotingDurationHours',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'durationHours_', type: 'uint64' }],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'votingDurationHours',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint64' }],
+  },
+];
+
 /** Combined JurySC write ABI: all function signatures from all JurySC versions */
 const JurySCWriteAllABI = mergeABIs(
-  JurySC_01_v001_ABI, JurySC_01_v002_ABI, JurySC_03_v001_ABI
+  JurySC_01_v001_ABI, JurySC_01_v002_ABI, JurySC_03_v001_ABI, JurySC_04_ExtensionsABI
 );
 
 /** Combined PoB write ABI: all function signatures from all PoB versions */

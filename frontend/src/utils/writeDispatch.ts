@@ -113,6 +113,7 @@ export interface WriteDispatcher {
   removeSmtVoter(address: string): Promise<ContractTransactionResponse>;
   lockContractForHistory(): Promise<ContractTransactionResponse>;
   setVotingMode(mode: number): Promise<ContractTransactionResponse>;
+  setVotingDurationHours(hours: number): Promise<ContractTransactionResponse>;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,5 +151,6 @@ export function createWriteDispatcher(target: WriteTarget, signer: Signer): Writ
     removeSmtVoter:         async (addr) => jury[resolve('removeSmtVoter', await getVersion())](addr),
     lockContractForHistory: () => jury.lockContractForHistory(),
     setVotingMode:          (mode) => jury.setVotingMode(mode),
+    setVotingDurationHours: (hours) => jury.setVotingDurationHours(hours),
   };
 }

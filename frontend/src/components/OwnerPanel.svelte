@@ -72,6 +72,8 @@
   let showActivationConfirm = $state(false);
   let activationMode = $state<'activate' | 'deactivate'>('activate');
   let resolvedWriteVersion = $state<string | null>(null);
+  let votingDurationHours = $state<number | null>(null);
+  let votingDurationInput = $state('48');
 
   async function handleActivationAction() {
     if (!signer || !currentIteration) return;
@@ -127,9 +129,13 @@
     statusFlags.votingEnded ? 'Voting Ended' : 'Activation Unavailable'
   );
 
+  const configuredVotingDurationHours = $derived(
+    votingDurationHours ?? (Number(votingDurationInput) > 0 ? Number(votingDurationInput) : 48)
+  );
+
   const activationHint = $derived(
-    canDeactivate ? 'End the 48-hour voting window early. This finalizes results immediately.' :
-    canActivate ? 'Start the 48-hour voting window' :
+    canDeactivate ? 'End the voting window early. This finalizes results immediately.' :
+    canActivate ? `Start the ${configuredVotingDurationHours}-hour voting window` :
     statusFlags.votingEnded ? 'Voting already ended for this iteration.' : 'Activation is currently unavailable.'
   );
 
@@ -141,7 +147,7 @@
   const modalBody = $derived(
     isDeactivateMode
       ? 'Ending the voting window immediately finalizes vote totals and prevents any further ballots. This cannot be undone.'
-      : 'Starting the 48-hour voting window locks project registration and opens voting to jurors right away. This cannot be undone.'
+      : `Starting the ${configuredVotingDurationHours}-hour voting window locks project registration and opens voting to jurors right away. This cannot be undone.`
   );
   const modalPrompt = $derived(
     isDeactivateMode ? 'Do you want to end the voting window right now?' : 'Do you want to activate the program right now?'
@@ -207,6 +213,47 @@
     if (input) input.value = '';
   }
 
+  async function loadVotingDuration(iteration = currentIteration, nextSigner = signer) {
+    if (!iteration || !nextSigner || Number(iteration.version ?? '0') < 4) {
+      votingDurationHours = null;
+      votingDurationInput = '48';
+      return;
+    }
+
+    try {
+      const jury = new Contract(
+        iteration.jurySC,
+        ['function votingDurationHours() view returns (uint64)'],
+        nextSigner
+      );
+      const hours = Number(await jury.votingDurationHours());
+      votingDurationHours = hours > 0 ? hours : 48;
+      votingDurationInput = String(votingDurationHours);
+    } catch {
+      votingDurationHours = null;
+      votingDurationInput = '48';
+    }
+  }
+
+  async function handleSetVotingDuration() {
+    const hours = Number(votingDurationInput);
+    if (!Number.isInteger(hours) || hours < 1) {
+      setError('Please enter a positive whole number of hours');
+      return;
+    }
+    if (!signer || !currentIteration) return;
+
+    const writer = createWriteDispatcher(currentIteration, signer);
+    await runTransaction(
+      'Set Voting Window',
+      () => writer.setVotingDurationHours(hours),
+      async () => {
+        await loadVotingDuration();
+        await refreshVotingData();
+      },
+    );
+  }
+
   async function handleLockContract() {
     if (!signer || !currentIteration) return;
     const writer = createWriteDispatcher(currentIteration, signer);
@@ -243,6 +290,16 @@
   const supportsMultipleSmtVoters = $derived(
     Number(resolvedWriteVersion ?? currentIteration?.version ?? '002') >= 3
   );
+
+  const supportsVotingDurationConfig = $derived(
+    Number(resolvedWriteVersion ?? currentIteration?.version ?? '000') >= 4
+  );
+
+  $effect(() => {
+    const iteration = currentIteration;
+    const nextSigner = signer;
+    void loadVotingDuration(iteration, nextSigner);
+  });
 </script>
 
 <section class="pob-pane">
@@ -297,6 +354,31 @@
               >
                 Open Project Editing
               </button>
+            </div>
+          {/if}
+          {#if supportsVotingDurationConfig && canActivate}
+            <div class="pob-fieldset pob-form-group">
+              <label for="voting-duration-hours" class="pob-form__label">Voting window (hours)</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                id="voting-duration-hours"
+                class="pob-input"
+                bind:value={votingDurationInput}
+                disabled={isBusy}
+              />
+              <button
+                type="button"
+                onclick={handleSetVotingDuration}
+                disabled={isBusy}
+                class="pob-button pob-button--outline pob-button--full"
+              >
+                Set Voting Window
+              </button>
+              <p class="pob-form-hint">
+                Current contract setting: {configuredVotingDurationHours} hours. Default is 48 hours. Set 96 for a 4-day round.
+              </p>
             </div>
           {/if}
           <p class="pob-form-hint">{activationHint}</p>
