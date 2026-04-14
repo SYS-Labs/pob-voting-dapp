@@ -25,6 +25,7 @@ import { sanitizeSVG } from '../services/svg-sanitizer.js';
 import { IPFSService } from '../services/ipfs.js';
 import { MetadataService } from '../services/metadata.js';
 import { logger } from '../utils/logger.js';
+import { normalizeParticipantRole, type CanonicalParticipantRole } from '../utils/participantRoles.js';
 import { NETWORKS } from '../constants/networks.js';
 import { PostRecord } from '../types/post.js';
 
@@ -63,7 +64,7 @@ const POB_V1_MINT_STATUS_ABI = [
 
 interface UserRoundBadgeRecord {
   tokenId: string;
-  role: string;
+  role: CanonicalParticipantRole;
   claimed: boolean;
 }
 
@@ -203,9 +204,19 @@ async function readUserOwnedPobBadges(
     if (ownerRes.value.toLowerCase() !== normalized) continue;
     if (roleRes.status !== 'fulfilled') continue;
 
+    const role = normalizeParticipantRole(String(roleRes.value));
+    if (!role) {
+      logger.warn('Skipping badge with unknown PoB role', {
+        pobAddress,
+        tokenId: uniqueTokenIds[i],
+        role: roleRes.value,
+      });
+      continue;
+    }
+
     badges.push({
       tokenId: uniqueTokenIds[i],
-      role: String(roleRes.value).toLowerCase(),
+      role,
       claimed: claimedRes.status === 'fulfilled' ? Boolean(claimedRes.value) : false,
     });
   }
@@ -799,8 +810,8 @@ async function handleGetProjectMetadata(
       return;
     }
 
-    const metadata = await metadataService.getProjectMetadata(chainId, contractAddress, projectAddress);
     const cid = await metadataService.getProjectMetadataCID(chainId, contractAddress, projectAddress);
+    const metadata = cid ? await getCachedOrFetchCIDMetadata(cid) : null;
     const update = cid
       ? metadataDb.getLatestProjectUpdateForCID(chainId, contractAddress, projectAddress, cid)
       : null;
@@ -844,8 +855,8 @@ async function handleGetIterationMetadata(
       return;
     }
 
-    const metadata = await metadataService.getIterationMetadata(chainId, contractAddress);
     const cid = await metadataService.getIterationMetadataCID(chainId, contractAddress);
+    const metadata = cid ? await getCachedOrFetchCIDMetadata(cid) : null;
     const update = cid
       ? metadataDb.getLatestIterationUpdateForCID(chainId, contractAddress, cid)
       : null;
@@ -859,6 +870,26 @@ async function handleGetIterationMetadata(
   } catch (error) {
     logger.error('Failed to get iteration metadata', error);
     sendJson(res, 500, { success: false, error: 'Failed to fetch metadata' });
+  }
+}
+
+async function getCachedOrFetchCIDMetadata(cid: string): Promise<Record<string, unknown> | null> {
+  const cachedItem = metadataDb.getCachedIPFSContent(cid);
+  if (cachedItem) {
+    try {
+      return JSON.parse(cachedItem.content) as Record<string, unknown>;
+    } catch (error) {
+      logger.warn('Failed to parse cached content', { cid, error });
+    }
+  }
+
+  try {
+    const metadata = await ipfsService.fetchJSON(cid);
+    metadataDb.cacheIPFSContent(cid, JSON.stringify(metadata));
+    return metadata as Record<string, unknown>;
+  } catch (error) {
+    logger.warn('Failed to fetch metadata for CID', { cid, error });
+    return null;
   }
 }
 

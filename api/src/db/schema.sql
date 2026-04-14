@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS iteration_snapshots (
   pob_address TEXT NOT NULL,
   jury_address TEXT NOT NULL,
   deploy_block_hint INTEGER NOT NULL DEFAULT 0,  -- Block number hint for event queries (optimization)
+  round_version INTEGER NOT NULL DEFAULT 0,
   jury_state TEXT NOT NULL,  -- 'deployed' | 'activated' | 'active' | 'ended' | 'locked'
   start_time INTEGER,
   end_time INTEGER,

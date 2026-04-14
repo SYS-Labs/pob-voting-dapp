@@ -52,8 +52,8 @@ const JURY_ABI = [
   'function projectAddress(uint256 index) external view returns (address)'
 ];
 
-// Poll interval: 37 seconds (configurable via env)
-const POLL_INTERVAL = parseInt(process.env.ITERATION_POLL_INTERVAL || '37000', 10);
+// Poll interval: 5 seconds (configurable via env)
+const POLL_INTERVAL = parseInt(process.env.ITERATION_POLL_INTERVAL || '5000', 10);
 
 // Optional: Force single chain mode (if set, only index this chain)
 const SINGLE_CHAIN_ID = process.env.CHAIN_ID
@@ -265,6 +265,7 @@ class IterationIndexer {
 
       const votingMode = Number(votingModeRaw);
       const isV3Round = roundVersionRaw === 3 || smtVotersReadResult.supported;
+      const roundVersion = roundVersionRaw > 0 ? roundVersionRaw : (isV3Round ? 3 : 2);
       const smtVoters = isV3Round
         ? smtVotersReadResult.voters.filter((voter) => voter && voter !== ethers.ZeroAddress)
         : [];
@@ -351,6 +352,7 @@ class IterationIndexer {
         pob_address: pobAddress,
         jury_address: round.jurySC,
         deploy_block_hint: round.deployBlockHint,
+        round_version: roundVersion,
         jury_state: juryState,
         start_time: Number(startTime) || null,
         end_time: Number(endTime) || null,
@@ -409,6 +411,7 @@ class IterationIndexer {
         pob_address: ethers.ZeroAddress,
         jury_address: ethers.ZeroAddress,
         deploy_block_hint: 0,
+        round_version: 0,
         jury_state: 'deployed',
         start_time: null,
         end_time: null,

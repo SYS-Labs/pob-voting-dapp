@@ -15,20 +15,20 @@ export const NETWORKS: Record<number, NetworkConfig> = {
   57: {
     name: 'NEVM Mainnet',
     rpcUrl: 'https://rpc.syscoin.org',
-    registryAddress: '', // TODO: Deploy and update
-    certNFTAddress: ''   // TODO: Deploy and update
+    registryAddress: process.env.MAINNET_REGISTRY_CONTRACT_ADDRESS || '0xb2C3c1CB54aa9EBFe175a5fBEB63d63986D5a5E8',
+    certNFTAddress: process.env.MAINNET_CERT_NFT_CONTRACT_ADDRESS || ''
   },
   5700: {
     name: 'NEVM Testnet',
     rpcUrl: 'https://rpc.tanenbaum.io',
-    registryAddress: '0xA985cE400afea8eEf107c24d879c8c777ece1a8a',
-    certNFTAddress: ''   // TODO: Deploy and update
+    registryAddress: process.env.TESTNET_REGISTRY_CONTRACT_ADDRESS || '0xA985cE400afea8eEf107c24d879c8c777ece1a8a',
+    certNFTAddress: process.env.TESTNET_CERT_NFT_CONTRACT_ADDRESS || ''
   },
   31337: {
     name: 'Hardhat',
     rpcUrl: 'http://localhost:8547',
-    registryAddress: process.env.REGISTRY_CONTRACT_ADDRESS || '0xab180957A96821e90C0114292DDAfa9E9B050d65',
-    certNFTAddress: process.env.CERT_NFT_CONTRACT_ADDRESS || ''
+    registryAddress: process.env.HARDHAT_REGISTRY_CONTRACT_ADDRESS || process.env.REGISTRY_CONTRACT_ADDRESS || '0xab180957A96821e90C0114292DDAfa9E9B050d65',
+    certNFTAddress: process.env.HARDHAT_CERT_NFT_CONTRACT_ADDRESS || process.env.CERT_NFT_CONTRACT_ADDRESS || ''
   }
 };
 

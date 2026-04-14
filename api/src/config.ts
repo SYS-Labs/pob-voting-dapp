@@ -26,7 +26,7 @@ export const config: AppConfig = {
     xPassword: optional('X_PASSWORD', ''),
     xEmail: optional('X_EMAIL', ''),
     // Main post IDs are now managed via database/admin API, not config
-    pollInterval: parseInt(optional('POLL_INTERVAL', '300000')),
+    pollInterval: parseInt(optional('POLL_INTERVAL', '5000')),
     maxReplyDepth: parseInt(optional('MAX_REPLY_DEPTH', '3')),
     trustedUsers: optional('X_TRUSTED_USERS', '').split(',').filter(Boolean),
     cookiesPath: optional('X_COOKIES_PATH', '') || undefined,

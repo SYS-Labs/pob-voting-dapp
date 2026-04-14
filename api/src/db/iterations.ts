@@ -11,6 +11,7 @@ export interface IterationSnapshot {
   pob_address: string;
   jury_address: string;
   deploy_block_hint: number;
+  round_version: number;
   jury_state: JuryState;
   start_time: number | null;
   end_time: number | null;
@@ -56,6 +57,7 @@ export interface IterationSnapshotAPI {
   iterationId: number;
   chainId: number;
   round: number;
+  version: string;
   registryAddress: string;
   pobAddress: string;
   juryAddress: string;
@@ -87,10 +89,15 @@ export interface ProjectSnapshot {
 }
 
 function toAPIFormat(row: IterationSnapshot): IterationSnapshotAPI {
+  const roundVersion = row.round_version > 0
+    ? row.round_version
+    : ((row.smt_voters && row.smt_voters !== '[]') ? 3 : 2);
+
   return {
     iterationId: row.iteration_id,
     chainId: row.chain_id,
     round: row.round,
+    version: String(roundVersion).padStart(3, '0'),
     registryAddress: row.registry_address,
     pobAddress: row.pob_address,
     juryAddress: row.jury_address,
@@ -126,9 +133,39 @@ function toAPIFormat(row: IterationSnapshot): IterationSnapshotAPI {
   };
 }
 
+function toPreviousRoundAPI(row: IterationSnapshot): PreviousRoundAPI {
+  return {
+    round: row.round,
+    jurySC: row.jury_address,
+    pob: row.pob_address,
+    version: toAPIFormat(row).version,
+    deployBlockHint: row.deploy_block_hint,
+    votingMode: row.voting_mode,
+    juryState: row.jury_state,
+    winner: {
+      projectAddress: row.winner_address,
+      hasWinner: row.has_winner === 1
+    },
+    entityVotes: {
+      devRel: row.devrel_vote,
+      daoHic: row.daohic_vote,
+      community: row.community_vote
+    },
+    devRelAccount: row.devrel_account,
+    smtVoters: row.smt_voters ? JSON.parse(row.smt_voters) : [],
+    daoHicVoters: row.daohic_voters ? JSON.parse(row.daohic_voters) : [],
+    daoHicIndividualVotes: row.daohic_individual_votes ? JSON.parse(row.daohic_individual_votes) : {},
+    projects: row.projects ? JSON.parse(row.projects) : []
+  };
+}
+
 export function createIterationsDatabase(db: Database.Database) {
   const tableInfo = db.prepare(`PRAGMA table_info(iteration_snapshots)`).all() as Array<{ name: string }>;
   const columnNames = new Set(tableInfo.map((column) => column.name));
+
+  if (!columnNames.has('round_version')) {
+    db.exec(`ALTER TABLE iteration_snapshots ADD COLUMN round_version INTEGER NOT NULL DEFAULT 0`);
+  }
 
   if (!columnNames.has('smt_voters')) {
     db.exec(`ALTER TABLE iteration_snapshots ADD COLUMN smt_voters TEXT`);
@@ -141,17 +178,18 @@ export function createIterationsDatabase(db: Database.Database) {
     const stmt = db.prepare(`
       INSERT INTO iteration_snapshots (
         iteration_id, chain_id, round, registry_address, pob_address, jury_address,
-        deploy_block_hint, jury_state, start_time, end_time, voting_mode, projects_locked, contract_locked,
+        deploy_block_hint, round_version, jury_state, start_time, end_time, voting_mode, projects_locked, contract_locked,
         winner_address, has_winner, devrel_vote, daohic_vote, community_vote,
         project_scores, devrel_count, daohic_count, community_count,
         devrel_account, smt_voters, daohic_voters, daohic_individual_votes, projects, last_block, last_updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(chain_id, iteration_id, round) DO UPDATE SET
         registry_address = excluded.registry_address,
         pob_address = excluded.pob_address,
         jury_address = excluded.jury_address,
         deploy_block_hint = excluded.deploy_block_hint,
+        round_version = excluded.round_version,
         jury_state = excluded.jury_state,
         start_time = excluded.start_time,
         end_time = excluded.end_time,
@@ -184,6 +222,7 @@ export function createIterationsDatabase(db: Database.Database) {
       snapshot.pob_address,
       snapshot.jury_address,
       snapshot.deploy_block_hint,
+      snapshot.round_version,
       snapshot.jury_state,
       snapshot.start_time,
       snapshot.end_time,
@@ -311,7 +350,18 @@ export function createIterationsDatabase(db: Database.Database) {
    */
   function getSnapshotAPI(chainId: number, iterationId: number, round?: number): IterationSnapshotAPI | null {
     const snapshot = getSnapshot(chainId, iterationId, round);
-    return snapshot ? toAPIFormat(snapshot) : null;
+    if (!snapshot) return null;
+
+    const apiSnapshot = toAPIFormat(snapshot);
+    const prevRounds = getAllRounds(chainId, iterationId)
+      .filter((row) => row.round > 0 && row.round < snapshot.round)
+      .map(toPreviousRoundAPI);
+
+    if (prevRounds.length > 0) {
+      apiSnapshot.prevRounds = prevRounds;
+    }
+
+    return apiSnapshot;
   }
 
   /**
@@ -327,29 +377,7 @@ export function createIterationsDatabase(db: Database.Database) {
       const allRounds = getAllRounds(snapshot.chain_id, snapshot.iteration_id);
       const prevRounds: PreviousRoundAPI[] = allRounds
         .filter(r => r.round > 0 && r.round < snapshot.round)
-        .map(r => ({
-          round: r.round,
-          jurySC: r.jury_address,
-          pob: r.pob_address,
-          version: '001', // Historical rounds
-          deployBlockHint: r.deploy_block_hint,
-          votingMode: r.voting_mode,
-          juryState: r.jury_state,
-          winner: {
-            projectAddress: r.winner_address,
-            hasWinner: r.has_winner === 1
-          },
-          entityVotes: {
-            devRel: r.devrel_vote,
-            daoHic: r.daohic_vote,
-            community: r.community_vote
-          },
-          devRelAccount: r.devrel_account,
-          smtVoters: r.smt_voters ? JSON.parse(r.smt_voters) : [],
-          daoHicVoters: r.daohic_voters ? JSON.parse(r.daohic_voters) : [],
-          daoHicIndividualVotes: r.daohic_individual_votes ? JSON.parse(r.daohic_individual_votes) : {},
-          projects: r.projects ? JSON.parse(r.projects) : []
-        }));
+        .map(toPreviousRoundAPI);
 
       if (prevRounds.length > 0) {
         apiSnapshot.prevRounds = prevRounds;

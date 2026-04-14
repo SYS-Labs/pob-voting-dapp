@@ -65,8 +65,8 @@ const MEMBER_STATUS_MAP: Record<number, TeamMemberStatus> = {
   2: 'rejected',
 };
 
-// Poll interval: 37 seconds (configurable via env)
-const POLL_INTERVAL = parseInt(process.env.CERT_POLL_INTERVAL || '37000', 10);
+// Poll interval: 5 seconds (configurable via env)
+const POLL_INTERVAL = parseInt(process.env.CERT_POLL_INTERVAL || '5000', 10);
 
 // Optional: Force single chain mode
 const SINGLE_CHAIN_ID = process.env.CHAIN_ID
