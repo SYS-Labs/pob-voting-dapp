@@ -57,78 +57,49 @@ export function createPreviousRoundDataStore(
     const loadRoundData = async () => {
       loading.set(true);
       try {
-        // Resolve adapter for this previous round
-        const adapterConfig = await resolveAdapter(chainId, iterationId, round.round, publicProvider);
-        if (!adapterConfig) {
-          console.error(`[previousRoundData] Failed to resolve adapter for round ${round.round}`);
-          loading.set(false);
-          return;
-        }
-        const { adapter, jurySC } = adapterConfig;
-
-        console.log(`[previousRoundData] Loading data for Round #${round.round}`, {
-          jurySC,
-          pob: round.pob,
-          version: round.version,
-          walletAddress,
-          hasAPIData,
-        });
-
-        // If API provided full data, use it instead of fetching via RPC
+        // If API provided full data, render it immediately. RPC/adapter calls are
+        // optional enrichment only; historical imported rounds should not depend
+        // on wallet/provider adapter resolution to expand in the UI.
         if (hasAPIData) {
-          console.log(`[previousRoundData] Round #${round.round}: Using API data (skipping RPC calls)`);
+          console.log(`[previousRoundData] Round #${round.round}: Using API data`);
 
-          // Only fetch user-specific data that API doesn't provide
-          const [userBadges, startTime, endTime] = await Promise.all([
-            walletAddress
-              ? loadBadgesFromContract(round.pob, chainId, walletAddress, publicProvider, round.deployBlockHint, round.round)
-              : Promise.resolve([]),
-            adapter.startTime(jurySC).catch(() => 0),
-            adapter.endTime(jurySC).catch(() => 0),
-          ]);
-
-          // Check if user can mint a badge (via adapter — version-agnostic)
-          let canMint = false;
-          if (walletAddress && userBadges.length === 0) {
-            const walletLower = walletAddress.toLowerCase();
-            const [smtVoters, daoHicVoters, isRegisteredProject] = await Promise.all([
-              adapter.getEntityVoters(jurySC, ENTITY_SMT).catch(() => [] as string[]),
-              adapter.getEntityVoters(jurySC, ENTITY_DAO_HIC).catch(() => [] as string[]),
-              adapter.isRegisteredProject(jurySC, walletAddress).catch(() => false),
-            ]);
-            const isSmt = Array.isArray(smtVoters) && smtVoters.some((v: string) => v.toLowerCase() === walletLower);
-            const isDaoHic = Array.isArray(daoHicVoters) && daoHicVoters.some((v: string) => v.toLowerCase() === walletLower);
-            canMint = isSmt || isDaoHic || Boolean(isRegisteredProject);
-          }
-
-          // Build projects array from API data (cast metadata type)
           const projects = round.projects!.map((p, index) => ({
             id: index + 1,
             address: p.address,
             metadata: p.metadata as unknown as ProjectMetadata | undefined,
           }));
-
-          // Use votingMode from API data
           const votingMode = round.votingMode ?? 0;
+          const walletLower = walletAddress?.toLowerCase() ?? null;
 
-          // Load project scores if in weighted mode (need RPC for this)
-          let projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
-          if (votingMode === 1) {
+          let userBadges: Badge[] = [];
+          if (walletAddress && publicProvider) {
             try {
-              const [addresses, scores, totalPossible] = await adapter.getWinnerWithScores(jurySC);
-              projectScores = {
-                addresses: addresses as string[],
-                scores: (scores as bigint[]).map(s => s.toString()),
-                totalPossible: (totalPossible as bigint).toString(),
-              };
+              userBadges = await loadBadgesFromContract(
+                round.pob,
+                chainId,
+                walletAddress,
+                publicProvider,
+                round.deployBlockHint,
+                round.round
+              );
             } catch (error) {
-              console.log('[previousRoundData] getWinnerWithScores not available or failed:', error);
+              console.warn(`[previousRoundData] Failed to load user badges for Round #${round.round}:`, error);
             }
           }
 
+          let canMint = false;
+          if (walletLower && userBadges.length === 0) {
+            const isSmt = round.smtVoters?.some(v => v.toLowerCase() === walletLower) ?? false;
+            const isDaoHic = round.daoHicVoters?.some(v => v.toLowerCase() === walletLower) ?? false;
+            const isProject = round.projects?.some(p => p.address.toLowerCase() === walletLower) ?? false;
+            canMint = isSmt || isDaoHic || isProject;
+          }
+
+          const projectScores: { addresses: string[]; scores: string[]; totalPossible: string } | null = null;
+
           const data: RoundData = {
-            startTime: Number(startTime) || null,
-            endTime: Number(endTime) || null,
+            startTime: null,
+            endTime: null,
             winner: round.winner!,
             entityVotes: {
               smt: round.entityVotes?.smt ?? (round.entityVotes as any)?.devRel ?? null,
@@ -147,6 +118,23 @@ export function createPreviousRoundDataStore(
           roundData.set(data);
           return;
         }
+
+        // Resolve adapter for this previous round when API data is incomplete.
+        const adapterConfig = await resolveAdapter(chainId, iterationId, round.round, publicProvider);
+        if (!adapterConfig) {
+          console.error(`[previousRoundData] Failed to resolve adapter for round ${round.round}`);
+          loading.set(false);
+          return;
+        }
+        const { adapter, jurySC } = adapterConfig;
+
+        console.log(`[previousRoundData] Loading data for Round #${round.round}`, {
+          jurySC,
+          pob: round.pob,
+          version: round.version,
+          walletAddress,
+          hasAPIData,
+        });
 
         // Fallback: fetch all data via RPC (API didn't provide full data)
         console.log(`[previousRoundData] Round #${round.round}: Falling back to RPC (no API data)`);
