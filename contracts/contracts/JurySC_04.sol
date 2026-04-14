@@ -13,7 +13,6 @@ import "./PoB_04.sol";
  */
 contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable {
 
-    uint256 public constant COMMUNITY_DEPOSIT = 30 ether;
     uint256 public constant PRECISION = 1 ether;
     uint256 public constant ENTITY_WEIGHT = PRECISION / 3;
     uint256 public constant MAX_IMPORT_BATCH_SIZE = 100;
@@ -507,6 +506,10 @@ contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
 
         uint256 batchId = _nextImportBatchId();
         emit ImportedHistorySealed(address(this), iteration, batchId, proofCid);
+    }
+
+    function setCommunityDonationRecipient(address payable newRecipient) external onlyOwner {
+        pob.setCommunityDonationRecipient(newRecipient);
     }
 
     function activate() external onlyOwner {

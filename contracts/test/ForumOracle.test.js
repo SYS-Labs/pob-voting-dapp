@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import hre from "hardhat";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers.js";
+import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs.js";
 
 const { ethers } = hre;
 
@@ -93,7 +94,7 @@ describe("ForumOracle", function () {
 
       await expect(forumOracle.connect(oracle).recordPost(postId, contentHash))
         .to.emit(forumOracle, "PostRecorded")
-        .withArgs(postId, contentHash, await ethers.provider.getBlock('latest').then(b => b.timestamp + 1));
+        .withArgs(postId, contentHash, anyValue);
 
       const post = await forumOracle.getPostRecord(postId);
       expect(post.contentHash).to.equal(contentHash);

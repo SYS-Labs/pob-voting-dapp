@@ -4,7 +4,7 @@ import hre from "hardhat";
 const { ethers, upgrades } = hre;
 
 describe("JurySC_04", function () {
-  const DEPOSIT = ethers.parseEther("30");
+  const DONATION = ethers.parseEther("5");
   const ITERATION = 7;
   const PROOF_CID = "bafybeigdyrzt4migrationproofcid0000000000000000000000001";
 
@@ -24,8 +24,15 @@ describe("JurySC_04", function () {
   beforeEach(async function () {
     [owner, smt1, daoHic1, daoHic2, project1, project2, project3, community1, community2] = await ethers.getSigners();
 
+    const PoBRenderer_01 = await ethers.getContractFactory("PoBRenderer_01");
+    const renderer = await PoBRenderer_01.deploy();
+    await renderer.waitForDeployment();
+
     const PoB_04 = await ethers.getContractFactory("PoB_04");
-    pob = await PoB_04.deploy("Proof of Builders v4", "POB4", ITERATION, owner.address);
+    pob = await upgrades.deployProxy(PoB_04, ["Proof of Builders v4", "POB4", ITERATION, owner.address, await renderer.getAddress(), owner.address], {
+      kind: "uups",
+      initializer: "initialize",
+    });
     await pob.waitForDeployment();
 
     const JurySC_04 = await ethers.getContractFactory("JurySC_04");
@@ -41,14 +48,15 @@ describe("JurySC_04", function () {
     await adapter.waitForDeployment();
   });
 
-  it("keeps the normal fresh-round voting flow intact", async function () {
+  it("keeps the normal fresh-round voting flow intact without a required community deposit", async function () {
     await jurySC.connect(owner).registerProject(project1.address);
     await jurySC.connect(owner).registerProject(project2.address);
     await jurySC.connect(owner).addSmtVoter(smt1.address);
     await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
     await jurySC.connect(owner).activate();
 
-    await pob.connect(community1).mint({ value: DEPOSIT });
+    await pob.connect(community1).mint();
+    expect(await pob.claimed(0)).to.be.true;
 
     await jurySC.connect(smt1).voteSmt(project1.address);
     await jurySC.connect(daoHic1).voteDaoHic(project1.address);
@@ -57,6 +65,43 @@ describe("JurySC_04", function () {
     const [winner, hasWinner] = await jurySC.getWinnerConsensus();
     expect(hasWinner).to.be.true;
     expect(winner).to.equal(project1.address);
+  });
+
+  it("forwards optional community donations to the configured recipient", async function () {
+    await jurySC.connect(owner).registerProject(project1.address);
+    await jurySC.connect(owner).addSmtVoter(smt1.address);
+    await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
+    await jurySC.connect(owner).activate();
+
+    const recipient = community2.address;
+    await jurySC.connect(owner).setCommunityDonationRecipient(recipient);
+    const before = await ethers.provider.getBalance(recipient);
+
+    await pob.connect(community1).mint({ value: DONATION });
+
+    const after = await ethers.provider.getBalance(recipient);
+    expect(after - before).to.equal(DONATION);
+    expect(await pob.claimed(0)).to.be.true;
+  });
+
+  it("returns base64 metadata with renderer-generated SVG art", async function () {
+    await jurySC.connect(owner).registerProject(project1.address);
+    await jurySC.connect(owner).addSmtVoter(smt1.address);
+    await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
+    await jurySC.connect(owner).activate();
+
+    await pob.connect(community1).mint();
+
+    const uri = await pob.tokenURI(0);
+    expect(uri.startsWith("data:application/json;base64,")).to.be.true;
+
+    const json = JSON.parse(Buffer.from(uri.slice("data:application/json;base64,".length), "base64").toString("utf8"));
+    expect(json.image.startsWith("data:image/svg+xml;base64,")).to.be.true;
+    expect(json.attributes).to.deep.include({ trait_type: "Role", value: "Community" });
+
+    const svg = Buffer.from(json.image.slice("data:image/svg+xml;base64,".length), "base64").toString("utf8");
+    expect(svg).to.contain("Community");
+    expect(svg).to.contain("Iteration #7");
   });
 
   it("imports historical state, exposes it through the adapter, and seals it", async function () {

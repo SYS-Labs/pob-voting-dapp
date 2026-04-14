@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "./IPoBRenderer.sol";
 
 interface IJurySC_04 {
     function registeredNFT() external view returns (address);
@@ -22,16 +26,18 @@ interface IJurySC_04 {
  * @notice Latest per-round badge contract used for fresh rounds and imported history.
  * @dev Keeps the existing badge model and adds explicit bulk import support for migration.
  */
-contract PoB_04 is ERC721, Ownable, ReentrancyGuard {
+contract PoB_04 is Initializable, ERC721Upgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using Strings for uint256;
 
-    uint256 public constant COMMUNITY_DEPOSIT = 30 ether;
     uint256 public constant MAX_IMPORT_BATCH_SIZE = 100;
 
     bool public mintingClosed;
     bool public importedHistorySealed;
     uint256 public nextId;
-    uint256 public immutable iteration;
+    uint256 public iteration;
+    IPoBRenderer public renderer;
+    address public rendererManager;
+    address payable public communityDonationRecipient;
 
     mapping(uint256 => string) public roleOf;
     mapping(address => bool) public hasMinted;
@@ -39,12 +45,15 @@ contract PoB_04 is ERC721, Ownable, ReentrancyGuard {
     mapping(uint256 => bool) public importedTokenId;
 
     event Claimed(uint256 indexed tokenId, address indexed participant);
+    event CommunityDonationForwarded(address indexed donor, address indexed recipient, uint256 amount);
+    event CommunityDonationRecipientUpdated(address indexed recipient);
+    event RendererUpdated(address indexed rendererAddress);
+    event RendererManagerUpdated(address indexed rendererManagerAddress);
     event MintingClosed();
     event ImportedHistorySealed();
 
     error MintingIsClosed();
     error AlreadyClaimed();
-    error InvalidAmount();
     error OnlyCommunityCanClaim();
     error VotingNotEnded();
     error TransferFailed();
@@ -61,19 +70,66 @@ contract PoB_04 is ERC721, Ownable, ReentrancyGuard {
     error InvalidImportRole();
     error BadgeImportConflict();
     error DuplicateBadgeOwner();
+    error RendererNotSet();
+    error InvalidRenderer();
+    error NotRendererManager();
+    error InvalidDonationRecipient();
 
-    constructor(
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         string memory name_,
         string memory symbol_,
         uint256 iteration_,
-        address initialOwner
-    ) ERC721(name_, symbol_) Ownable(initialOwner) {
+        address initialOwner,
+        address initialRenderer,
+        address payable initialCommunityDonationRecipient
+    ) public initializer {
+        __ERC721_init(name_, symbol_);
+        __Ownable_init(initialOwner);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
         iteration = iteration_;
+        if (initialCommunityDonationRecipient == address(0)) revert InvalidDonationRecipient();
+        communityDonationRecipient = initialCommunityDonationRecipient;
+        rendererManager = initialOwner;
+        _setRenderer(initialRenderer);
+
+        emit RendererManagerUpdated(initialOwner);
+        emit CommunityDonationRecipientUpdated(initialCommunityDonationRecipient);
     }
 
+    function setRenderer(address newRenderer) external {
+        _checkRendererManager();
+        _setRenderer(newRenderer);
+    }
+
+    function setRendererManager(address newRendererManager) external {
+        _checkRendererManager();
+        if (newRendererManager == address(0)) revert NotAuthorized();
+        rendererManager = newRendererManager;
+        emit RendererManagerUpdated(newRendererManager);
+    }
+
+    function setCommunityDonationRecipient(address payable newRecipient) external onlyOwner {
+        if (newRecipient == address(0)) revert InvalidDonationRecipient();
+        communityDonationRecipient = newRecipient;
+        emit CommunityDonationRecipientUpdated(newRecipient);
+    }
+
+    /**
+     * @notice Community minting with an optional donation.
+     * @dev Community voters can mint for free or attach any desired amount,
+     *      which is immediately forwarded to the configured donation recipient.
+     *      Live v4 community badges are marked as already settled because
+     *      there is no refundable deposit to claim later.
+     */
     function mint() external payable returns (uint256) {
         if (mintingClosed || importedHistorySealed) revert MintingIsClosed();
-        if (msg.value != COMMUNITY_DEPOSIT) revert InvalidAmount();
 
         address juryAddress = owner();
         if (juryAddress == address(0) || juryAddress.code.length == 0) revert InvalidJurySC();
@@ -84,8 +140,7 @@ contract PoB_04 is ERC721, Ownable, ReentrancyGuard {
         if (jury.isDaoHicVoter(msg.sender)) revert CannotMintAsDaoHic();
 
         if (hasMinted[msg.sender]) {
-            (bool success, ) = msg.sender.call{value: msg.value}("");
-            if (!success) revert TransferFailed();
+            _refund(msg.sender, msg.value);
             return 0;
         }
 
@@ -93,6 +148,9 @@ contract PoB_04 is ERC721, Ownable, ReentrancyGuard {
         uint256 tokenId = nextId++;
         _safeMint(msg.sender, tokenId);
         roleOf[tokenId] = "Community";
+        claimed[tokenId] = true;
+
+        _forwardDonation(msg.sender, msg.value);
 
         return tokenId;
     }
@@ -176,9 +234,6 @@ contract PoB_04 is ERC721, Ownable, ReentrancyGuard {
 
         claimed[tokenId] = true;
 
-        (bool success, ) = msg.sender.call{value: COMMUNITY_DEPOSIT}("");
-        if (!success) revert TransferFailed();
-
         emit Claimed(tokenId, msg.sender);
     }
 
@@ -261,17 +316,43 @@ contract PoB_04 is ERC721, Ownable, ReentrancyGuard {
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         _requireOwned(tokenId);
+        if (address(renderer) == address(0)) revert RendererNotSet();
 
         string memory role = roleOf[tokenId];
-        string memory name = string(abi.encodePacked("Proof of Builders #", iteration.toString(), " - ", role));
-        string memory description = string(abi.encodePacked("Participant in PoB Iteration #", iteration.toString()));
+        string memory svg = renderer.renderSVG(
+            PoBTemplateData({tokenId: tokenId, iteration: iteration, role: role})
+        );
 
         return string(
             abi.encodePacked(
-                '{"name":"', name, '",',
+                "data:application/json;base64,",
+                Base64.encode(bytes(_buildMetadata(tokenId, role, svg)))
+            )
+        );
+    }
+
+    function _buildMetadata(uint256 tokenId, string memory role, string memory svg) internal view returns (string memory) {
+        string memory name = string(abi.encodePacked("Proof of Builders #", iteration.toString(), " - ", role));
+        string memory description = string(abi.encodePacked("Participant in PoB Iteration #", iteration.toString()));
+        string memory image = string(abi.encodePacked("data:image/svg+xml;base64,", Base64.encode(bytes(svg))));
+
+        return string(
+            abi.encodePacked(
+                "{",
+                '"name":"', name, '",',
                 '"description":"', description, '",',
-                '"iteration":', iteration.toString(), ',',
-                '"role":"', role, '"}'
+                '"image":"', image, '",',
+                '"attributes":[', _buildAttributes(role), "]",
+                "}"
+            )
+        );
+    }
+
+    function _buildAttributes(string memory role) internal view returns (string memory) {
+        return string(
+            abi.encodePacked(
+                '{"trait_type":"Iteration","value":"', iteration.toString(), '"},',
+                '{"trait_type":"Role","value":"', role, '"}'
             )
         );
     }
@@ -307,6 +388,42 @@ contract PoB_04 is ERC721, Ownable, ReentrancyGuard {
 
     function _sameString(string memory a, string calldata b) internal pure returns (bool) {
         return keccak256(bytes(a)) == keccak256(bytes(b));
+    }
+
+    function _setRenderer(address rendererAddress) internal {
+        if (rendererAddress == address(0)) revert InvalidRenderer();
+        renderer = IPoBRenderer(rendererAddress);
+        emit RendererUpdated(rendererAddress);
+    }
+
+    function _checkRendererManager() internal view {
+        if (msg.sender != rendererManager && msg.sender != owner()) {
+            revert NotRendererManager();
+        }
+    }
+
+    function _forwardDonation(address donor, uint256 amount) internal {
+        if (amount == 0) {
+            return;
+        }
+
+        (bool success, ) = communityDonationRecipient.call{value: amount}("");
+        if (!success) revert TransferFailed();
+
+        emit CommunityDonationForwarded(donor, communityDonationRecipient, amount);
+    }
+
+    function _refund(address recipient, uint256 amount) internal {
+        if (amount == 0) {
+            return;
+        }
+
+        (bool success, ) = recipient.call{value: amount}("");
+        if (!success) revert TransferFailed();
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+        (newImplementation);
     }
 
     receive() external payable {}

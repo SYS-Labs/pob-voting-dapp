@@ -36,6 +36,9 @@
  *   "badges": [{"tokenId":0,"owner":"0x...","role":"Community","claimed":false}],
  *   "sealRegistryRound": true               // optional, default true when registryAddress exists
  * }
+ *
+ * Supported migration normalization:
+ * - legacy entity-0 / badge role label `DevRel` is translated to `SMT`
  */
 
 import hre from "hardhat";
@@ -48,6 +51,14 @@ function chunk(items, size) {
     chunks.push(items.slice(i, i + size));
   }
   return chunks;
+}
+
+function normalizeMigratedRole(role) {
+  return role === "DevRel" ? "SMT" : role;
+}
+
+function writeReport(reportFile, report) {
+  fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
 }
 
 async function main() {
@@ -65,7 +76,7 @@ async function main() {
   if (isLocal) {
     [signer] = await ethers.getSigners();
   } else {
-    if (!process.env.OWNER_PRIVATE_KEY) throw new Error("OWNER_PRIVATE_KEY not set in .env");
+    if (!process.env.OWNER_PRIVATE_KEY) throw new Error("OWNER_PRIVATE_KEY not set in environment");
     signer = new ethers.Wallet(process.env.OWNER_PRIVATE_KEY.trim(), ethers.provider);
   }
 
@@ -87,21 +98,34 @@ async function main() {
 
   const registryAddress = payload.registryAddress || process.env.POB_REGISTRY?.trim() || null;
   const sealRegistryRound = payload.sealRegistryRound ?? Boolean(registryAddress);
+  const reportFile = `import-v4-report-iteration-${payload.iteration}-round-${payload.roundId}-${Date.now()}.json`;
   const report = {
     importFile,
     network,
     chainId: currentChainId,
+    traceId: payload.traceId || `iteration-${payload.iteration}-round-${payload.roundId}`,
+    migrationBatchId: payload.migrationBatchId || null,
+    proofCid,
     juryAddress: payload.juryAddress,
     registryAddress,
     iteration: payload.iteration,
     roundId: payload.roundId,
+    startedAt: new Date().toISOString(),
     steps: [],
   };
+  writeReport(reportFile, report);
 
   const record = async (name, txPromiseFactory) => {
+    console.log(`[${report.traceId}] sending ${name}`);
     const tx = await txPromiseFactory();
+    console.log(`[${report.traceId}] ${name} tx: ${tx.hash}`);
     const receipt = await tx.wait();
-    report.steps.push({ name, txHash: receipt.hash, blockNumber: receipt.blockNumber });
+    if (receipt.status !== 1) {
+      throw new Error(`${name} failed in tx ${receipt.hash}`);
+    }
+    report.steps.push({ name, txHash: receipt.hash, blockNumber: receipt.blockNumber, status: receipt.status });
+    writeReport(reportFile, report);
+    console.log(`[${report.traceId}] confirmed ${name} at block ${receipt.blockNumber}`);
     return receipt;
   };
 
@@ -131,23 +155,24 @@ async function main() {
     if (payload.iterationMetadataCid) {
       await record("importIterationMetadata", () => registry.importIterationMetadata(currentChainId, payload.juryAddress, payload.iterationMetadataCid, proofCid));
     }
-
-    if (Array.isArray(payload.projectMetadata) && payload.projectMetadata.length > 0) {
-      for (const batch of chunk(payload.projectMetadata, 50)) {
-        await record("importProjectMetadataBatch", () => registry.importProjectMetadataBatch(
-          currentChainId,
-          payload.juryAddress,
-          batch.map((entry) => entry.project),
-          batch.map((entry) => entry.cid),
-          proofCid
-        ));
-      }
-    }
   }
 
   if (Array.isArray(payload.projects) && payload.projects.length > 0) {
     for (const batch of chunk(payload.projects, 100)) {
       await record("importProjectBatch", () => jury.importProjectBatch(batch, proofCid));
+    }
+  }
+
+  if (registryAddress && Array.isArray(payload.projectMetadata) && payload.projectMetadata.length > 0) {
+    const registry = await ethers.getContractAt("PoBRegistry", registryAddress, signer);
+    for (const batch of chunk(payload.projectMetadata, 50)) {
+      await record("importProjectMetadataBatch", () => registry.importProjectMetadataBatch(
+        currentChainId,
+        payload.juryAddress,
+        batch.map((entry) => entry.project),
+        batch.map((entry) => entry.cid),
+        proofCid
+      ));
     }
   }
 
@@ -214,7 +239,7 @@ async function main() {
       await record("importBadgeBatch", () => jury.importBadgeBatch(
         batch.map((entry) => entry.tokenId),
         batch.map((entry) => entry.owner),
-        batch.map((entry) => entry.role),
+        batch.map((entry) => normalizeMigratedRole(entry.role)),
         batch.map((entry) => Boolean(entry.claimed)),
         proofCid
       ));
@@ -228,8 +253,8 @@ async function main() {
     await record("sealImportedRound", () => registry.sealImportedRound(payload.iteration, payload.roundId, proofCid));
   }
 
-  const reportFile = `import-v4-report-iteration-${payload.iteration}-round-${payload.roundId}-${Date.now()}.json`;
-  fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
+  report.completedAt = new Date().toISOString();
+  writeReport(reportFile, report);
   console.log(`Saved import report to ${reportFile}`);
 }
 

@@ -16,6 +16,9 @@ const erc1967 = require(
   "@openzeppelin/upgrades-core/artifacts/@openzeppelin/contracts-v5/proxy/ERC1967/ERC1967Proxy.sol/ERC1967Proxy.json"
 );
 
+const RECEIPT_POLL_MS = 10_000;
+const RECEIPT_TIMEOUT_MS = 1_800_000;
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -24,9 +27,9 @@ function isPositiveInteger(value) {
   return Number.isInteger(value) && value > 0;
 }
 
-async function pollForReceipt(txHash, pollMs = 5000, timeoutMs = 1_800_000) {
+async function waitForConfirmation(txHash, pollMs = RECEIPT_POLL_MS, timeoutMs = RECEIPT_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
-  process.stdout.write(`  polling ${txHash}...`);
+  process.stdout.write(`  polling ${txHash} every ${pollMs / 1000}s...`);
   while (Date.now() < deadline) {
     await sleep(pollMs);
     const receipt = await ethers.provider.getTransactionReceipt(txHash);
@@ -47,7 +50,7 @@ let _gasPrice = null;
 async function sendRaw(signer, txData) {
   if (network.name === "localhost" || network.name === "hardhat") {
     const tx = await signer.sendTransaction(txData);
-    return await tx.wait();
+    return await waitForConfirmation(tx.hash);
   }
 
   if (_nonce === null) {
@@ -70,7 +73,7 @@ async function sendRaw(signer, txData) {
   const txHash = ethers.keccak256(signed);
   _nonce++;
   await ethers.provider.send("eth_sendRawTransaction", [signed]);
-  return await pollForReceipt(txHash);
+  return await waitForConfirmation(txHash);
 }
 
 async function deployContract(signer, factory, args = []) {
@@ -104,6 +107,7 @@ async function main() {
   const existingJuryProxy = process.env.JURY_ADDRESS?.trim();
   const existingJuryImpl = process.env.JURY_IMPL?.trim();
   const configuredRegistryProxy = process.env.POB_REGISTRY?.trim();
+  const initialDonationRecipient = process.env.POB_DONATION_RECIPIENT?.trim();
   const roundId = Number(process.env.ROUND_ID || "1");
   const expectedRoundVersion = 4;
   const reuseJuryDeployBlockHint = process.env.JURY_DEPLOY_BLOCK_HINT
@@ -132,6 +136,7 @@ async function main() {
     ["JURY_ADDRESS", existingJuryProxy],
     ["JURY_IMPL", existingJuryImpl],
     ["POB_REGISTRY", configuredRegistryProxy],
+    ["POB_DONATION_RECIPIENT", initialDonationRecipient],
   ]) {
     if (address && !ethers.isAddress(address)) {
       throw new Error(`${label} is not a valid address: ${address}`);
@@ -142,6 +147,9 @@ async function main() {
   const pobName = process.env.POB_NAME;
   const pobSymbol = process.env.POB_SYMBOL;
   const juryOwner = process.env.JURY_OWNER || deployer.address;
+  if (!existingPobAddress && !initialDonationRecipient) {
+    throw new Error("POB_DONATION_RECIPIENT is required when deploying a new PoB_04");
+  }
   const deployRegistry = process.env.DEPLOY_REGISTRY === "true";
 
   console.log("╔════════════════════════════════════════════╗");
@@ -161,8 +169,10 @@ async function main() {
   console.log("");
 
   let registryProxy;
+  let rendererAddress;
   let registryImpl;
   let pobAddress;
+  let pobImpl;
   let juryProxy;
   let juryImpl;
   let juryProxyDeployBlockHint = reuseJuryDeployBlockHint;
@@ -174,15 +184,22 @@ async function main() {
     const registryProxyDeployment = await deployUUPSProxy(deployer, PoBRegistry, registryImpl, [deployer.address]);
     registryProxy = registryProxyDeployment.proxyAddress;
   }
-
   let pob;
   if (existingPobAddress) {
     pobAddress = existingPobAddress;
     pob = await ethers.getContractAt("PoB_04", pobAddress);
+    pobImpl = await upgrades.erc1967.getImplementationAddress(pobAddress);
+    rendererAddress = await pob.renderer();
   } else {
+    const PoBRenderer_01 = await ethers.getContractFactory("PoBRenderer_01");
+    const rendererReceipt = await deployContract(deployer, PoBRenderer_01);
+    rendererAddress = rendererReceipt.contractAddress;
+
     const PoB_04 = await ethers.getContractFactory("PoB_04");
-    const receipt = await deployContract(deployer, PoB_04, [pobName, pobSymbol, iteration, deployer.address]);
-    pobAddress = receipt.contractAddress;
+    const implReceipt = await deployContract(deployer, PoB_04);
+    pobImpl = implReceipt.contractAddress;
+    const pobProxyDeployment = await deployUUPSProxy(deployer, PoB_04, pobImpl, [pobName, pobSymbol, iteration, deployer.address, rendererAddress, initialDonationRecipient]);
+    pobAddress = pobProxyDeployment.proxyAddress;
     pob = await ethers.getContractAt("PoB_04", pobAddress);
   }
 
@@ -279,7 +296,10 @@ async function main() {
     console.log("PoBRegistry impl: ", registryImpl);
     console.log("PoBRegistry proxy:", registryProxy);
   }
-  console.log("PoB_04:           ", pobAddress);
+  console.log("PoBRenderer_01:  ", rendererAddress);
+  console.log("Donation treasury:", existingPobAddress ? await pob.communityDonationRecipient() : initialDonationRecipient);
+  console.log("PoB_04 impl:     ", pobImpl);
+  console.log("PoB_04 proxy:    ", pobAddress);
   console.log("JurySC_04 impl:   ", juryImpl);
   console.log("JurySC_04 proxy:  ", juryProxy);
   console.log("Admin:            ", juryOwner);
@@ -292,7 +312,12 @@ async function main() {
     roundId,
     timestamp: new Date().toISOString(),
     contracts: {
-      PoB_04: pobAddress,
+      PoBRenderer_01: rendererAddress,
+      communityDonationRecipient: existingPobAddress ? await pob.communityDonationRecipient() : initialDonationRecipient,
+      PoB_04: {
+        proxy: pobAddress,
+        implementation: pobImpl,
+      },
       JurySC_04: {
         proxy: juryProxy,
         implementation: juryImpl,
