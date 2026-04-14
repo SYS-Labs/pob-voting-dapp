@@ -11,6 +11,13 @@
   import { createRegistryStatusStore } from '~/stores/registryStatus';
   import { createProjectMetadataManager } from '~/stores/projectMetadataManager';
 
+  interface ProjectContext {
+    project: Project;
+    jurySC: string;
+    round: number | null;
+    historical: boolean;
+  }
+
   interface Props {
     projectAddress: string;
     currentIteration: Iteration | null;
@@ -62,14 +69,21 @@
   let sidebarVisible = $state(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true);
   let showVoteModal = $state(false);
 
-  // Find the project - check current round first, then previous rounds
-  const project = $derived.by(() => {
+  // Find the project and the round context it belongs to
+  const projectContext = $derived.by((): ProjectContext | null => {
     if (!projectAddress) return null;
     const addrLower = projectAddress.toLowerCase();
 
     // Check current round projects
     const currentRoundProject = projects.find(p => p.address.toLowerCase() === addrLower);
-    if (currentRoundProject) return currentRoundProject;
+    if (currentRoundProject && currentIteration?.jurySC) {
+      return {
+        project: currentRoundProject,
+        jurySC: currentIteration.jurySC,
+        round: currentIteration.round ?? null,
+        historical: false,
+      };
+    }
 
     // Check previous rounds if not found
     if (currentIteration?.prev_rounds) {
@@ -78,9 +92,14 @@
           const prevProject = round.projects.find(p => p.address.toLowerCase() === addrLower);
           if (prevProject) {
             return {
-              id: 0,
-              address: prevProject.address,
-              metadata: prevProject.metadata as unknown as Project['metadata'],
+              project: {
+                id: 0,
+                address: prevProject.address,
+                metadata: prevProject.metadata as unknown as Project['metadata'],
+              },
+              jurySC: round.jurySC,
+              round: round.round,
+              historical: true,
             };
           }
         }
@@ -90,9 +109,13 @@
     return null;
   });
 
+  const project = $derived(projectContext?.project ?? null);
+  const projectRound = $derived(projectContext?.round ?? currentIteration?.round ?? null);
+  const isHistoricalProjectView = $derived(projectContext?.historical ?? false);
+
   // Use iteration's chainId for registry status
   const iterationChainId = $derived(currentIteration?.chainId ?? null);
-  const contractAddress = $derived(currentIteration?.jurySC ?? null);
+  const contractAddress = $derived(projectContext?.jurySC ?? currentIteration?.jurySC ?? null);
 
   // Registry status store
   let registryStatusManager = $state<ReturnType<typeof createRegistryStatusStore> | null>(null);
@@ -255,6 +278,7 @@
 
   // Can vote (can always change vote during active voting)
   const canVote = $derived(
+    !isHistoricalProjectView &&
     votingRole !== null &&
     statusFlags.isActive &&
     !statusFlags.votingEnded
@@ -287,7 +311,6 @@
 
   // Get network-specific values
   const network = $derived(chainId ? NETWORKS[chainId] : null);
-  const mintAmount = $derived(network?.mintAmount ?? '30');
   const tokenSymbol = $derived(network?.tokenSymbol ?? 'TSYS');
 
   // Determine header role tag
@@ -301,12 +324,20 @@
   });
 
   const hasJuryRole = $derived(roles.smt || roles.dao_hic || roles.community);
-  const canBecomeCommunity = $derived(!roles.project && !roles.smt && !roles.dao_hic && !roles.community && !isOwner);
+  const canBecomeCommunity = $derived(
+    !isHistoricalProjectView &&
+    !roles.project &&
+    !roles.smt &&
+    !roles.dao_hic &&
+    !roles.community &&
+    !isOwner
+  );
   const hasSmtBadge = $derived(currentIterationBadges?.some(badge => badge.role === 'smt') ?? false);
   const hasDaoHicBadge = $derived(currentIterationBadges?.some(badge => badge.role === 'dao_hic') ?? false);
 
   const canEditMetadata = $derived.by(() => {
     if (!project || !walletAddress || !registryAvailable) return false;
+    if (isHistoricalProjectView) return false;
     if (initializationComplete === null) return false;
 
     const walletLower = walletAddress.toLowerCase();
@@ -358,9 +389,9 @@
   <!-- Main content -->
   <div class="pob-stack lg:pr-4" style={!sidebarVisible ? 'grid-column: 1 / -1;' : ''}>
     <!-- Back link -->
-    <Link
-      to={`/iteration/${currentIteration?.iteration ?? 1}`}
-      class="text-sm text-[var(--pob-text-muted)] hover:text-[var(--pob-primary)]"
+      <Link
+        to={`/iteration/${currentIteration?.iteration ?? 1}`}
+        class="text-sm text-[var(--pob-text-muted)] hover:text-[var(--pob-primary)]"
       style="display: inline-flex; align-items: center; gap: 0.5rem;"
     >
       ← Back to Projects
@@ -375,6 +406,11 @@
             <p class="pob-mono text-xs text-[var(--pob-text-muted)]">
               {formatAddress(project.address)}
             </p>
+            {#if isHistoricalProjectView && projectRound}
+              <p class="mt-2 text-xs text-[var(--pob-text-muted)]">
+                Historical project from Round #{projectRound}. Voting and metadata edits are read-only here.
+              </p>
+            {/if}
             {#if resolvedMetadata?.app_url}
               <a
                 href={resolvedMetadata.app_url}
@@ -523,7 +559,7 @@
   {#if sidebarVisible}
     <div class="pob-stack lg:pl-4">
       <!-- Jury Panel - Vote for this specific project -->
-      {#if (hasJuryRole || canBecomeCommunity) && !isOwner}
+      {#if !isHistoricalProjectView && (hasJuryRole || canBecomeCommunity) && !isOwner}
         <section class="pob-pane">
           <div class="pob-pane__heading">
             <h3 class="pob-pane__title">Jury Panel</h3>
@@ -651,6 +687,17 @@
         </section>
       {/if}
 
+      {#if isHistoricalProjectView}
+        <section class="pob-pane">
+          <div class="pob-pane__heading">
+            <h3 class="pob-pane__title">Historical Round</h3>
+          </div>
+          <p class="text-sm text-[var(--pob-text-muted)]">
+            This project belongs to Round #{projectRound}. Historical project pages are read-only.
+          </p>
+        </section>
+      {/if}
+
       <!-- Owner message -->
       {#if isOwner}
         <section class="pob-pane">
@@ -678,7 +725,7 @@
   {/if}
 
   <!-- Mobile toggle for sidebar -->
-  {#if !sidebarVisible && (hasJuryRole || canBecomeCommunity) && !isOwner}
+  {#if !sidebarVisible && !isHistoricalProjectView && (hasJuryRole || canBecomeCommunity) && !isOwner}
     <button
       type="button"
       onclick={() => sidebarVisible = true}
@@ -703,7 +750,6 @@
       {executeMint}
       {refreshBadges}
       isPending={pendingAction !== null}
-      {mintAmount}
       {tokenSymbol}
     />
   {/if}

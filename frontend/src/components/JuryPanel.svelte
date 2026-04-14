@@ -50,11 +50,9 @@
 
   const hasJuryRole = $derived(roles.smt || roles.dao_hic || roles.community);
   const canBecomeCommunity = $derived(!roles.project && !roles.smt && !roles.dao_hic && !roles.community);
-
   const showPanel = $derived(hasJuryRole || canBecomeCommunity);
 
   const network = $derived(chainId ? NETWORKS[chainId] : null);
-  const mintAmount = $derived(network?.mintAmount ?? '30');
   const tokenSymbol = $derived(network?.tokenSymbol ?? 'TSYS');
 
   const headerRoleTag = $derived.by(() => {
@@ -78,7 +76,6 @@
     </div>
 
     <div class="space-y-3">
-      <!-- SMT Role (v003) -->
       {#if roles.smt}
         <p class="text-sm text-[var(--pob-text-muted)]">
           As an SMT voter, you are part of the SMT entity. Cast your vote during the active voting period. The entity's decision is determined by majority consensus.
@@ -95,7 +92,6 @@
         </p>
       {/if}
 
-      <!-- DAO HIC Role -->
       {#if roles.dao_hic}
         <p class="text-sm text-[var(--pob-text-muted)]">
           As a DAO HIC voter, you are part of the high-integrity council. Cast your vote during the active voting period. The council's decision is determined by majority consensus.
@@ -112,11 +108,10 @@
         </p>
       {/if}
 
-      <!-- Community Role -->
       {#if roles.community || canBecomeCommunity}
         {#if communityBadges.length === 0}
           <p class="text-sm text-[var(--pob-text-muted)]">
-            As a community juror, mint your badge ({mintAmount} {tokenSymbol} deposit) during the active voting period to participate. After voting ends, you can reclaim your deposit.
+            As a community juror, mint your badge during the active voting period to participate. You can mint for free or optionally donate any desired amount of {tokenSymbol}, which is forwarded directly to the PoB donation address.
           </p>
         {:else if roles.community && !communityBadges.some(b => b.hasVoted)}
           <p class="text-sm text-[var(--pob-text-muted)]">

@@ -241,7 +241,7 @@
   });
 
   const supportsMultipleSmtVoters = $derived(
-    (resolvedWriteVersion ?? currentIteration?.version ?? '002') === '003'
+    Number(resolvedWriteVersion ?? currentIteration?.version ?? '002') >= 3
   );
 </script>
 

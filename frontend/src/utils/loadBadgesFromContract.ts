@@ -2,6 +2,7 @@ import { Contract, ethers, Interface, JsonRpcProvider } from 'ethers';
 import type { ParticipantRole } from '~/interfaces';
 import { PoB_01ABI } from '~/abis';
 import { cachedPromiseAll } from '~/utils/cachedPromiseAll';
+import { normalizeParticipantRole } from '~/utils/participantRoles';
 
 export interface Badge {
   tokenId: string;
@@ -65,9 +66,15 @@ export async function loadBadgesFromContract(
         ]);
 
         if (owner.toLowerCase() === walletAddress.toLowerCase()) {
+          const normalizedRole = normalizeParticipantRole(String(role));
+          if (!normalizedRole) {
+            console.warn(`[loadBadgesFromContract] Skipping badge ${tokenId} with unknown role`, role);
+            continue;
+          }
+
           badges.push({
             tokenId,
-            role: role.toLowerCase() as ParticipantRole,
+            role: normalizedRole,
             claimed,
             iteration: iterationNumber,
             round,

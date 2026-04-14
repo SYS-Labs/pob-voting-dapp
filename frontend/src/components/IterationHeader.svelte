@@ -31,7 +31,7 @@
     pendingAction?: string | null;
     roles?: RoleStatuses;
     badges?: Badge[];
-    executeMint?: (role: ParticipantRole, refreshCallback?: () => Promise<void>) => Promise<void>;
+    executeMint?: (role: ParticipantRole, refreshCallback?: () => Promise<void>, communityAmount?: string) => Promise<void>;
     refreshBadges?: () => Promise<void>;
     votingMode?: number;
     projects?: { id: number; address: string; metadata?: any }[];

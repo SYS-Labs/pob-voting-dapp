@@ -14,7 +14,6 @@
     communityBadges: CommunityBadge[];
     walletAddress: string | null;
     statusFlags: { isActive: boolean; votingEnded: boolean };
-    onClaim: (tokenId: string) => void;
     pendingAction: string | null;
     voteCounts?: { smt: number; daoHic: number; community: number };
     smtVoters?: string[];
@@ -27,7 +26,6 @@
     communityBadges,
     walletAddress,
     statusFlags,
-    onClaim,
     pendingAction,
     voteCounts,
     smtVoters = [],
@@ -65,19 +63,6 @@
             <div class="space-y-3">
               <BadgeCard {badge} />
 
-              <!-- Claim button for community badges -->
-              {#if communityBadge?.claimed === false && statusFlags.votingEnded}
-                <button
-                  type="button"
-                  onclick={() => onClaim(communityBadge.tokenId)}
-                  disabled={pendingAction !== null}
-                  class="pob-button w-full justify-center text-xs"
-                >
-                  {pendingAction === `Claim deposit for token ${communityBadge.tokenId}`
-                    ? 'Claiming\u2026'
-                    : 'Claim deposit'}
-                </button>
-              {/if}
             </div>
           {/each}
         {/if}

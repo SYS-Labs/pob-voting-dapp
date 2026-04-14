@@ -109,15 +109,6 @@
     await runTransaction(label, tx, refreshBadges);
   }
 
-  async function handleClaimDeposit(tokenId: string) {
-    if (!signer) return;
-    const writer = createWriteDispatcher(round, signer);
-    await runTransaction(
-      `Claim deposit for token ${tokenId} (Round ${round.round})`,
-      () => writer.claim(tokenId),
-      refreshBadges,
-    );
-  }
 
   function handleCardClick() {
     if (isExpanded) return;
@@ -137,10 +128,6 @@
     void handleMintBadge();
   }
 
-  function handleClaimClick(e: MouseEvent, tokenId: string) {
-    e.stopPropagation();
-    void handleClaimDeposit(tokenId);
-  }
 </script>
 
 <section
@@ -172,16 +159,6 @@
     <div class="flex items-center gap-2">
       {#if walletAddress && hasKnownBadge}
         {@const communityBadge = userBadges.find(b => b.role === 'community')}
-        {#if isExpanded && communityBadge && !communityBadge.claimed}
-          <button
-            type="button"
-            onclick={(e) => handleClaimClick(e, communityBadge.tokenId)}
-            disabled={pendingAction !== null}
-            class="pob-button text-xs"
-          >
-            {pendingAction?.includes(communityBadge.tokenId) ? 'Claiming…' : 'Claim deposit'}
-          </button>
-        {/if}
         <span class="pob-pill pob-pill--active">Badge minted</span>
       {:else if canMintEagerly}
         <button

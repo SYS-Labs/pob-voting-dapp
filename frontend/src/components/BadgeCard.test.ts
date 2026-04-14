@@ -31,10 +31,10 @@ describe('BadgeCard', () => {
     expect(getByText('Community')).toBeTruthy();
   });
 
-  it('renders role label for devrel', () => {
-    const devrelBadge: Badge = { ...mockBadge, role: 'devrel' };
-    const { getByText } = render(BadgeCard, { props: { badge: devrelBadge } });
-    expect(getByText('DevRel')).toBeTruthy();
+  it('renders role label for smt', () => {
+    const smtBadge: Badge = { ...mockBadge, role: 'smt' };
+    const { getByText } = render(BadgeCard, { props: { badge: smtBadge } });
+    expect(getByText('SMT')).toBeTruthy();
   });
 
   it('renders role label for dao_hic', () => {

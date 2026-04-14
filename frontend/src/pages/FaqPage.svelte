@@ -96,7 +96,7 @@
             <p class="font-semibold text-white text-base">Who votes on projects?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Three entities vote: DAO HIC Committee (collective vote), Community (minting voting NFTs by locking a {tokenSymbol} deposit during the voting period),
+                Three entities vote: DAO HIC Committee (collective vote), Community (minting voting NFTs during the voting period, with free minting and an optional donation),
                 and SMT. All entities have equal weight (⅓ each), and all votes are recorded on-chain.
               </p>
             </div>
@@ -108,9 +108,8 @@
             <p class="font-semibold text-white text-base">How does voting work?</p>
             <div class="text-sm text-[var(--pob-text-muted)]">
               <p>
-                Each voting round lasts 48 hours. Community members lock a {tokenSymbol} deposit to mint a voting NFT during the active period.
-                After voting ends, they can claim their full deposit back. Results are determined automatically by the smart contract.
-                If no winner is determined, a new 48-hour round begins.
+                Each voting round lasts 48 hours. Community members mint a voting NFT during the active period. On v4 rounds they can mint for free or optionally donate any desired amount of {tokenSymbol}, which is forwarded directly by the badge contract.
+                Results are determined automatically by the smart contract. If no winner is determined, a new 48-hour round begins.
               </p>
             </div>
           </div>

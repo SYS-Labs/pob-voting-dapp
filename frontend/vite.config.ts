@@ -3,6 +3,14 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
+const devAllowedHost = process.env.VITE_DEV_ALLOWED_HOST?.trim();
+const allowedHosts = [
+  'pob.local',
+  '.pob.local',
+  'localhost',
+  ...(devAllowedHost ? [devAllowedHost] : []),
+];
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [svelte(), tailwindcss()],
@@ -14,6 +22,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    allowedHosts,
   },
   preview: {
     host: '0.0.0.0',

@@ -26,7 +26,7 @@
   $effect(() => { fullName = currentName; });
 
   let canSubmit: boolean = $derived(
-    fullName.trim().length > 0 && signer !== null && $pendingAction === null && confirmed === true
+    fullName.trim().length > 0 && signer !== null && $pendingAction === null && confirmed
   );
 
   async function handleSubmit() {

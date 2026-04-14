@@ -6,6 +6,7 @@ import { batchGetProjectMetadataCIDs } from '~/utils/registry';
 import { resolveAdapter } from '~/utils/adapterResolver';
 import { metadataAPI } from '~/utils/metadata-api';
 import { iterationsAPI, type IterationSnapshot } from '~/utils/iterations-api';
+import { normalizeParticipantRole } from '~/utils/participantRoles';
 import { getTransactionContext } from './registry';
 import type {
   Badge,
@@ -653,9 +654,15 @@ async function loadBadgesMinimal(
 
       const badges: Badge[] = [];
       for (let i = 0; i < tokenIds.length; i++) {
+        const normalizedRole = normalizeParticipantRole(String(roles[i]));
+        if (!normalizedRole) {
+          console.warn(`[loadBadgesMinimal] Skipping badge ${tokenIds[i]} with unknown role`, roles[i]);
+          continue;
+        }
+
         badges.push({
           tokenId: tokenIds[i],
-          role: roles[i].toLowerCase() as ParticipantRole,
+          role: normalizedRole,
           iteration: contract.iteration,
           round: contract.round,
           claimed: claimedStatuses[i],

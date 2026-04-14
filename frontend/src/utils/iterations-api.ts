@@ -24,6 +24,7 @@ export interface PreviousRoundSnapshot {
   winner: { projectAddress: string | null; hasWinner: boolean };
   entityVotes: { devRel: string | null; daoHic: string | null; community: string | null };
   devRelAccount: string | null;
+  smtVoters: string[];
   daoHicVoters: string[];
   daoHicIndividualVotes: Record<string, string>;
   projects: ProjectSnapshot[];
@@ -33,6 +34,7 @@ export interface IterationSnapshot {
   iterationId: number;
   chainId: number;
   round: number;
+  version: string;
   registryAddress: string;
   pobAddress: string;
   juryAddress: string;

@@ -10,6 +10,7 @@
   import BadgePanel from '~/components/BadgePanel.svelte';
   import DateTimePanel from '~/components/DateTimePanel.svelte';
   import ToolboxCard from '~/components/ToolboxCard.svelte';
+  import ProgressSpinner from '~/components/ProgressSpinner.svelte';
   import Modal from '~/components/Modal.svelte';
   import VoteConfirmationModal from '~/components/VoteConfirmationModal.svelte';
   import PoBRegistryABI from '~/abis/PoBRegistry.json';
@@ -93,9 +94,8 @@
     signer: any;
     publicProvider: any;
     getProjectLabel: (address: string | null) => string | null;
-    executeMint: (role: ParticipantRole, refreshCallback?: () => Promise<void>) => Promise<void>;
+    executeMint: (role: ParticipantRole, refreshCallback?: () => Promise<void>, communityAmount?: string) => Promise<void>;
     executeVote: (role: ParticipantRole, projectAddress: string, tokenId?: string, refreshCallback?: () => Promise<void>) => void;
-    executeClaim: (tokenId: string) => void;
     handleToggleAdminSection: (sectionId: string) => void;
     runTransaction: (label: string, txFn: () => Promise<any>, refreshFn?: () => Promise<void>) => Promise<boolean>;
     refreshVotingData: () => Promise<void>;
@@ -145,7 +145,6 @@
     getProjectLabel,
     executeMint,
     executeVote,
-    executeClaim,
     handleToggleAdminSection,
     runTransaction,
     refreshVotingData,
@@ -368,6 +367,9 @@
       return;
     }
 
+    const target = roundSetupTarget;
+    const versionId = detectedRoundVersionId;
+
     roundSetupConfirming = true;
     roundSetupError = null;
 
@@ -375,7 +377,7 @@
       const registry = new Contract(registryAddress, PoBRegistryABI, signer);
       const success = await runTransaction(
         'Finish Round Setup',
-        () => registry.setRoundVersion(roundSetupTarget.iterationId, roundSetupTarget.roundId, detectedRoundVersionId),
+        () => registry.setRoundVersion(target.iterationId, target.roundId, versionId),
         refreshVotingData,
       );
 
@@ -444,9 +446,6 @@
     )
   );
 
-  function handleClaim(tokenId: string) {
-    executeClaim(tokenId);
-  }
 
   async function handleVote(role: ParticipantRole, projectAddress: string, tokenId?: string) {
     await executeVote(role, projectAddress, tokenId, refreshVotingData);
@@ -719,7 +718,6 @@
         communityBadges={currentIterationCommunityBadges}
         {walletAddress}
         {statusFlags}
-        onClaim={handleClaim}
         {pendingAction}
         {voteCounts}
         {smtVoters}
@@ -861,7 +859,6 @@
           : 'community'}
 
   {@const network = chainId ? NETWORKS[chainId] : null}
-  {@const mintAmount = network?.mintAmount ?? '30'}
   {@const tokenSymbol = network?.tokenSymbol ?? 'TSYS'}
 
   {@const projectAddress = pendingVote.project.address.toLowerCase()}
@@ -884,7 +881,6 @@
     hasBadge={currentIterationBadges.length > 0}
     {executeMint}
     {refreshBadges}
-    {mintAmount}
     {tokenSymbol}
     isPending={pendingAction !== null}
     {pendingAction}

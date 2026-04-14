@@ -68,7 +68,6 @@
     runTransaction,
     executeMint,
     executeVote,
-    executeClaim,
     setVotingModeAction,
   } from '~/stores/transactions';
   import {
@@ -552,7 +551,6 @@
             {getProjectLabel}
             {executeMint}
             {executeVote}
-            {executeClaim}
             handleToggleAdminSection={toggleAdminSection}
             {runTransaction}
             {refreshVotingData}

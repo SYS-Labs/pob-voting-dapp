@@ -48,8 +48,8 @@ function getVersionCacheKey(target: WriteTarget): string {
  * Probe the jury contract so write actions route correctly on v3 rounds.
  */
 export async function resolveWriteVersion(target: WriteTarget, signer: Signer): Promise<string> {
-  if (target.version === V3_WRITE_VERSION) {
-    return V3_WRITE_VERSION;
+  if (Number(target.version) >= 3) {
+    return target.version;
   }
 
   const cacheKey = getVersionCacheKey(target);
@@ -94,7 +94,7 @@ export interface WriteDispatcher {
   voteCommunity(tokenId: string, projectAddress: string): Promise<ContractTransactionResponse>;
 
   // Minting (targets pob)
-  mintCommunity(value: bigint): Promise<ContractTransactionResponse>;
+  mintCommunity(value?: bigint): Promise<ContractTransactionResponse>;
   mintSmt(): Promise<ContractTransactionResponse>;
   mintDaoHic(): Promise<ContractTransactionResponse>;
   mintProject(): Promise<ContractTransactionResponse>;
@@ -131,7 +131,7 @@ export function createWriteDispatcher(target: WriteTarget, signer: Signer): Writ
     voteCommunity: (tokenId, project) => jury.voteCommunity(tokenId, project),
 
     // Minting
-    mintCommunity: (value) => pob.mint({ value }),
+    mintCommunity: (value) => value !== undefined && value > 0n ? pob.mint({ value }) : pob.mint(),
     mintSmt:       async () => pob[resolve('mintSmt', await getVersion())](),
     mintDaoHic:    () => pob.mintDaoHic(),
     mintProject:   () => pob.mintProject(),

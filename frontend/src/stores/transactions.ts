@@ -2,7 +2,6 @@ import { writable, derived, get } from 'svelte/store';
 import { ethers } from 'ethers';
 import type { Iteration, ParticipantRole } from '~/interfaces';
 import { ROLE_LABELS } from '~/constants/roles';
-import { NETWORKS } from '~/constants/networks';
 import { getTransactionContext } from './registry';
 import { createWriteDispatcher } from '~/utils/writeDispatch';
 
@@ -118,8 +117,6 @@ export async function runTransaction(
         } else {
           errorMessage = txError.message;
         }
-      } else {
-        errorMessage = txError.message;
       }
     }
 
@@ -131,7 +128,8 @@ export async function runTransaction(
 
 export async function executeMint(
   role: ParticipantRole,
-  refreshCallback?: () => Promise<void>
+  refreshCallback?: () => Promise<void>,
+  communityAmount?: string
 ): Promise<void> {
   const ctx = getTransactionContext();
   requireWallet(ctx.walletAddress, ctx.correctNetwork);
@@ -142,14 +140,27 @@ export async function executeMint(
   let tx: () => Promise<unknown>;
   let label: string;
 
-  const network = ctx.chainId ? NETWORKS[ctx.chainId] : null;
-  const mintAmount = network?.mintAmount ?? '30';
-
   switch (role) {
-    case 'community':
-      tx = () => writer.mintCommunity(ethers.parseEther(mintAmount));
+    case 'community': {
+      const rawAmount = communityAmount?.trim() ?? '';
+      let donationValue = 0n;
+
+      if (rawAmount !== '') {
+        if (rawAmount.startsWith('-')) {
+          throw new Error('Donation amount cannot be negative.');
+        }
+
+        try {
+          donationValue = ethers.parseEther(rawAmount);
+        } catch {
+          throw new Error('Enter a valid donation amount or leave it blank.');
+        }
+      }
+
+      tx = () => writer.mintCommunity(donationValue);
       label = 'Mint Community Badge';
       break;
+    }
     case 'smt':
       tx = () => writer.mintSmt();
       label = 'Mint SMT Badge';
@@ -203,19 +214,6 @@ export async function executeVote(
   await runTransaction(label, tx, refreshCallback);
 }
 
-export async function executeClaim(
-  tokenId: string
-): Promise<{ label: string; tx: () => Promise<unknown> } | undefined> {
-  const ctx = getTransactionContext();
-  requireWallet(ctx.walletAddress, ctx.correctNetwork);
-  if (!ctx.signer || !ctx.selectedIteration) return;
-
-  const writer = createWriteDispatcher(ctx.selectedIteration, ctx.signer);
-  return {
-    label: `Claim deposit for token ${tokenId}`,
-    tx: () => writer.claim(tokenId)
-  };
-}
 
 export async function setVotingModeAction(
   mode: number,

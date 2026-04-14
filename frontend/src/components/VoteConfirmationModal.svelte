@@ -12,9 +12,8 @@
     votingRole: ParticipantRole | null;
     hasVotedForProject: boolean;
     hasBadge: boolean;
-    executeMint?: (role: ParticipantRole, refreshCallback?: () => Promise<void>) => Promise<void>;
+    executeMint?: (role: ParticipantRole, refreshCallback?: () => Promise<void>, communityAmount?: string) => Promise<void>;
     refreshBadges?: () => Promise<void>;
-    mintAmount?: string;
     tokenSymbol?: string;
     isPending: boolean;
     pendingAction?: string | null;
@@ -31,7 +30,6 @@
     hasBadge,
     executeMint,
     refreshBadges,
-    mintAmount = '30',
     tokenSymbol = 'TSYS',
     isPending,
     pendingAction,
@@ -44,9 +42,17 @@
       : null
   );
 
+  let donationAmount = $state('');
+
+  $effect(() => {
+    if (!isOpen) {
+      donationAmount = '';
+    }
+  });
+
   async function handleMint() {
     if (executeMint) {
-      await executeMint('community', refreshBadges);
+      await executeMint('community', refreshBadges, donationAmount);
     }
   }
 </script>
@@ -62,12 +68,25 @@
   {#snippet children()}
     <div class="pob-pane">
       {#if showMintFlow}
-        <!-- Community without badge - mint flow -->
         <h2 class="pob-pane__title mb-3">Mint Badge to Vote</h2>
         <p class="text-sm text-[var(--pob-text-muted)] mb-4">
-          As a community juror, you must mint a badge to participate in voting.
-          The badge requires a {mintAmount} {tokenSymbol} deposit, which you can reclaim after voting ends.
+          As a community juror, you must mint a badge to participate in voting. You can mint for free or optionally donate any desired amount of {tokenSymbol}. Any donation is forwarded directly to the configured PoB donation address.
         </p>
+
+        <label class="pob-fieldset mb-4 block">
+          <span class="pob-label">Optional donation amount ({tokenSymbol})</span>
+          <input
+            type="number"
+            min="0"
+            step="any"
+            inputmode="decimal"
+            bind:value={donationAmount}
+            class="pob-input mt-2 w-full"
+            placeholder="0"
+            disabled={isPending}
+          />
+          <p class="mt-2 text-xs text-[var(--pob-text-muted)]">Leave this blank to mint for free.</p>
+        </label>
 
         <div class="pob-fieldset mb-4">
           <span class="pob-label">Project you want to vote for</span>
@@ -99,12 +118,17 @@
               disabled={isPending}
               class="pob-button flex-1 justify-center"
             >
-              {pendingAction === 'Mint Community Badge' ? 'Minting...' : `Mint Badge (${mintAmount} ${tokenSymbol})`}
+              {#if pendingAction === 'Mint Community Badge'}
+                Minting...
+              {:else if donationAmount.trim() !== ''}
+                Mint Badge + Donate {donationAmount.trim()} {tokenSymbol}
+              {:else}
+                Mint Badge for Free
+              {/if}
             </button>
           {/if}
         </div>
       {:else}
-        <!-- Normal vote confirmation -->
         <h2 class="pob-pane__title mb-3">
           {hasVotedForProject ? 'Change Vote' : 'Confirm Vote'}
         </h2>
