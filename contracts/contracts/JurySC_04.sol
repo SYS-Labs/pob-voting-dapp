@@ -16,6 +16,8 @@ contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     uint256 public constant PRECISION = 1 ether;
     uint256 public constant ENTITY_WEIGHT = PRECISION / 3;
     uint256 public constant MAX_IMPORT_BATCH_SIZE = 100;
+    uint64 public constant DEFAULT_VOTING_DURATION_HOURS = 48;
+    uint64 public constant MAX_VOTING_DURATION_HOURS = type(uint64).max / 3600;
 
     enum VotingMode {
         CONSENSUS,
@@ -59,6 +61,7 @@ contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     bool public importedHistorySealed;
     bool public importedRoundStateSet;
     uint256 public importBatchCount;
+    uint64 public votingDurationHours;
 
     error NotActive();
     error NotOwner();
@@ -92,6 +95,7 @@ contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     error ImportConflict();
     error ImportedHistoryAlreadySealed();
     error InvalidVotingModeValue();
+    error InvalidVotingDurationHours();
 
     event ProjectRegistered(uint256 indexed projectId, address indexed projectAddress);
     event ProjectRemoved(address indexed projectAddress);
@@ -106,6 +110,7 @@ contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
     event ContractLockedForHistory(address indexed winningProject);
     event ClosedManually(uint64 timestamp);
     event VotingModeChanged(VotingMode indexed oldMode, VotingMode indexed newMode);
+    event VotingDurationChanged(uint64 oldDurationHours, uint64 newDurationHours);
     event MigrationModeEnabled(address indexed operator);
     event ImportedProjects(uint256 indexed iteration, address indexed jurySC, uint256 indexed batchId, uint256 count, string proofCid);
     event ImportedEntityVoters(uint256 indexed iteration, address indexed jurySC, uint256 indexed batchId, uint8 entityId, uint256 count, string proofCid);
@@ -133,6 +138,7 @@ contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
         pob = PoB_04(pob_);
         iteration = iteration_;
         votingMode = VotingMode.CONSENSUS;
+        votingDurationHours = DEFAULT_VOTING_DURATION_HOURS;
     }
 
     function _addVoter(VoterEntity storage e, address voter) internal {
@@ -370,6 +376,16 @@ contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
         emit VotingModeChanged(oldMode, mode_);
     }
 
+    function setVotingDurationHours(uint64 durationHours_) external onlyOwner {
+        _ensureNormalMode();
+        if (startTime != 0) revert AlreadyActivated();
+        if (durationHours_ == 0 || durationHours_ > MAX_VOTING_DURATION_HOURS) revert InvalidVotingDurationHours();
+
+        uint64 oldDurationHours = votingDurationHours;
+        votingDurationHours = durationHours_;
+        emit VotingDurationChanged(oldDurationHours, durationHours_);
+    }
+
     function enableMigrationMode() external onlyOwner {
         if (migrationMode) revert MigrationModeActive();
         if (startTime != 0) revert AlreadyActivated();
@@ -520,7 +536,10 @@ contract JurySC_04 is Initializable, UUPSUpgradeable, OwnableUpgradeable, Reentr
         if (projectCount < 1) revert InvalidProject();
 
         startTime = uint64(block.timestamp);
-        endTime = startTime + 48 hours;
+        uint64 durationHours = votingDurationHours == 0 ? DEFAULT_VOTING_DURATION_HOURS : votingDurationHours;
+        uint256 computedEndTime = uint256(startTime) + (uint256(durationHours) * 1 hours);
+        if (computedEndTime > type(uint64).max) revert InvalidVotingDurationHours();
+        endTime = uint64(computedEndTime);
         projectsLocked = true;
         manuallyClosed = false;
         manualEndTime = 0;
