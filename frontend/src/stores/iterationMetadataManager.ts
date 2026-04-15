@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { Transaction, type JsonRpcSigner } from 'ethers';
 import type { IterationMetadata } from '~/interfaces';
 import { metadataAPI } from '~/utils/metadata-api';
+import { getIterationMetadataByCID } from '~/utils/iterationMetadata';
 import { getPublicProvider } from '~/utils/provider';
 import { getIterationMetadataCID, getPoBRegistryContract, REGISTRY_ADDRESSES } from '~/utils/registry';
 
@@ -60,10 +61,10 @@ export function createIterationMetadataManager(
         currentConfirmations: cid ? 10 : s.currentConfirmations,
       }));
 
-      // If CID loaded, fetch metadata
+      // If CID loaded, fetch immutable metadata by CID.
       if (cid) {
         try {
-          const data = await metadataAPI.getIterationMetadata(chainId, contractAddress);
+          const data = await getIterationMetadataByCID(cid);
           state.update(s => ({ ...s, metadata: data }));
         } catch (error) {
           console.error('Failed to load metadata from API:', error);

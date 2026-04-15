@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Link } from 'svelte-routing';
   import type { Iteration, IterationMetadata } from '~/interfaces';
-  import { metadataAPI } from '~/utils/metadata-api';
+  import { getPublicProvider } from '~/utils/provider';
+  import { getResolvedIterationMetadata } from '~/utils/iterationMetadata';
 
   interface Props {
     iteration: Iteration;
@@ -25,21 +26,34 @@
 
   // Load iteration metadata
   $effect(() => {
-    if (!iteration.jurySC) return;
+    if (!iteration.jurySC) {
+      metadata = null;
+      return;
+    }
+
+    let cancelled = false;
+    const currentIteration = iteration;
+    const provider = getPublicProvider(currentIteration.chainId);
 
     const loadMetadata = async () => {
       try {
-        const data = await metadataAPI.getIterationMetadata(
-          iteration.chainId,
-          iteration.jurySC
+        const data = await getResolvedIterationMetadata(
+          currentIteration.chainId,
+          currentIteration.jurySC,
+          provider
         );
-        metadata = data;
+        if (!cancelled) metadata = data;
       } catch (error) {
         // Silently fail - fallback to iteration.name
+        if (!cancelled) metadata = null;
       }
     };
 
-    loadMetadata();
+    void loadMetadata();
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   function handleSelect() {

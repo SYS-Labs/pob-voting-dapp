@@ -81,6 +81,39 @@ function normalizeAddress(value: unknown): string | null {
   return value;
 }
 
+function hasCompleteProjectMetadata(snapshot: IterationSnapshot): boolean {
+  const projects = snapshot.projects || [];
+  return projects.length > 0 && projects.every(project => project.metadata != null);
+}
+
+function mapSnapshotProjectMetadata(snapshot: IterationSnapshot): Map<string, ProjectMetadata> {
+  const metadataByAddress = new Map<string, ProjectMetadata>();
+
+  for (const project of snapshot.projects || []) {
+    if (project.metadata != null) {
+      metadataByAddress.set(project.address.toLowerCase(), project.metadata as unknown as ProjectMetadata);
+    }
+  }
+
+  return metadataByAddress;
+}
+
+function mapSnapshotProjects(snapshot: IterationSnapshot, requireCompleteMetadata = true): Project[] {
+  if (requireCompleteMetadata && !hasCompleteProjectMetadata(snapshot)) {
+    return [];
+  }
+
+  return (snapshot.projects || []).map((p, index) => ({
+    id: index + 1,
+    address: p.address,
+    metadata: (p.metadata as unknown as ProjectMetadata | null) || {
+      name: `Project #${index + 1}`,
+      account: p.address,
+      chainId: snapshot.chainId,
+    },
+  }));
+}
+
 /**
  * Resolve IVersionAdapter for a given iteration.
  * Returns the adapter Contract and jurySC address, or null if resolution fails.
@@ -206,15 +239,7 @@ async function loadFromAPI(currentIteration: Iteration): Promise<IterationSnapsh
 
     console.log('[loadFromAPI] Received snapshot, applying to state...');
 
-    const apiProjects: Project[] = (snapshot.projects || []).map((p, index) => ({
-      id: index + 1,
-      address: p.address,
-      metadata: (p.metadata as unknown as ProjectMetadata) || {
-        name: `Project #${index + 1}`,
-        account: p.address,
-        chainId: snapshot.chainId,
-      },
-    }));
+    const apiProjects = mapSnapshotProjects(snapshot);
 
     const isActive = snapshot.juryState === 'active';
     const votingEnded = snapshot.juryState === 'ended' || snapshot.juryState === 'locked';
@@ -272,8 +297,10 @@ async function loadProjects(
   jurySC: string,
   currentIteration: Iteration,
   publicProvider: JsonRpcProvider,
-  selectedChainId: number
-): Promise<void> {
+  selectedChainId: number,
+  metadataFallbackByAddress = new Map<string, ProjectMetadata>(),
+  fallbackProjects: Project[] = []
+): Promise<Project[]> {
   console.log('[loadProjects] Starting...');
   const iterationNum = currentIteration.iteration;
 
@@ -289,26 +316,34 @@ async function loadProjects(
       contractLocked: Boolean(contractLockedFlag),
     }));
 
-    const addresses: string[] = await adapter.getProjectAddresses(jurySC).catch(() => [] as string[]);
+    const addresses: string[] = await adapter.getProjectAddresses(jurySC);
 
     if (addresses.length === 0) {
       contractStateStore.update(s => ({ ...s, projects: [] }));
-      return;
+      return [];
     }
 
     const cidMap = await batchGetProjectMetadataCIDs(
       selectedChainId,
-      currentIteration.jurySC,
+      jurySC,
       addresses,
       publicProvider
     );
 
     const cids = Array.from(cidMap.values()).filter(cid => cid.length > 0);
-    const metadataMap = cids.length > 0 ? await metadataAPI.batchGetByCIDs(cids) : {};
+    let metadataMap: Record<string, ProjectMetadata> = {};
+    if (cids.length > 0) {
+      try {
+        metadataMap = await metadataAPI.batchGetByCIDs(cids);
+      } catch (metadataError) {
+        console.warn('[loadProjects] Failed to load project metadata; rendering registered addresses with fallback labels:', metadataError);
+      }
+    }
 
     const entries: Project[] = addresses.map((address, index) => {
       const cid = cidMap.get(address);
-      const metadata = cid ? metadataMap[cid] : undefined;
+      const metadata = (cid ? metadataMap[cid] : undefined)
+        ?? metadataFallbackByAddress.get(address.toLowerCase());
 
       return {
         id: index + 1,
@@ -323,9 +358,15 @@ async function loadProjects(
 
     contractStateStore.update(s => ({ ...s, projects: entries }));
     console.log('[loadProjects] Complete. Loaded', entries.length, 'projects');
+    return entries;
   } catch (error) {
     console.error('[loadProjects] Failed:', error);
+    if (fallbackProjects.length > 0) {
+      contractStateStore.update(s => ({ ...s, projects: fallbackProjects }));
+      return fallbackProjects;
+    }
     contractStateStore.update(s => ({ ...s, projects: [] }));
+    return [];
   }
 }
 
@@ -831,6 +872,18 @@ export async function loadIterationState(
 
     if (apiSnapshot) {
       console.log('[loadIterationState] API data loaded');
+
+      if (isIterationLikePage) {
+        loadTasks.push(loadProjects(
+          adapter,
+          jurySC,
+          currentIteration,
+          publicProvider,
+          selectedChainId,
+          mapSnapshotProjectMetadata(apiSnapshot),
+          mapSnapshotProjects(apiSnapshot, false)
+        ));
+      }
 
       if (walletAddress) {
         loadTasks.push(loadUserVotes(adapter, jurySC, currentIteration, publicProvider, selectedChainId, walletAddress));

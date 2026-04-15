@@ -5,7 +5,8 @@
   import ContractAddress from './ContractAddress.svelte';
   import MarkdownRenderer from './MarkdownRenderer.svelte';
   import { Link } from 'svelte-routing';
-  import { metadataAPI } from '~/utils/metadata-api';
+  import { getPublicProvider } from '~/utils/provider';
+  import { getResolvedIterationMetadata } from '~/utils/iterationMetadata';
 
   interface RoleStatuses {
     community: boolean;
@@ -65,21 +66,34 @@
 
   // Load iteration metadata
   $effect(() => {
-    if (!iteration) return;
+    if (!iteration) {
+      metadata = null;
+      return;
+    }
+
+    let cancelled = false;
+    const currentIteration = iteration;
+    const provider = getPublicProvider(currentIteration.chainId);
 
     const loadMetadata = async () => {
       try {
-        const data = await metadataAPI.getIterationMetadata(
-          iteration!.chainId,
-          iteration!.jurySC
+        const data = await getResolvedIterationMetadata(
+          currentIteration.chainId,
+          currentIteration.jurySC,
+          provider
         );
-        metadata = data;
+        if (!cancelled) metadata = data;
       } catch (error) {
         console.error('Failed to load iteration metadata:', error);
+        if (!cancelled) metadata = null;
       }
     };
 
-    loadMetadata();
+    void loadMetadata();
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Determine user's role and mint button visibility

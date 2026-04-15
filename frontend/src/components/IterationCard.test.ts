@@ -3,11 +3,13 @@ import { render, fireEvent } from '@testing-library/svelte';
 import IterationCard from './IterationCard.svelte';
 import type { Iteration } from '~/interfaces';
 
-// Mock the metadata API
-vi.mock('~/utils/metadata-api', () => ({
-  metadataAPI: {
-    getIterationMetadata: vi.fn().mockResolvedValue(null),
-  },
+// Mock the iteration metadata resolver
+vi.mock('~/utils/iterationMetadata', () => ({
+  getResolvedIterationMetadata: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('~/utils/provider', () => ({
+  getPublicProvider: vi.fn().mockReturnValue(null),
 }));
 
 // Mock svelte-routing
