@@ -5,8 +5,8 @@
   const CONTACT_EMAIL = 'legal@syscoin.org';
 </script>
 
-<div class="pob-stack" id="privacy-page">
-  <section class="pob-pane">
+<div class="pob-stack legal-page" id="privacy-page">
+  <section class="pob-pane pob-pane--subtle">
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Privacy Notice</h2>

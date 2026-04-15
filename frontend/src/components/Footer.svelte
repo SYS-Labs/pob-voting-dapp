@@ -2,7 +2,7 @@
   import { Link } from 'svelte-routing';
 </script>
 
-<footer style="border-top: 1px solid var(--pob-border); padding: 2rem 0;">
+<footer class="site-footer" style="border-top: 1px solid var(--pob-border); padding: 2rem 0;">
   <div style="max-width: 72rem; margin: 0 auto; padding: 0 1rem;">
     <div style="text-align: center;">
       <p style="font-size: 0.875rem; color: var(--pob-text-muted); margin-bottom: 1rem;">
@@ -53,13 +53,13 @@
 </footer>
 
 <style>
-  .footer-link {
+  .site-footer :global(.footer-link) {
     font-size: 0.875rem;
     color: var(--pob-primary);
     text-decoration: none;
   }
 
-  .footer-link:hover {
+  .site-footer :global(.footer-link:hover) {
     text-decoration: underline;
   }
 </style>
