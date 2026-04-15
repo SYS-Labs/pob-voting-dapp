@@ -10,7 +10,7 @@ import PoBRegistryABI from '../abis/PoBRegistry.json';
 
 // PoBRegistry addresses by network
 export const REGISTRY_ADDRESSES: Record<number, string> = {
-  57: '', // Mainnet - TODO: Deploy and update
+  57: '0xb2C3c1CB54aa9EBFe175a5fBEB63d63986D5a5E8', // Syscoin NEVM Mainnet
   5700: '0xA985cE400afea8eEf107c24d879c8c777ece1a8a', // Testnet
   31337: '0xab180957A96821e90C0114292DDAfa9E9B050d65' // Hardhat - Latest deployment
 };
