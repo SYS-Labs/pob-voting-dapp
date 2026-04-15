@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { BrowserProvider, JsonRpcProvider, type JsonRpcSigner } from 'ethers';
 import { createProviderWithoutENS } from '~/utils/provider';
-import { NETWORKS } from '~/constants/networks';
+import { NETWORKS, SYS_COIN_ID, HARDHAT_ID } from '~/constants/networks';
 
 // ============================================================================
 // Types
@@ -72,6 +72,21 @@ function handleChainChanged(hexChainId: unknown) {
   }
   const numericChainId = Number.parseInt(hexChainId, 16);
   walletStore.update(s => ({ ...s, chainId: numericChainId }));
+
+  // Rebuild provider/signer for the new chain if wallet was connected
+  const state = get(walletStore);
+  if (state.walletAddress && window.ethereum) {
+    void (async () => {
+      try {
+        const nextProvider = createProviderWithoutENS(window.ethereum, numericChainId);
+        const nextSigner = await nextProvider.getSigner();
+        walletStore.update(s => ({ ...s, provider: nextProvider, signer: nextSigner }));
+        console.log('[handleChainChanged] Provider/signer rebuilt for chain', numericChainId);
+      } catch (err) {
+        console.warn('[handleChainChanged] Failed to rebuild provider/signer:', err);
+      }
+    })();
+  }
 }
 
 export async function connectWallet(): Promise<void> {
@@ -103,6 +118,17 @@ export async function connectWallet(): Promise<void> {
       chainId: numericChainId,
       userDisconnected: false,
     });
+
+    // Auto-switch to mainnet if connected on a non-primary chain
+    if (numericChainId !== SYS_COIN_ID && numericChainId !== HARDHAT_ID) {
+      console.log('[connectWallet] Not on mainnet, attempting auto-switch...');
+      try {
+        await switchToNetwork(SYS_COIN_ID);
+      } catch {
+        // User declined or wallet doesn't support it — modal will still offer it
+        console.log('[connectWallet] Auto-switch declined or failed, user can switch manually');
+      }
+    }
 
     console.log('[connectWallet] Connection complete');
   } catch (walletError) {
@@ -182,6 +208,41 @@ export function setupWalletListeners(): () => void {
       ethereum.removeListener('chainChanged', handleChainChanged);
     }
   };
+}
+
+// Switch the wallet to a supported network (EIP-3326 + EIP-3085 fallback)
+export async function switchToNetwork(targetChainId: number): Promise<void> {
+  const ethereum = window.ethereum;
+  if (!ethereum) throw new Error('No wallet detected');
+
+  const network = NETWORKS[targetChainId];
+  if (!network) throw new Error(`Unknown network: ${targetChainId}`);
+
+  const hexChainId = `0x${targetChainId.toString(16)}`;
+
+  try {
+    await ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: hexChainId }],
+    });
+  } catch (err: unknown) {
+    const switchErr = err as { code?: number };
+    // 4902 = chain not added to the wallet yet → add it first
+    if (switchErr?.code === 4902) {
+      await ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: hexChainId,
+          chainName: network.name,
+          nativeCurrency: { name: network.tokenSymbol, symbol: network.tokenSymbol, decimals: 18 },
+          rpcUrls: [network.rpcUrl],
+          ...(network.explorerUrl ? { blockExplorerUrls: [network.explorerUrl] } : {}),
+        }],
+      });
+    } else {
+      throw err;
+    }
+  }
 }
 
 // Cached public providers keyed by chainId

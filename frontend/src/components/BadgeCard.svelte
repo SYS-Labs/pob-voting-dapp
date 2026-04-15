@@ -10,14 +10,23 @@
 </script>
 
 <div class="pob-fieldset space-y-3">
-  <!-- NFT Image Placeholder -->
+  <!-- NFT Image -->
   <div class="aspect-square w-full rounded-lg bg-gradient-to-br from-[var(--pob-primary)]/20 to-[var(--pob-primary)]/5 flex items-center justify-center border border-[var(--pob-primary)]/30">
-    <div class="text-center space-y-2">
-      <div class="text-4xl">🏅</div>
-      <div class="text-xs text-[var(--pob-text-muted)]">
-        Iteration {badge.iteration}{badge.round ? ` - Round #${badge.round}` : ''}
+    {#if badge.imageData}
+      <img
+        src={badge.imageData}
+        alt={ROLE_LABELS[badge.role]}
+        loading="lazy"
+        class="w-full h-full object-cover rounded-lg"
+      />
+    {:else}
+      <div class="text-center space-y-2">
+        <div class="text-4xl">🏅</div>
+        <div class="text-xs text-[var(--pob-text-muted)]">
+          Iteration {badge.iteration}{badge.round ? ` - Round #${badge.round}` : ''}
+        </div>
       </div>
-    </div>
+    {/if}
   </div>
 
   <!-- Badge Info: Role tag and ID -->

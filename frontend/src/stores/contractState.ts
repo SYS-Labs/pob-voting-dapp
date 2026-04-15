@@ -561,6 +561,19 @@ async function loadVoteCounts(
   }
 }
 
+function parseBadgeTokenURIImage(tokenURI: string | null): string | undefined {
+  if (!tokenURI) return undefined;
+  try {
+    const prefix = 'data:application/json;base64,';
+    if (!tokenURI.startsWith(prefix)) return undefined;
+    const json = atob(tokenURI.slice(prefix.length));
+    const meta = JSON.parse(json);
+    return typeof meta.image === 'string' ? meta.image : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function loadBadgesMinimal(
   address: string,
   rpcProvider: JsonRpcProvider,
@@ -603,7 +616,6 @@ async function loadBadgesMinimal(
 
   const contractPromises = contractsToQuery.map(async (contract) => {
     try {
-      // Use PoB_01ABI for badge discovery — Transfer, roleOf, claimed are the same across all versions
       const pobABI = PoB_01ABI;
       const iface = new Interface(pobABI);
       const transferTopic = iface.getEvent('Transfer')?.topicHash;
@@ -639,18 +651,23 @@ async function loadBadgesMinimal(
       const batchedCalls = [
         ...tokenIds.map(id => ({
           key: `roleOf:${contract.pob}:${id}`,
-          promise: iterationPobContract.roleOf(id)
+          promise: iterationPobContract.roleOf(id),
         })),
         ...tokenIds.map(id => ({
           key: `claimed:${contract.pob}:${id}`,
-          promise: iterationPobContract.claimed(id)
+          promise: iterationPobContract.claimed(id),
+        })),
+        ...tokenIds.map(id => ({
+          key: `tokenURI:${contract.pob}:${id}`,
+          promise: iterationPobContract.tokenURI(id).catch(() => null),
         })),
       ];
 
       const results = await cachedPromiseAll(rpcProvider, contract.chainId, batchedCalls);
 
       const roles = results.slice(0, tokenIds.length);
-      const claimedStatuses = results.slice(tokenIds.length);
+      const claimedStatuses = results.slice(tokenIds.length, tokenIds.length * 2);
+      const tokenURIs = results.slice(tokenIds.length * 2);
 
       const badges: Badge[] = [];
       for (let i = 0; i < tokenIds.length; i++) {
@@ -666,6 +683,7 @@ async function loadBadgesMinimal(
           iteration: contract.iteration,
           round: contract.round,
           claimed: claimedStatuses[i],
+          imageData: parseBadgeTokenURIImage(tokenURIs[i]),
         });
       }
 

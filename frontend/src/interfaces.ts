@@ -80,6 +80,7 @@ export interface Badge {
   iteration: number;
   round?: number; // Round number within the iteration (optional)
   claimed?: boolean;
+  imageData?: string; // data:image/svg+xml;base64,... from on-chain tokenURI
 }
 
 export interface CommunityBadge {
