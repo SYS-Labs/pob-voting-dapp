@@ -3,8 +3,16 @@ import pkg from "hardhat";
 
 const { ethers, upgrades } = pkg;
 
+const METADATA_PREFIX = "data:application/json;base64,";
+
+function parseTokenURI(uri) {
+  expect(uri.startsWith(METADATA_PREFIX)).to.equal(true);
+  return JSON.parse(Buffer.from(uri.slice(METADATA_PREFIX.length), "base64").toString("utf8"));
+}
+
 describe("CertNFT", function () {
   let certNFT;
+  let certRenderer;
   let mockPoB;
   let mockJury;
   let gate;
@@ -37,6 +45,10 @@ describe("CertNFT", function () {
       kind: "uups",
     });
     await certNFT.waitForDeployment();
+
+    const CertRenderer = await ethers.getContractFactory("CertRenderer_01");
+    certRenderer = await CertRenderer.deploy();
+    await certRenderer.waitForDeployment();
 
     // Deploy CertGate (formerly CertMiddleware)
     const CertGate = await ethers.getContractFactory("CertGate");
@@ -75,6 +87,11 @@ describe("CertNFT", function () {
 
     it("sets owner correctly", async function () {
       expect(await certNFT.owner()).to.equal(owner.address);
+    });
+
+    it("initializes renderer manager without forcing a renderer", async function () {
+      expect(await certNFT.rendererManager()).to.equal(owner.address);
+      expect(await certNFT.renderer()).to.equal(ethers.ZeroAddress);
     });
   });
 
@@ -351,13 +368,43 @@ describe("CertNFT", function () {
     });
   });
 
+  describe("renderer management", function () {
+    it("renderer manager can set renderer", async function () {
+      await expect(certNFT.connect(owner).setRenderer(await certRenderer.getAddress()))
+        .to.emit(certNFT, "RendererUpdated")
+        .withArgs(await certRenderer.getAddress());
+
+      expect(await certNFT.renderer()).to.equal(await certRenderer.getAddress());
+    });
+
+    it("renderer manager can rotate manager", async function () {
+      await expect(certNFT.connect(owner).setRendererManager(user2.address))
+        .to.emit(certNFT, "RendererManagerUpdated")
+        .withArgs(user2.address);
+
+      await expect(certNFT.connect(owner).setRenderer(await certRenderer.getAddress()))
+        .to.be.revertedWithCustomError(certNFT, "NotRendererManager");
+
+      await certNFT.connect(user2).setRenderer(await certRenderer.getAddress());
+      expect(await certNFT.renderer()).to.equal(await certRenderer.getAddress());
+    });
+
+    it("rejects zero and non-contract renderers", async function () {
+      await expect(certNFT.connect(owner).setRenderer(ethers.ZeroAddress))
+        .to.be.revertedWithCustomError(certNFT, "ZeroAddress");
+
+      await expect(certNFT.connect(owner).setRenderer(user2.address))
+        .to.be.revertedWithCustomError(certNFT, "NotAContract");
+    });
+  });
+
   describe("tokenURI", function () {
     it("returns valid JSON metadata with Requested status", async function () {
       await certNFT.connect(user1).requestCert(ITERATION);
       const tokenId = await certNFT.certOf(user1.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
 
       expect(metadata.name).to.equal("PoB Certificate #1");
       expect(metadata.description).to.equal("Proof-of-Builders Participation Certificate");
@@ -380,7 +427,7 @@ describe("CertNFT", function () {
       await certNFT.connect(owner).approveCert(tokenId);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
       const statusAttr = metadata.attributes.find(a => a.trait_type === "Status");
       expect(statusAttr.value).to.equal("Pending");
     });
@@ -394,7 +441,7 @@ describe("CertNFT", function () {
       await ethers.provider.send("evm_mine", []);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
       const statusAttr = metadata.attributes.find(a => a.trait_type === "Status");
       expect(statusAttr.value).to.equal("Minted");
     });
@@ -405,9 +452,40 @@ describe("CertNFT", function () {
       await certNFT.connect(owner).cancelCert(tokenId);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
       const statusAttr = metadata.attributes.find(a => a.trait_type === "Status");
       expect(statusAttr.value).to.equal("Cancelled");
+    });
+
+    it("includes a renderer-backed SVG image when renderer is configured", async function () {
+      await certNFT.connect(owner).setRenderer(await certRenderer.getAddress());
+      await certNFT.connect(user1).requestCert(ITERATION);
+      const tokenId = await certNFT.certOf(user1.address, ITERATION);
+
+      const uri = await certNFT.tokenURI(tokenId);
+      const metadata = parseTokenURI(uri);
+
+      expect(metadata.image).to.match(/^data:image\/svg\+xml;base64,/);
+      const svg = Buffer.from(metadata.image.replace("data:image/svg+xml;base64,", ""), "base64").toString("utf8");
+      expect(svg).to.include("POB CERTIFICATE");
+      expect(svg).to.include("participant");
+      expect(svg).to.include(user1.address.toLowerCase());
+    });
+
+    it("keeps metadata readable when configured renderer reverts", async function () {
+      const FailingRenderer = await ethers.getContractFactory("MockFailingCertRenderer");
+      const failingRenderer = await FailingRenderer.deploy();
+      await failingRenderer.waitForDeployment();
+
+      await certNFT.connect(owner).setRenderer(await failingRenderer.getAddress());
+      await certNFT.connect(user1).requestCert(ITERATION);
+      const tokenId = await certNFT.certOf(user1.address, ITERATION);
+
+      const uri = await certNFT.tokenURI(tokenId);
+      const metadata = parseTokenURI(uri);
+
+      expect(metadata.name).to.equal("PoB Certificate #1");
+      expect(metadata.image).to.equal(undefined);
     });
   });
 

@@ -5,7 +5,9 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
 import "./ICertGate.sol";
+import "./ICertRenderer.sol";
 
 /**
  * @title IPoBRegistryForCert
@@ -85,6 +87,12 @@ contract CertNFT is
     /// @notice Iteration => project => count of members (Proposed or Approved) with name set
     mapping(uint256 => mapping(address => uint256)) public namedMemberCount;
 
+    /// @notice Renderer used for the built-in certificate NFT image in tokenURI
+    ICertRenderer public renderer;
+
+    /// @notice Account allowed to rotate the certificate renderer
+    address public rendererManager;
+
     // ========== Events ==========
 
     event CertRequested(uint256 indexed tokenId, uint256 indexed iteration, address indexed account, string certType);
@@ -100,6 +108,8 @@ contract CertNFT is
     event CertResubmitted(uint256 indexed tokenId, uint256 indexed iteration, address indexed account);
     event TeamMemberRemoved(uint256 indexed iteration, address indexed project, address indexed member);
     event PoBRegistrySet(address indexed addr);
+    event RendererUpdated(address indexed rendererAddress);
+    event RendererManagerUpdated(address indexed rendererManagerAddress);
 
     // ========== Errors ==========
 
@@ -132,6 +142,7 @@ contract CertNFT is
     error MissingPlaceholder();
     error ZeroAddress();
     error NotAContract();
+    error NotRendererManager();
 
     // ========== Initialization ==========
 
@@ -145,7 +156,9 @@ contract CertNFT is
         __Ownable_init(initialOwner);
         __ReentrancyGuard_init();
         __UUPSUpgradeable_init();
+        rendererManager = initialOwner;
         nextTokenId = 1;
+        emit RendererManagerUpdated(initialOwner);
     }
 
     // ========== Core Functions ==========
@@ -245,6 +258,7 @@ contract CertNFT is
         CertData storage cert = certs[tokenId];
         string memory statusStr = _statusString(certStatus(tokenId));
         string memory templatePart = _templatePart(cert.iteration);
+        string memory imagePart = _imagePart(tokenId, cert, statusStr);
         string memory teamPart = _teamMembersPart(cert.iteration, cert.account);
 
         // Build JSON in two halves to avoid stack-too-deep
@@ -260,11 +274,15 @@ contract CertNFT is
             '{"trait_type":"Status","value":"', statusStr, '"}',
             ']',
             templatePart,
+            imagePart,
             teamPart,
             '}'
         ));
 
-        return string(abi.encodePacked(part1, part2));
+        return string(abi.encodePacked(
+            "data:application/json;base64,",
+            Base64.encode(bytes(string(abi.encodePacked(part1, part2))))
+        ));
     }
 
     function _statusString(CertStatus s) internal pure returns (string memory) {
@@ -284,6 +302,29 @@ contract CertNFT is
             }
         } catch {}
         return "";
+    }
+
+    function _imagePart(uint256 tokenId, CertData storage cert, string memory statusStr) internal view returns (string memory) {
+        if (address(renderer) == address(0)) return "";
+
+        CertTemplateData memory data = CertTemplateData({
+            tokenId: tokenId,
+            iteration: cert.iteration,
+            certType: cert.certType,
+            status: statusStr,
+            account: cert.account,
+            teamMembers: _buildTeamString(cert.iteration, cert.account)
+        });
+
+        try renderer.renderSVG(data) returns (string memory svg) {
+            return string(abi.encodePacked(
+                ",\"image\":\"data:image/svg+xml;base64,",
+                Base64.encode(bytes(svg)),
+                "\""
+            ));
+        } catch {
+            return "";
+        }
     }
 
     /**
@@ -514,6 +555,18 @@ contract CertNFT is
         emit PoBRegistrySet(addr);
     }
 
+    function setRenderer(address newRenderer) external {
+        _checkRendererManager();
+        _setRenderer(newRenderer);
+    }
+
+    function setRendererManager(address newRendererManager) external {
+        _checkRendererManager();
+        if (newRendererManager == address(0)) revert ZeroAddress();
+        rendererManager = newRendererManager;
+        emit RendererManagerUpdated(newRendererManager);
+    }
+
     /**
      * @notice Set the middleware contract for an iteration
      * @param iteration The iteration number
@@ -644,6 +697,18 @@ contract CertNFT is
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
     // ========== Internal Helpers ==========
+
+    function _setRenderer(address newRenderer) internal {
+        if (newRenderer == address(0)) revert ZeroAddress();
+        if (newRenderer.code.length == 0) revert NotAContract();
+        renderer = ICertRenderer(newRenderer);
+        emit RendererUpdated(newRenderer);
+    }
+
+    function _checkRendererManager() internal view {
+        address manager = rendererManager == address(0) ? owner() : rendererManager;
+        if (msg.sender != manager) revert NotRendererManager();
+    }
 
     /**
      * @dev Determine the lifecycle stage of a project's cert for an iteration.

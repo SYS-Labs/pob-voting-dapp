@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./ICertGate.sol";
+import "./ICertRenderer.sol";
 
 /**
  * @title MockPoB
@@ -134,5 +135,12 @@ contract MockPoBRegistry {
     {
         MockTemplate storage t = _templates[iterationId];
         return (t.hash, t.version, t.cid);
+    }
+}
+
+
+contract MockFailingCertRenderer is ICertRenderer {
+    function renderSVG(CertTemplateData memory) external pure override returns (string memory) {
+        revert("Renderer failed");
     }
 }

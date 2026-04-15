@@ -3,6 +3,13 @@ import pkg from "hardhat";
 
 const { ethers, upgrades } = pkg;
 
+const METADATA_PREFIX = "data:application/json;base64,";
+
+function parseTokenURI(uri) {
+  expect(uri.startsWith(METADATA_PREFIX)).to.equal(true);
+  return JSON.parse(Buffer.from(uri.slice(METADATA_PREFIX.length), "base64").toString("utf8"));
+}
+
 describe("CertNFT - Team Members", function () {
   let certNFT;
   let mockMiddleware;
@@ -788,7 +795,7 @@ describe("CertNFT - Team Members", function () {
       ]);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
 
       expect(metadata.teamMembers).to.deep.equal(["Alice", "Bob"]);
     });
@@ -801,7 +808,7 @@ describe("CertNFT - Team Members", function () {
       ]);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
 
       expect(metadata.teamMembers).to.deep.equal(["Alice", "Charlie"]);
     });
@@ -813,7 +820,7 @@ describe("CertNFT - Team Members", function () {
       ]);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
 
       expect(metadata.teamMembers).to.deep.equal(["Alice"]);
     });
@@ -823,7 +830,7 @@ describe("CertNFT - Team Members", function () {
       const tokenId = await certNFT.certOf(devRel.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
 
       expect(metadata.teamMembers).to.be.undefined;
     });
@@ -833,7 +840,7 @@ describe("CertNFT - Team Members", function () {
       const tokenId = await certNFT.certOf(devRel.address, ITERATION);
 
       const uri = await certNFT.tokenURI(tokenId);
-      const metadata = JSON.parse(uri);
+      const metadata = parseTokenURI(uri);
 
       expect(metadata.teamMembers).to.be.undefined;
     });

@@ -93,6 +93,18 @@ async function main() {
   const certNFTAddress = await certNFT.getAddress();
   console.log(`CertNFT proxy deployed at: ${certNFTAddress}`);
 
+  // 2b. Deploy and link CertRenderer
+  console.log("\n--- Deploying CertRenderer_01 ---");
+  const CertRenderer = await ethers.getContractFactory("CertRenderer_01");
+  const certRenderer = await CertRenderer.deploy();
+  await certRenderer.waitForDeployment();
+  const certRendererAddress = await certRenderer.getAddress();
+  console.log(`CertRenderer_01 deployed at: ${certRendererAddress}`);
+
+  const tx0 = await certNFT.setRenderer(certRendererAddress);
+  await tx0.wait();
+  console.log(`CertRenderer_01 linked to CertNFT: ${certRendererAddress}`);
+
   // 3. Upgrade PoBRegistry (adds profile storage)
   console.log("\n--- Upgrading PoBRegistry ---");
   const PoBRegistry = await ethers.getContractFactory("PoBRegistry");
@@ -134,6 +146,7 @@ async function main() {
   deployment.contracts.CertNFT = {
     proxy: certNFTAddress,
   };
+  deployment.contracts.CertRenderer_01 = certRendererAddress;
   deployment.contracts.CertGate = gateAddress;
 
   fs.writeFileSync(deploymentFilePath, JSON.stringify(deployment, null, 2));
@@ -166,6 +179,7 @@ async function main() {
   console.log("\n========== Cert Deployment Summary ==========");
   console.log(`Iteration:          ${iteration}`);
   console.log(`CertNFT:            ${certNFTAddress}`);
+  console.log(`CertRenderer_01:    ${certRendererAddress}`);
   console.log(`CertGate:           ${gateAddress}`);
   console.log(`PoBRegistry:        ${registryProxy} (upgraded)`);
   console.log(`Template:           set via POST /api/templates/publish → registry.setIterationTemplate()`);

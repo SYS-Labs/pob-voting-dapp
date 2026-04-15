@@ -1051,6 +1051,11 @@
       "inputs": []
     },
     {
+      "name": "NoApprovedTeamMembers",
+      "signature": "NoApprovedTeamMembers()",
+      "inputs": []
+    },
+    {
       "name": "NoMiddleware",
       "signature": "NoMiddleware()",
       "inputs": []
@@ -1058,6 +1063,11 @@
     {
       "name": "NoNamedTeamMembers",
       "signature": "NoNamedTeamMembers()",
+      "inputs": []
+    },
+    {
+      "name": "NotAContract",
+      "signature": "NotAContract()",
       "inputs": []
     },
     {
@@ -1083,6 +1093,11 @@
     {
       "name": "NotProjectForIteration",
       "signature": "NotProjectForIteration()",
+      "inputs": []
+    },
+    {
+      "name": "NotRendererManager",
+      "signature": "NotRendererManager()",
       "inputs": []
     },
     {
@@ -1156,6 +1171,11 @@
     {
       "name": "WrongStage",
       "signature": "WrongStage()",
+      "inputs": []
+    },
+    {
+      "name": "ZeroAddress",
+      "signature": "ZeroAddress()",
       "inputs": []
     }
   ],

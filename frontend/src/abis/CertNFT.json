@@ -211,12 +211,22 @@
   },
   {
     "inputs": [],
+    "name": "NoApprovedTeamMembers",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NoMiddleware",
     "type": "error"
   },
   {
     "inputs": [],
     "name": "NoNamedTeamMembers",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotAContract",
     "type": "error"
   },
   {
@@ -242,6 +252,11 @@
   {
     "inputs": [],
     "name": "NotProjectForIteration",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotRendererManager",
     "type": "error"
   },
   {
@@ -315,6 +330,11 @@
   {
     "inputs": [],
     "name": "WrongStage",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ZeroAddress",
     "type": "error"
   },
   {
@@ -511,6 +531,45 @@
       }
     ],
     "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "PoBRegistrySet",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "rendererManagerAddress",
+        "type": "address"
+      }
+    ],
+    "name": "RendererManagerUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "rendererAddress",
+        "type": "address"
+      }
+    ],
+    "name": "RendererUpdated",
     "type": "event"
   },
   {
@@ -1257,6 +1316,19 @@
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "pobRegistry",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "uint256",
@@ -1347,6 +1419,32 @@
         "internalType": "string",
         "name": "",
         "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renderer",
+    "outputs": [
+      {
+        "internalType": "contract ICertRenderer",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "rendererManager",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
       }
     ],
     "stateMutability": "view",
@@ -1468,6 +1566,45 @@
       }
     ],
     "name": "setMiddleware",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "addr",
+        "type": "address"
+      }
+    ],
+    "name": "setPoBRegistry",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newRenderer",
+        "type": "address"
+      }
+    ],
+    "name": "setRenderer",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newRendererManager",
+        "type": "address"
+      }
+    ],
+    "name": "setRendererManager",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1640,45 +1777,6 @@
       }
     ],
     "stateMutability": "pure",
-    "type": "function"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "addr",
-        "type": "address"
-      }
-    ],
-    "name": "PoBRegistrySet",
-    "type": "event"
-  },
-  {
-    "inputs": [],
-    "name": "pobRegistry",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "addr",
-        "type": "address"
-      }
-    ],
-    "name": "setPoBRegistry",
-    "outputs": [],
-    "stateMutability": "nonpayable",
     "type": "function"
   }
 ]
