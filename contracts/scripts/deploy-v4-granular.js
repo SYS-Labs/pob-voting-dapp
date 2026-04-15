@@ -414,6 +414,197 @@ const actions = {
       };
     },
   },
+  "set-voting-duration": {
+    description: "Set the JurySC_04 voting duration in hours before activation",
+    inputShape: ["JURY_ADDRESS", "VOTING_DURATION_HOURS"],
+    async run({ deployer }) {
+      const juryAddress = requireAddress("JURY_ADDRESS");
+      const durationHours = requireIntegerEnv("VOTING_DURATION_HOURS");
+      const jury = await ethers.getContractAt("JurySC_04", juryAddress, deployer);
+      const currentDurationHours = await jury.votingDurationHours();
+
+      if (currentDurationHours === BigInt(durationHours)) {
+        return {
+          contract: "JurySC_04",
+          deploymentKind: "configuration",
+          address: juryAddress,
+          votingDurationHours: durationHours,
+          note: "Skipped transaction because voting duration was already correct",
+        };
+      }
+
+      const receipt = await sendTransaction(deployer, await jury.setVotingDurationHours.populateTransaction(durationHours));
+      return {
+        contract: "JurySC_04",
+        deploymentKind: "configuration",
+        address: juryAddress,
+        previousVotingDurationHours: currentDurationHours.toString(),
+        votingDurationHours: durationHours,
+        txHash: txHashFromReceipt(receipt),
+        blockNumber: receipt.blockNumber,
+      };
+    },
+  },
+  "register-iteration": {
+    description: "Register a live iteration in PoBRegistry",
+    inputShape: ["POB_REGISTRY", "POB_ITERATION", "REGISTRY_CHAIN_ID(optional)"],
+    async run({ deployer, chainId }) {
+      const registryAddress = requireAddress("POB_REGISTRY");
+      const iteration = requireIntegerEnv("POB_ITERATION");
+      const registryChainId = readOptionalIntegerEnv("REGISTRY_CHAIN_ID") ?? chainId;
+      const registry = await ethers.getContractAt("PoBRegistry", registryAddress, deployer);
+      const current = await registry.iterations(iteration);
+      if (current.exists) {
+        return { contract: "PoBRegistry", deploymentKind: "live-setup", address: registryAddress, iteration, skipped: true, reason: "iteration already registered" };
+      }
+      const receipt = await sendTransaction(deployer, await registry.registerIteration.populateTransaction(iteration, registryChainId));
+      return { contract: "PoBRegistry", deploymentKind: "live-setup", address: registryAddress, iteration, registryChainId, txHash: txHashFromReceipt(receipt), blockNumber: receipt.blockNumber };
+    },
+  },
+  "add-round": {
+    description: "Add a live round to a registered iteration in PoBRegistry",
+    inputShape: ["POB_REGISTRY", "POB_ITERATION", "ROUND_ID", "JURY_ADDRESS", "JURY_DEPLOY_BLOCK_HINT"],
+    async run({ deployer }) {
+      const registryAddress = requireAddress("POB_REGISTRY");
+      const iteration = requireIntegerEnv("POB_ITERATION");
+      const roundId = requireIntegerEnv("ROUND_ID");
+      const juryAddress = requireAddress("JURY_ADDRESS");
+      const deployBlockHint = requireIntegerEnv("JURY_DEPLOY_BLOCK_HINT");
+      const registry = await ethers.getContractAt("PoBRegistry", registryAddress, deployer);
+      const current = await registry.rounds(iteration, roundId);
+      if (current.exists) {
+        return { contract: "PoBRegistry", deploymentKind: "live-setup", address: registryAddress, iteration, roundId, juryAddress: current.jurySC, skipped: true, reason: "round already registered" };
+      }
+      const receipt = await sendTransaction(deployer, await registry.addRound.populateTransaction(iteration, roundId, juryAddress, deployBlockHint));
+      return { contract: "PoBRegistry", deploymentKind: "live-setup", address: registryAddress, iteration, roundId, juryAddress, deployBlockHint, txHash: txHashFromReceipt(receipt), blockNumber: receipt.blockNumber };
+    },
+  },
+  "set-round-version": {
+    description: "Set PoBRegistry round version for adapter routing",
+    inputShape: ["POB_REGISTRY", "POB_ITERATION", "ROUND_ID", "ROUND_VERSION"],
+    async run({ deployer }) {
+      const registryAddress = requireAddress("POB_REGISTRY");
+      const iteration = requireIntegerEnv("POB_ITERATION");
+      const roundId = requireIntegerEnv("ROUND_ID");
+      const roundVersion = requireIntegerEnv("ROUND_VERSION");
+      const registry = await ethers.getContractAt("PoBRegistry", registryAddress, deployer);
+      const currentVersion = await registry.roundVersion(iteration, roundId);
+      if (currentVersion === BigInt(roundVersion)) {
+        return { contract: "PoBRegistry", deploymentKind: "live-setup", address: registryAddress, iteration, roundId, roundVersion, skipped: true, reason: "round version already set" };
+      }
+      const receipt = await sendTransaction(deployer, await registry.setRoundVersion.populateTransaction(iteration, roundId, roundVersion));
+      return { contract: "PoBRegistry", deploymentKind: "live-setup", address: registryAddress, iteration, roundId, previousRoundVersion: currentVersion.toString(), roundVersion, txHash: txHashFromReceipt(receipt), blockNumber: receipt.blockNumber };
+    },
+  },
+  "register-project": {
+    description: "Register one project on JurySC_04",
+    inputShape: ["JURY_ADDRESS", "PROJECT_ADDRESS"],
+    async run({ deployer }) {
+      const juryAddress = requireAddress("JURY_ADDRESS");
+      const projectAddress = requireAddress("PROJECT_ADDRESS");
+      const jury = await ethers.getContractAt("JurySC_04", juryAddress, deployer);
+      if (await jury.isRegisteredProject(projectAddress)) {
+        return { contract: "JurySC_04", deploymentKind: "live-setup", address: juryAddress, projectAddress, skipped: true, reason: "project already registered" };
+      }
+      const receipt = await sendTransaction(deployer, await jury.registerProject.populateTransaction(projectAddress));
+      const projectId = await jury.projectIdOf(projectAddress).catch(() => 0n);
+      return { contract: "JurySC_04", deploymentKind: "live-setup", address: juryAddress, projectAddress, projectId: projectId.toString(), txHash: txHashFromReceipt(receipt), blockNumber: receipt.blockNumber };
+    },
+  },
+  "add-smt-voter": {
+    description: "Add one SMT voter on JurySC_04",
+    inputShape: ["JURY_ADDRESS", "VOTER_ADDRESS"],
+    async run({ deployer }) {
+      const juryAddress = requireAddress("JURY_ADDRESS");
+      const voterAddress = requireAddress("VOTER_ADDRESS");
+      const jury = await ethers.getContractAt("JurySC_04", juryAddress, deployer);
+      if (await jury.isSmtVoter(voterAddress)) {
+        return { contract: "JurySC_04", deploymentKind: "live-setup", address: juryAddress, voterAddress, entity: "SMT", skipped: true, reason: "SMT voter already registered" };
+      }
+      const receipt = await sendTransaction(deployer, await jury.addSmtVoter.populateTransaction(voterAddress));
+      return { contract: "JurySC_04", deploymentKind: "live-setup", address: juryAddress, voterAddress, entity: "SMT", txHash: txHashFromReceipt(receipt), blockNumber: receipt.blockNumber };
+    },
+  },
+  "add-dao-hic-voter": {
+    description: "Add one DAO-HIC voter on JurySC_04",
+    inputShape: ["JURY_ADDRESS", "VOTER_ADDRESS"],
+    async run({ deployer }) {
+      const juryAddress = requireAddress("JURY_ADDRESS");
+      const voterAddress = requireAddress("VOTER_ADDRESS");
+      const jury = await ethers.getContractAt("JurySC_04", juryAddress, deployer);
+      if (await jury.isDaoHicVoter(voterAddress)) {
+        return { contract: "JurySC_04", deploymentKind: "live-setup", address: juryAddress, voterAddress, entity: "DAO-HIC", skipped: true, reason: "DAO-HIC voter already registered" };
+      }
+      const receipt = await sendTransaction(deployer, await jury.addDaoHicVoter.populateTransaction(voterAddress));
+      return { contract: "JurySC_04", deploymentKind: "live-setup", address: juryAddress, voterAddress, entity: "DAO-HIC", txHash: txHashFromReceipt(receipt), blockNumber: receipt.blockNumber };
+    },
+  },
+  "set-voting-mode": {
+    description: "Set JurySC_04 voting mode before activation (0=CONSENSUS, 1=WEIGHTED)",
+    inputShape: ["JURY_ADDRESS", "VOTING_MODE"],
+    async run({ deployer }) {
+      const juryAddress = requireAddress("JURY_ADDRESS");
+      const votingMode = requireIntegerEnv("VOTING_MODE");
+      if (votingMode > 1) throw new Error("VOTING_MODE must be 0 or 1");
+      const jury = await ethers.getContractAt("JurySC_04", juryAddress, deployer);
+      const currentMode = await jury.votingMode();
+      if (currentMode === BigInt(votingMode)) {
+        return { contract: "JurySC_04", deploymentKind: "live-setup", address: juryAddress, votingMode, skipped: true, reason: "voting mode already set" };
+      }
+      const receipt = await sendTransaction(deployer, await jury.setVotingMode.populateTransaction(votingMode));
+      return { contract: "JurySC_04", deploymentKind: "live-setup", address: juryAddress, previousVotingMode: currentMode.toString(), votingMode, txHash: txHashFromReceipt(receipt), blockNumber: receipt.blockNumber };
+    },
+  },
+  "complete-registry-initialization": {
+    description: "Complete PoBRegistry initialization so project wallets can edit their own metadata",
+    inputShape: ["POB_REGISTRY"],
+    async run({ deployer }) {
+      const registryAddress = requireAddress("POB_REGISTRY");
+      const registry = await ethers.getContractAt("PoBRegistry", registryAddress, deployer);
+      if (await registry.initializationComplete()) {
+        return { contract: "PoBRegistry", deploymentKind: "live-setup", address: registryAddress, initializationComplete: true, skipped: true, reason: "registry initialization already complete" };
+      }
+      const receipt = await sendTransaction(deployer, await registry.completeInitialization.populateTransaction());
+      return { contract: "PoBRegistry", deploymentKind: "live-setup", address: registryAddress, initializationComplete: true, txHash: txHashFromReceipt(receipt), blockNumber: receipt.blockNumber };
+    },
+  },
+  "verify-live-ready": {
+    description: "Read i4 live setup state without sending a transaction",
+    inputShape: ["POB_REGISTRY", "POB_ITERATION", "ROUND_ID", "JURY_ADDRESS"],
+    async run({ deployer }) {
+      const registryAddress = requireAddress("POB_REGISTRY");
+      const iteration = requireIntegerEnv("POB_ITERATION");
+      const roundId = requireIntegerEnv("ROUND_ID");
+      const juryAddress = requireAddress("JURY_ADDRESS");
+      const registry = await ethers.getContractAt("PoBRegistry", registryAddress, deployer);
+      const jury = await ethers.getContractAt("JurySC_04", juryAddress, deployer);
+      const iterationInfo = await registry.iterations(iteration);
+      const roundInfo = await registry.rounds(iteration, roundId);
+      return {
+        contract: "JurySC_04/PoBRegistry",
+        deploymentKind: "verification",
+        registry: registryAddress,
+        juryAddress,
+        iteration,
+        roundId,
+        registryInitializationComplete: await registry.initializationComplete(),
+        registryIterationExists: iterationInfo.exists,
+        registryRoundExists: roundInfo.exists,
+        registryRoundJury: roundInfo.jurySC,
+        roundVersion: (await registry.roundVersion(iteration, roundId)).toString(),
+        projectCount: (await jury.projectCount()).toString(),
+        smtVoters: (await jury.getSmtVoters()).join(","),
+        daoHicVoters: (await jury.getDaoHicVoters()).join(","),
+        votingMode: (await jury.votingMode()).toString(),
+        votingDurationHours: (await jury.votingDurationHours()).toString(),
+        projectsLocked: await jury.projectsLocked(),
+        startTime: (await jury.startTime()).toString(),
+        endTime: (await jury.endTime()).toString(),
+        isActive: await jury.isActive(),
+        votingEnded: await jury.votingEnded(),
+      };
+    },
+  },
   "transfer-pob-ownership": {
     description: "Transfer PoB_04 proxy ownership to the target owner, typically the JurySC proxy",
     inputShape: ["POB_ADDRESS", "JURY_ADDRESS or NEW_OWNER_ADDRESS"],
@@ -508,8 +699,16 @@ async function main() {
     donationRecipient: optionalAddress("POB_DONATION_RECIPIENT"),
     juryImpl: optionalAddress("JURY_IMPL"),
     juryAddress: optionalAddress("JURY_ADDRESS"),
+    votingDurationHours: readOptionalEnv("VOTING_DURATION_HOURS"),
     juryOwner: optionalAddress("JURY_OWNER"),
     newOwnerAddress: optionalAddress("NEW_OWNER_ADDRESS"),
+    pobRegistry: optionalAddress("POB_REGISTRY"),
+    registryChainId: readOptionalEnv("REGISTRY_CHAIN_ID"),
+    roundVersion: readOptionalEnv("ROUND_VERSION"),
+    votingMode: readOptionalEnv("VOTING_MODE"),
+    projectAddress: optionalAddress("PROJECT_ADDRESS"),
+    voterAddress: optionalAddress("VOTER_ADDRESS"),
+    deployBlockHint: readOptionalEnv("JURY_DEPLOY_BLOCK_HINT"),
   };
 
   console.log("╔════════════════════════════════════════════╗");

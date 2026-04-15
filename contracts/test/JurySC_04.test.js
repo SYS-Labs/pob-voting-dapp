@@ -48,6 +48,26 @@ describe("JurySC_04", function () {
     await adapter.waitForDeployment();
   });
 
+  it("uses a configurable voting duration with a 48 hour default", async function () {
+    expect(await jurySC.votingDurationHours()).to.equal(48n);
+
+    await expect(jurySC.connect(owner).setVotingDurationHours(0))
+      .to.be.revertedWithCustomError(jurySC, "InvalidVotingDurationHours");
+
+    await expect(jurySC.connect(owner).setVotingDurationHours(96))
+      .to.emit(jurySC, "VotingDurationChanged")
+      .withArgs(48n, 96n);
+
+    await jurySC.connect(owner).registerProject(project1.address);
+    await jurySC.connect(owner).addSmtVoter(smt1.address);
+    await jurySC.connect(owner).addDaoHicVoter(daoHic1.address);
+    await jurySC.connect(owner).activate();
+
+    expect(await jurySC.endTime() - await jurySC.startTime()).to.equal(96n * 60n * 60n);
+    await expect(jurySC.connect(owner).setVotingDurationHours(72))
+      .to.be.revertedWithCustomError(jurySC, "AlreadyActivated");
+  });
+
   it("keeps the normal fresh-round voting flow intact without a required community deposit", async function () {
     await jurySC.connect(owner).registerProject(project1.address);
     await jurySC.connect(owner).registerProject(project2.address);
