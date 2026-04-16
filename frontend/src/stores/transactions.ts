@@ -2,6 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import { ethers } from 'ethers';
 import type { Iteration, ParticipantRole } from '~/interfaces';
 import { ROLE_LABELS } from '~/constants/roles';
+import { NETWORKS } from '~/constants/networks';
 import { getTransactionContext } from './registry';
 import { createWriteDispatcher } from '~/utils/writeDispatch';
 
@@ -54,13 +55,15 @@ export function setTxRefreshCallback(callback: (() => Promise<void>) | null): vo
 
 function requireWallet(
   walletAddress: string | null,
-  correctNetwork: boolean
+  correctNetwork: boolean,
+  targetChainId?: number | null
 ): boolean {
   if (!walletAddress) {
     throw new Error('Please connect your wallet to continue.');
   }
   if (!correctNetwork) {
-    throw new Error('Please switch to a supported network (Syscoin NEVM).');
+    const networkName = targetChainId ? NETWORKS[targetChainId]?.name ?? `chain ${targetChainId}` : 'a supported network';
+    throw new Error(`Please switch to ${networkName} to continue.`);
   }
   return true;
 }
@@ -132,7 +135,7 @@ export async function executeMint(
   communityAmount?: string
 ): Promise<void> {
   const ctx = getTransactionContext();
-  requireWallet(ctx.walletAddress, ctx.correctNetwork);
+  requireWallet(ctx.walletAddress, ctx.correctNetwork, ctx.targetChainId);
   if (!ctx.signer || !ctx.selectedIteration) return;
 
   const writer = createWriteDispatcher(ctx.selectedIteration, ctx.signer);
@@ -187,7 +190,7 @@ export async function executeVote(
   refreshCallback?: () => Promise<void>
 ): Promise<void> {
   const ctx = getTransactionContext();
-  requireWallet(ctx.walletAddress, ctx.correctNetwork);
+  requireWallet(ctx.walletAddress, ctx.correctNetwork, ctx.targetChainId);
   if (!ctx.signer || !ctx.selectedIteration) return;
 
   const writer = createWriteDispatcher(ctx.selectedIteration, ctx.signer);
@@ -220,7 +223,7 @@ export async function setVotingModeAction(
   refreshCallback?: () => Promise<void>
 ): Promise<void> {
   const ctx = getTransactionContext();
-  requireWallet(ctx.walletAddress, ctx.correctNetwork);
+  requireWallet(ctx.walletAddress, ctx.correctNetwork, ctx.targetChainId);
   if (!ctx.signer || !ctx.selectedIteration) return;
 
   const writer = createWriteDispatcher(ctx.selectedIteration, ctx.signer);

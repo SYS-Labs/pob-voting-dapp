@@ -7,6 +7,7 @@
   import Header from '~/components/Header.svelte';
   import SwitchNetworkModal from '~/components/SwitchNetworkModal.svelte';
   import DisconnectModal from '~/components/DisconnectModal.svelte';
+  import WalletSelectModal from '~/components/WalletSelectModal.svelte';
   import ConfirmRemoveModal from '~/components/ConfirmRemoveModal.svelte';
   import TxPendingModal from '~/components/TxPendingModal.svelte';
   import ErrorModal from '~/components/ErrorModal.svelte';
@@ -35,9 +36,12 @@
   // Stores
   import {
     walletStore,
+    walletProvidersStore,
     connectWallet,
     disconnectWallet,
     initWallet,
+    initWalletDiscovery,
+    requestWalletProviders,
     setupWalletListeners,
     getPublicProviderForChain,
   } from '~/stores/wallet';
@@ -150,6 +154,8 @@
   const signer = $derived($walletStore.signer);
   const walletAddress = $derived($walletStore.walletAddress);
   const chainId = $derived($walletStore.chainId);
+  const connectedWalletInfo = $derived($walletStore.selectedWalletInfo);
+  const walletProviderOptions = $derived($walletProvidersStore);
 
   // Iterations state
   const allIndexedIterations = $derived($iterationsStore.iterations);
@@ -205,14 +211,12 @@
   const certLoading = $derived($certStateStore.loading);
 
   let certMenuVisible = $state(false);
+  let walletSelectorOpen = $state(false);
+  let walletConnectPending = $state(false);
+  let walletConnectError = $state<string | null>(null);
 
   // Admin panel state
   const openAdminSection = $derived($adminPanelStore);
-
-  // Network validation
-  const correctNetwork = $derived(
-    chainId === SYS_COIN_ID || chainId === SYS_TESTNET_ID || chainId === HARDHAT_ID || chainId === null
-  );
 
   const routeIterationNumber = $derived.by(() => {
     const match = currentPath.match(/^\/iteration\/(\d+)/);
@@ -249,6 +253,23 @@
   const publicProvider = $derived.by(() => {
     if (!selectedIteration) return null;
     return getPublicProviderForChain(selectedIteration.chainId);
+  });
+
+  const activeRequiredChainId = $derived.by(() => {
+    if (!selectedIteration) return null;
+    if (currentPage === 'iteration' || currentPage === 'project') {
+      return selectedIteration.chainId;
+    }
+    return null;
+  });
+
+  const switchTargetChainId = $derived(activeRequiredChainId ?? SYS_COIN_ID);
+
+  // Network validation
+  const correctNetwork = $derived.by(() => {
+    if (chainId === null) return true;
+    if (activeRequiredChainId !== null) return chainId === activeRequiredChainId;
+    return chainId === SYS_COIN_ID || chainId === SYS_TESTNET_ID || chainId === HARDHAT_ID;
   });
 
   // Shuffled projects
@@ -391,12 +412,74 @@
     retryLoadIteration(currentPage, isOwner);
   }
 
+  function getErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string') {
+      return (error as any).message;
+    }
+    return fallback;
+  }
+
+  function openWalletSelector() {
+    walletConnectError = null;
+    requestWalletProviders();
+    walletSelectorOpen = true;
+  }
+
+  function handleSwitchWallet() {
+    closeDisconnectModal();
+    openWalletSelector();
+  }
+
+  async function handleSelectWallet(walletId: string) {
+    walletConnectPending = true;
+    walletConnectError = null;
+
+    try {
+      await connectWallet(walletId, switchTargetChainId);
+      walletSelectorOpen = false;
+    } catch (error) {
+      walletConnectError = getErrorMessage(error, 'Failed to connect wallet.');
+    } finally {
+      walletConnectPending = false;
+    }
+  }
+
+  async function handleExecuteMint(
+    role: Parameters<typeof executeMint>[0],
+    refreshCallback?: Parameters<typeof executeMint>[1],
+    communityAmount?: Parameters<typeof executeMint>[2]
+  ) {
+    try {
+      await executeMint(role, refreshCallback, communityAmount);
+    } catch (error) {
+      showError(getErrorMessage(error, 'Transaction failed.'));
+    }
+  }
+
+  async function handleExecuteVote(
+    role: Parameters<typeof executeVote>[0],
+    projectAddress: string,
+    tokenId?: string,
+    refreshCallback?: Parameters<typeof executeVote>[3]
+  ) {
+    try {
+      await executeVote(role, projectAddress, tokenId, refreshCallback);
+    } catch (error) {
+      showError(getErrorMessage(error, 'Transaction failed.'));
+    }
+  }
+
   // Initialize
   onMount(() => {
+    const cleanupDiscovery = initWalletDiscovery();
     initWallet();
     const cleanup = setupWalletListeners();
     refreshIterations();
-    return cleanup;
+    return () => {
+      cleanup();
+      cleanupDiscovery();
+    };
   });
 </script>
 
@@ -410,7 +493,23 @@
     </div>
 
     <!-- Modals -->
-    <SwitchNetworkModal isOpen={switchNetworkModalOpen} onClose={closeSwitchNetworkModal} />
+    <SwitchNetworkModal
+      isOpen={switchNetworkModalOpen}
+      onClose={closeSwitchNetworkModal}
+      targetChainId={switchTargetChainId}
+    />
+
+    <WalletSelectModal
+      isOpen={walletSelectorOpen}
+      wallets={walletProviderOptions}
+      isConnecting={walletConnectPending}
+      error={walletConnectError}
+      onClose={() => {
+        if (!walletConnectPending) walletSelectorOpen = false;
+      }}
+      onSelect={handleSelectWallet}
+      onRefresh={requestWalletProviders}
+    />
 
     <TxPendingModal
       isOpen={pendingAction !== null || txPendingHash !== null}
@@ -438,9 +537,11 @@
         disconnectWallet();
         closeDisconnectModal();
       }}
+      onSwitchWallet={handleSwitchWallet}
       walletAddress={walletAddress || ''}
       {chainId}
       networkLabel={chainId ? NETWORKS[chainId]?.name ?? `Chain ${chainId}` : 'Unknown Network'}
+      walletName={connectedWalletInfo?.name ?? null}
     />
 
     <ConfirmRemoveModal
@@ -478,7 +579,7 @@
     <!-- Header -->
     <Header
       {walletAddress}
-      onConnect={connectWallet}
+      onConnect={openWalletSelector}
       {correctNetwork}
       {chainId}
       {pendingAction}
@@ -549,8 +650,8 @@
             {signer}
             {publicProvider}
             {getProjectLabel}
-            {executeMint}
-            {executeVote}
+            executeMint={handleExecuteMint}
+            executeVote={handleExecuteVote}
             handleToggleAdminSection={toggleAdminSection}
             {runTransaction}
             {refreshVotingData}
@@ -561,7 +662,7 @@
             {setPendingRemovalVoter}
             setError={showError}
             onOpenDisconnect={openDisconnectModal}
-            onConnect={connectWallet}
+            onConnect={openWalletSelector}
             {votingMode}
             {projectScores}
             setVotingMode={setVotingModeAction}
@@ -625,8 +726,8 @@
             {chainId}
             {signer}
             {getProjectLabel}
-            {executeMint}
-            {executeVote}
+            executeMint={handleExecuteMint}
+            executeVote={handleExecuteVote}
             {refreshVotingData}
             {refreshBadges}
           />

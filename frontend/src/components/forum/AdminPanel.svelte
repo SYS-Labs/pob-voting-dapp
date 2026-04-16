@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { MonitoredThread } from '~/interfaces/forum';
+  import { getSelectedEthereumProvider } from '~/stores/wallet';
 
   interface Props {
     monitoredThreads: MonitoredThread[];
@@ -48,7 +49,8 @@
       return;
     }
 
-    if (typeof window === 'undefined' || !window.ethereum) {
+    const ethereum = getSelectedEthereumProvider();
+    if (!ethereum) {
       error = 'No wallet detected';
       return;
     }
@@ -59,7 +61,7 @@
       status = 'Requesting signature...';
       error = null;
 
-      const signature = await window.ethereum.request({
+      const signature = await ethereum.request({
         method: 'personal_sign',
         params: [message, walletAddress],
       });
@@ -82,7 +84,8 @@
       return;
     }
 
-    if (typeof window === 'undefined' || !window.ethereum) {
+    const ethereum = getSelectedEthereumProvider();
+    if (!ethereum) {
       error = 'No wallet detected';
       return;
     }
@@ -93,7 +96,7 @@
     try {
       error = null;
 
-      const signature = await window.ethereum.request({
+      const signature = await ethereum.request({
         method: 'personal_sign',
         params: [message, walletAddress],
       });

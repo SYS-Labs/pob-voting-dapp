@@ -9,6 +9,7 @@ export interface TransactionContext {
   signer: JsonRpcSigner | null;
   walletAddress: string | null;
   chainId: number | null;
+  targetChainId: number | null;
   correctNetwork: boolean;
   selectedIteration: Iteration | null;
   publicProvider: JsonRpcProvider | null;
@@ -22,15 +23,21 @@ export interface TransactionContext {
 export function getTransactionContext(): TransactionContext {
   const wallet = get(walletStore);
   const iteration = get(currentIteration);
-  const chainId = iteration?.chainId ?? null;
+  const targetChainId = iteration?.chainId ?? null;
+  const supportedWalletChain =
+    wallet.chainId === null ||
+    wallet.chainId === SYS_COIN_ID ||
+    wallet.chainId === SYS_TESTNET_ID ||
+    wallet.chainId === HARDHAT_ID;
 
   return {
     signer: wallet.signer,
     walletAddress: wallet.walletAddress,
     chainId: wallet.chainId,
-    correctNetwork: [SYS_COIN_ID, SYS_TESTNET_ID, HARDHAT_ID, null].includes(wallet.chainId),
+    targetChainId,
+    correctNetwork: targetChainId !== null ? wallet.chainId === targetChainId : supportedWalletChain,
     selectedIteration: iteration,
-    publicProvider: chainId ? getPublicProviderForChain(chainId) : null,
+    publicProvider: targetChainId ? getPublicProviderForChain(targetChainId) : null,
     allIterations: get(usableIterations),
   };
 }
