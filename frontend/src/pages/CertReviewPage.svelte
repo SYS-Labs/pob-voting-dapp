@@ -40,9 +40,9 @@
 
   let loading = $state(true);
   let isOwner = $state(false);
-  let cert: PendingCert | null = $state(null);
-  let members: TeamMember[] = $state([]);
-  let projectName: string | null = $state(null);
+  let cert = $state(null as PendingCert | null);
+  let members = $state([] as TeamMember[]);
+  let projectName = $state(null as string | null);
   let reviewedAccountIsProject = $state(false);
 
   function certTypeLabel(t: string) {

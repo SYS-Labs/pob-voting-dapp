@@ -386,11 +386,11 @@
                 </div>
                 {#if m.fullName}
                   <p class="text-xs text-[var(--pob-text-muted)]">Name set: <strong class="text-[var(--pob-text)]">{m.fullName}</strong></p>
-                {:else}
+                {:else if chainId !== null}
                   <TeamMemberNameForm
                     iteration={m.iteration}
                     project={m.project}
-                    chainId={chainId}
+                    {chainId}
                     {signer}
                     currentName=""
                     onNameSet={() => fetchMemberships()}

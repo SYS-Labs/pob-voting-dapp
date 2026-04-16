@@ -19,9 +19,9 @@
   // ── State ──────────────────────────────────────────────────────────────────
 
   let loading = $state(true);
-  let cert: Cert | null = $state(null);
-  let teamMembers: TeamMember[] = $state([]);
-  let access: 'public' | 'involved' | 'denied' | null = $state(null);
+  let cert = $state(null as Cert | null);
+  let teamMembers = $state([] as TeamMember[]);
+  let access = $state(null as 'public' | 'involved' | 'denied' | null);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 

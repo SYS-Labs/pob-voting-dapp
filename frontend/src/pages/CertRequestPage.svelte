@@ -26,8 +26,8 @@
   }: Props = $props();
 
   let loading = $state(true);
-  let eligibility: CertEligibility | null = $state(null);
-  let existingCert: Cert | null = $state(null);
+  let eligibility = $state(null as CertEligibility | null);
+  let existingCert = $state(null as Cert | null);
   let isProject = $state(false);
   let hasNamed = $state(false);
   let requestSuccess = $state(false);

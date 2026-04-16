@@ -49,8 +49,8 @@
     return () => manager.destroy();
   });
 
-  const metadata = $derived(metadataManager ? $metadataManager.metadata : null);
-  const isSubmitting = $derived(metadataManager ? $metadataManager.isSubmitting : false);
+  const metadata = $derived(metadataManager ? $metadataManager!.metadata : null);
+  const isSubmitting = $derived(metadataManager ? $metadataManager!.isSubmitting : false);
 
   // Initialize form data when metadata loads
   // metadata comes from the API (async) and has the real stored name.

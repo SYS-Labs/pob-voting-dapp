@@ -146,6 +146,7 @@ export interface Cert {
 export interface CertEligibility {
   eligible: boolean;
   certType: CertType;
+  iteration?: number;
   isProject?: boolean;
   hasNamedTeamMembers?: boolean;
 }

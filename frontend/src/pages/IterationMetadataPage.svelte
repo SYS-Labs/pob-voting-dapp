@@ -46,11 +46,11 @@
     return () => manager.destroy();
   });
 
-  const currentCID = $derived(metadataManager ? $metadataManager.currentCID : null);
-  const pendingCID = $derived(metadataManager ? $metadataManager.pendingCID : null);
-  const pendingTxHash = $derived(metadataManager ? $metadataManager.pendingTxHash : null);
-  const pendingConfirmations = $derived(metadataManager ? $metadataManager.pendingConfirmations : 0);
-  const metadata = $derived(metadataManager ? $metadataManager.metadata : null);
+  const currentCID = $derived(metadataManager ? $metadataManager!.currentCID : null);
+  const pendingCID = $derived(metadataManager ? $metadataManager!.pendingCID : null);
+  const pendingTxHash = $derived(metadataManager ? $metadataManager!.pendingTxHash : null);
+  const pendingConfirmations = $derived(metadataManager ? $metadataManager!.pendingConfirmations : 0);
+  const metadata = $derived(metadataManager ? $metadataManager!.metadata : null);
 
   // Determine if editing is allowed
   const canEdit = $derived.by(() => {
@@ -104,7 +104,7 @@
           <div>
             <h2 class="pob-pane__title">{iterationName}</h2>
             <p class="mt-1 text-sm text-[var(--pob-text-muted)]">
-              Iteration #{currentIteration.iteration}{currentIteration.round ? ` - Round #${currentIteration.round}` : ''}
+              Iteration #{currentIteration?.iteration}{currentIteration?.round ? ` - Round #${currentIteration.round}` : ''}
             </p>
           </div>
           {#if canEdit.allowed}

@@ -61,8 +61,8 @@
     return () => manager.destroy();
   });
 
-  const metadata = $derived(metadataManagerStore ? $metadataManagerStore.metadata : null);
-  const isSubmitting = $derived(metadataManagerStore ? $metadataManagerStore.isSubmitting : false);
+  const metadata = $derived(metadataManagerStore ? $metadataManagerStore!.metadata : null);
+  const isSubmitting = $derived(metadataManagerStore ? $metadataManagerStore!.isSubmitting : false);
 
   // Registry status
   let registryStatusManager = $state<ReturnType<typeof createRegistryStatusStore> | null>(null);
