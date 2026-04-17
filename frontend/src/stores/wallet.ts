@@ -294,6 +294,23 @@ function detachProviderListeners() {
   activeProvider = null;
 }
 
+function isUserRejectedRequest(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const maybeError = error as { code?: unknown; message?: unknown };
+  if (maybeError.code === 4001) return true;
+  return typeof maybeError.message === 'string' && maybeError.message.toLowerCase().includes('user rejected');
+}
+
+function normalizeAccounts(accounts: unknown): string[] {
+  if (!Array.isArray(accounts) || accounts.some((acct) => typeof acct !== 'string')) {
+    throw new Error('Wallet returned an invalid account response.');
+  }
+  if (!accounts.length) {
+    throw new Error('Wallet returned no accounts.');
+  }
+  return accounts as string[];
+}
+
 // ============================================================================
 // Actions
 // ============================================================================
@@ -383,10 +400,7 @@ export async function connectWallet(walletId?: string, targetChainId: number = S
 
   // Request permission via raw provider first — avoids ethers wrapping quirks
   // during the wallet authorization step.
-  const accounts = await ethereum.request<string[]>({ method: 'eth_requestAccounts' });
-  if (!accounts || !accounts.length) {
-    throw new Error('Wallet returned no accounts.');
-  }
+  const accounts = normalizeAccounts(await ethereum.request({ method: 'eth_requestAccounts' }));
   console.log('[connectWallet] Connected to account:', accounts[0]);
 
   const hexChainId = await ethereum.request<string>({ method: 'eth_chainId' });
@@ -423,6 +437,39 @@ export async function connectWallet(walletId?: string, targetChainId: number = S
   }
 
   console.log('[connectWallet] Connection complete');
+}
+
+export async function switchAccount(): Promise<void> {
+  const ethereum = getSelectedEthereumProvider();
+  if (!ethereum) throw new Error('No wallet detected');
+
+  try {
+    await ethereum.request({
+      method: 'wallet_requestPermissions',
+      params: [{ eth_accounts: {} }],
+    });
+  } catch (err) {
+    if (isUserRejectedRequest(err)) throw err;
+    throw new Error('Account switching is not supported by this wallet. Switch accounts directly in your wallet extension.');
+  }
+
+  const accounts = normalizeAccounts(await ethereum.request({ method: 'eth_requestAccounts' }));
+  const hexChainId = await ethereum.request<string>({ method: 'eth_chainId' });
+  const numericChainId = Number.parseInt(hexChainId, 16);
+  const nextProvider = createProviderWithoutENS(ethereum, numericChainId);
+  const nextSigner = await nextProvider.getSigner();
+
+  localStorage.setItem('userDisconnected', 'false');
+  walletStore.update(s => ({
+    ...s,
+    provider: nextProvider,
+    signer: nextSigner,
+    walletAddress: accounts[0],
+    chainId: numericChainId,
+    userDisconnected: false,
+    ethereumProvider: ethereum,
+  }));
+  attachProviderListeners(ethereum);
 }
 
 export function disconnectWallet(): void {

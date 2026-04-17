@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from './Modal.svelte';
+  import WalletIcon from './WalletIcon.svelte';
   import type { WalletProviderOption } from '~/stores/wallet';
 
   interface Props {
@@ -22,12 +23,6 @@
     onRefresh,
   }: Props = $props();
 
-  function fallbackLabel(name: string): string {
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return 'W';
-    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  }
 </script>
 
 <Modal
@@ -57,18 +52,7 @@
               disabled={isConnecting}
             >
               <span class="flex items-center gap-3">
-                <span class="wallet-icon-frame">
-                  {#if wallet.info.icon}
-                    <img
-                      src={wallet.info.icon}
-                      alt=""
-                      class="wallet-icon"
-                      loading="lazy"
-                    />
-                  {:else}
-                    {fallbackLabel(wallet.info.name)}
-                  {/if}
-                </span>
+                <WalletIcon icon={wallet.info.icon} name={wallet.info.name} size="md" />
 
                 <span class="min-w-0 flex-1">
                   <span class="block font-semibold text-[var(--pob-text)]">{wallet.info.name}</span>
@@ -110,29 +94,3 @@
     </div>
   {/snippet}
 </Modal>
-
-<style>
-  .wallet-icon-frame {
-    width: 2.75rem;
-    height: 2.75rem;
-    flex: 0 0 2.75rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--pob-border);
-    border-radius: var(--pob-radius-mobile);
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--pob-primary);
-    font-size: 0.875rem;
-    font-weight: 700;
-    line-height: 1;
-    overflow: hidden;
-  }
-
-  .wallet-icon {
-    width: 1.75rem;
-    height: 1.75rem;
-    display: block;
-    object-fit: contain;
-  }
-</style>

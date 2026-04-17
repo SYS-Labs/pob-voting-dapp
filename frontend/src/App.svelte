@@ -38,6 +38,7 @@
     walletStore,
     walletProvidersStore,
     connectWallet,
+    switchAccount,
     disconnectWallet,
     initWallet,
     initWalletDiscovery,
@@ -214,6 +215,7 @@
   let walletSelectorOpen = $state(false);
   let walletConnectPending = $state(false);
   let walletConnectError = $state<string | null>(null);
+  let accountSwitchPending = $state(false);
 
   // Admin panel state
   const openAdminSection = $derived($adminPanelStore);
@@ -431,6 +433,18 @@
     openWalletSelector();
   }
 
+  async function handleSwitchAccount() {
+    accountSwitchPending = true;
+    try {
+      await switchAccount();
+      closeDisconnectModal();
+    } catch (error) {
+      showError(getErrorMessage(error, 'Failed to switch account.'));
+    } finally {
+      accountSwitchPending = false;
+    }
+  }
+
   async function handleSelectWallet(walletId: string) {
     walletConnectPending = true;
     walletConnectError = null;
@@ -538,10 +552,13 @@
         closeDisconnectModal();
       }}
       onSwitchWallet={handleSwitchWallet}
+      onSwitchAccount={handleSwitchAccount}
+      isSwitchingAccount={accountSwitchPending}
       walletAddress={walletAddress || ''}
       {chainId}
       networkLabel={chainId ? NETWORKS[chainId]?.name ?? `Chain ${chainId}` : 'Unknown Network'}
       walletName={connectedWalletInfo?.name ?? null}
+      walletIcon={connectedWalletInfo?.icon ?? null}
     />
 
     <ConfirmRemoveModal
@@ -593,6 +610,8 @@
       showBadgesTab={walletAddress !== null && !isOwner}
       showCertsTab={certMenuVisible || isOwner}
       currentIteration={headerIterationNumber}
+      walletIcon={connectedWalletInfo?.icon ?? null}
+      walletName={connectedWalletInfo?.name ?? null}
     />
 
     <!-- Main content with Routes -->

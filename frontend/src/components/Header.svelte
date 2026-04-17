@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Link, useLocation } from 'svelte-routing';
   import Modal from './Modal.svelte';
+  import WalletIcon from './WalletIcon.svelte';
   import { NETWORKS } from '~/constants/networks';
   import type { PageType } from '~/interfaces';
 
@@ -18,6 +19,8 @@
     showBadgesTab: boolean;
     showCertsTab: boolean;
     currentIteration: number | null;
+    walletIcon?: string | null;
+    walletName?: string | null;
   }
 
   let {
@@ -34,6 +37,8 @@
     showBadgesTab,
     showCertsTab,
     currentIteration,
+    walletIcon = null,
+    walletName = null,
   }: Props = $props();
 
   let mobileMenuOpen = $state(false);
@@ -121,7 +126,8 @@
               {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
             </span>
             <span style="height: 0.75rem; width: 1px; background: rgba(247,147,26,0.3);"></span>
-            <span style="color: var(--pob-primary);">
+            <span class="inline-flex items-center gap-1.5" style="color: var(--pob-primary);">
+              <WalletIcon icon={walletIcon} name={walletName} size="xs" />
               {getNetworkLabel(chainId)}
             </span>
           </button>

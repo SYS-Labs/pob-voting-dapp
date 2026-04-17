@@ -10,7 +10,7 @@
       </p>
       <div style="display: flex; align-items: center; justify-content: center; gap: 2rem; flex-wrap: wrap;">
         <a
-          href="https://x.com/syscoin"
+          href="https://x.com/syscoin_hispano"
           target="_blank"
           rel="noopener noreferrer"
           class="footer-link"
@@ -26,7 +26,7 @@
           Discord
         </a>
         <a
-          href="https://t.me/syscoin_hispano"
+          href="https://t.me/syscoines"
           target="_blank"
           rel="noopener noreferrer"
           class="footer-link"

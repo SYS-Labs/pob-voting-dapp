@@ -356,6 +356,82 @@ describe('connectWallet auto-switch', () => {
   });
 });
 
+// ── switchAccount ────────────────────────────────────────────────────────────
+
+describe('switchAccount', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('requests account permissions and updates the connected account', async () => {
+    const mockProvider = setupProviderMock();
+    const eth = makeMockEthereum({
+      request: vi.fn()
+        .mockResolvedValueOnce([])                    // wallet_requestPermissions
+        .mockResolvedValueOnce(['0xNewUserAddress'])  // eth_requestAccounts
+        .mockResolvedValueOnce('0x39'),               // eth_chainId
+    });
+
+    const { switchAccount, walletStore } = await import('./wallet');
+    walletStore.update(s => ({
+      ...s,
+      walletAddress: '0xOldUserAddress',
+      chainId: 57,
+      userDisconnected: false,
+      ethereumProvider: eth as any,
+    }));
+
+    await switchAccount();
+
+    expect(eth.request).toHaveBeenCalledWith({
+      method: 'wallet_requestPermissions',
+      params: [{ eth_accounts: {} }],
+    });
+    expect(eth.request).toHaveBeenCalledWith({ method: 'eth_requestAccounts' });
+    expect(get(walletStore).walletAddress).toBe('0xNewUserAddress');
+    expect(mockProvider.getSigner).toHaveBeenCalled();
+  });
+
+  it('throws a not-supported error when wallet_requestPermissions is unsupported', async () => {
+    const eth = makeMockEthereum({
+      request: vi.fn()
+        .mockRejectedValueOnce({ code: -32601, message: 'Method not found' }),
+    });
+
+    const { switchAccount, walletStore } = await import('./wallet');
+    walletStore.update(s => ({
+      ...s,
+      walletAddress: '0xOldUserAddress',
+      chainId: 57,
+      userDisconnected: false,
+      ethereumProvider: eth as any,
+    }));
+
+    await expect(switchAccount()).rejects.toThrow('not supported by this wallet');
+    expect(get(walletStore).walletAddress).toBe('0xOldUserAddress');
+  });
+
+  it('re-throws when the user rejects the account permission request', async () => {
+    setupProviderMock();
+    const eth = makeMockEthereum({
+      request: vi.fn().mockRejectedValueOnce({ code: 4001, message: 'User rejected the request.' }),
+    });
+
+    const { switchAccount, walletStore } = await import('./wallet');
+    walletStore.update(s => ({
+      ...s,
+      walletAddress: '0xOldUserAddress',
+      chainId: 57,
+      userDisconnected: false,
+      ethereumProvider: eth as any,
+    }));
+
+    await expect(switchAccount()).rejects.toMatchObject({ code: 4001 });
+    expect(get(walletStore).walletAddress).toBe('0xOldUserAddress');
+    expect(eth.request).toHaveBeenCalledTimes(1);
+  });
+});
+
 // ── disconnectWallet ──────────────────────────────────────────────────────────
 
 describe('disconnectWallet', () => {
