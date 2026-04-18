@@ -8,6 +8,7 @@
     onDisconnect: () => void;
     onSwitchWallet: () => void;
     onSwitchAccount: () => void | Promise<void>;
+    canSwitchAccount?: boolean;
     isSwitchingAccount?: boolean;
     walletAddress: string;
     chainId: number | null;
@@ -22,6 +23,7 @@
     onDisconnect,
     onSwitchWallet,
     onSwitchAccount,
+    canSwitchAccount = true,
     isSwitchingAccount = false,
     walletAddress,
     chainId,
@@ -58,15 +60,15 @@
           {#if walletName}
             <div class="flex items-center justify-between gap-3">
               <span class="pob-label">Wallet</span>
-              <span class="min-w-0 truncate text-right font-semibold text-[var(--pob-text)]">{walletName}</span>
+              <span class="inline-flex min-w-0 items-center justify-end gap-2 text-right font-semibold text-[var(--pob-text)]">
+                <WalletIcon icon={walletIcon} name={walletName} size="sm" />
+                <span class="min-w-0 truncate">{walletName}</span>
+              </span>
             </div>
           {/if}
           <div class="flex items-center justify-between gap-3">
             <span class="pob-label">Network</span>
-            <span class="inline-flex min-w-0 items-center justify-end gap-2 text-right font-semibold text-[var(--pob-text)]">
-              <WalletIcon icon={walletIcon} name={walletName} size="sm" />
-              <span class="min-w-0 truncate">{networkLabel}</span>
-            </span>
+            <span class="min-w-0 truncate text-right font-semibold text-[var(--pob-text)]">{networkLabel}</span>
           </div>
           <div class="flex items-center justify-between gap-3">
             <span class="pob-label">Chain ID</span>
@@ -84,7 +86,7 @@
         <button
           type="button"
           onclick={handleSwitchAccount}
-          disabled={isSwitchingAccount}
+          disabled={isSwitchingAccount || !canSwitchAccount}
           class="pob-button pob-button--compact w-full justify-center"
         >
           {isSwitchingAccount ? 'Switching...' : 'Switch Account'}
@@ -106,6 +108,10 @@
           Disconnect
         </button>
       </div>
+
+      {#if !canSwitchAccount}
+        <p class="pob-pane__meta text-sm">Account switching is not supported by this wallet. Switch accounts directly in the wallet extension.</p>
+      {/if}
     </div>
   {/snippet}
 </Modal>

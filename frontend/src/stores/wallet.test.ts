@@ -7,6 +7,8 @@ type MockEthereum = {
   request: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn>;
   removeListener: ReturnType<typeof vi.fn>;
+  isPaliWallet?: boolean;
+  isPali?: boolean;
 };
 
 function makeMockEthereum(overrides: Partial<MockEthereum> = {}): MockEthereum {
@@ -409,6 +411,57 @@ describe('switchAccount', () => {
 
     await expect(switchAccount()).rejects.toThrow('not supported by this wallet');
     expect(get(walletStore).walletAddress).toBe('0xOldUserAddress');
+  });
+
+  it('throws immediately for Pali Wallet', async () => {
+    const eth = makeMockEthereum({
+      isPaliWallet: true,
+      request: vi.fn(),
+    });
+
+    const { switchAccount, walletStore } = await import('./wallet');
+    walletStore.update(s => ({
+      ...s,
+      walletAddress: '0xOldUserAddress',
+      chainId: 57,
+      userDisconnected: false,
+      ethereumProvider: eth as any,
+      selectedWalletInfo: {
+        uuid: 'pali-wallet',
+        name: 'Pali Wallet',
+        icon: '',
+        rdns: 'com.pali.wallet',
+      },
+    }));
+
+    await expect(switchAccount()).rejects.toThrow('not supported by Pali Wallet');
+    expect(eth.request).not.toHaveBeenCalled();
+    expect(get(walletStore).walletAddress).toBe('0xOldUserAddress');
+  });
+
+  it('detects unsupported Pali account switching from selected wallet metadata', async () => {
+    const eth = makeMockEthereum({
+      request: vi.fn(),
+    });
+
+    const { switchAccount, walletStore, canSwitchAccount } = await import('./wallet');
+    walletStore.update(s => ({
+      ...s,
+      walletAddress: '0xOldUserAddress',
+      chainId: 57,
+      userDisconnected: false,
+      ethereumProvider: eth as any,
+      selectedWalletInfo: {
+        uuid: 'pali-wallet',
+        name: 'Pali Wallet',
+        icon: '',
+        rdns: 'com.pali.wallet',
+      },
+    }));
+
+    expect(get(canSwitchAccount)).toBe(false);
+    await expect(switchAccount()).rejects.toThrow('not supported by Pali Wallet');
+    expect(eth.request).not.toHaveBeenCalled();
   });
 
   it('re-throws when the user rejects the account permission request', async () => {

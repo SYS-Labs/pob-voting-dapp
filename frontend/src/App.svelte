@@ -37,6 +37,7 @@
   import {
     walletStore,
     walletProvidersStore,
+    canSwitchAccount,
     connectWallet,
     switchAccount,
     disconnectWallet,
@@ -156,6 +157,7 @@
   const walletAddress = $derived($walletStore.walletAddress);
   const chainId = $derived($walletStore.chainId);
   const connectedWalletInfo = $derived($walletStore.selectedWalletInfo);
+  const accountSwitchSupported = $derived($canSwitchAccount);
   const walletProviderOptions = $derived($walletProvidersStore);
 
   // Iterations state
@@ -554,6 +556,7 @@
       onSwitchWallet={handleSwitchWallet}
       onSwitchAccount={handleSwitchAccount}
       isSwitchingAccount={accountSwitchPending}
+      canSwitchAccount={accountSwitchSupported}
       walletAddress={walletAddress || ''}
       {chainId}
       networkLabel={chainId ? NETWORKS[chainId]?.name ?? `Chain ${chainId}` : 'Unknown Network'}

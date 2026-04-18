@@ -57,6 +57,7 @@ export const signer = derived(walletStore, $w => $w.signer);
 export const walletAddress = derived(walletStore, $w => $w.walletAddress);
 export const chainId = derived(walletStore, $w => $w.chainId);
 export const selectedWalletInfo = derived(walletStore, $w => $w.selectedWalletInfo);
+export const canSwitchAccount = derived(walletStore, $w => supportsAccountSwitch($w.ethereumProvider, $w.selectedWalletInfo));
 export const isConnected = derived(walletStore, $w => $w.walletAddress !== null);
 
 // ============================================================================
@@ -147,6 +148,29 @@ function getLegacyWalletName(provider: EthereumProvider): string {
   if (flaggedProvider.isPaliWallet || flaggedProvider.isPali) return 'Pali Wallet';
   if (flaggedProvider.isMetaMask) return 'MetaMask';
   return 'Browser Wallet';
+}
+
+function isPaliWallet(
+  provider: EthereumProvider | null | undefined,
+  info: Partial<EIP6963ProviderInfo> | null | undefined,
+): boolean {
+  const flaggedProvider = provider as (EthereumProvider & {
+    isPaliWallet?: boolean;
+    isPali?: boolean;
+  }) | null | undefined;
+
+  if (flaggedProvider?.isPaliWallet || flaggedProvider?.isPali) return true;
+
+  const rdns = info?.rdns?.toLowerCase();
+  const name = info?.name?.toLowerCase();
+  return rdns?.includes('pali') === true || name?.includes('pali') === true;
+}
+
+function supportsAccountSwitch(
+  provider: EthereumProvider | null | undefined,
+  info: Partial<EIP6963ProviderInfo> | null | undefined,
+): boolean {
+  return !isPaliWallet(provider, info);
 }
 
 function getLegacyWalletProvider(): WalletProviderOption | null {
@@ -440,8 +464,12 @@ export async function connectWallet(walletId?: string, targetChainId: number = S
 }
 
 export async function switchAccount(): Promise<void> {
-  const ethereum = getSelectedEthereumProvider();
+  const state = get(walletStore);
+  const ethereum = state.ethereumProvider ?? getSelectedEthereumProvider();
   if (!ethereum) throw new Error('No wallet detected');
+  if (!supportsAccountSwitch(ethereum, state.selectedWalletInfo)) {
+    throw new Error('Account switching is not supported by Pali Wallet. Switch accounts directly in your wallet extension.');
+  }
 
   try {
     await ethereum.request({
