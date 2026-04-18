@@ -651,6 +651,10 @@
                                statusFlags.isActive &&
                                !statusFlags.votingEnded}
 
+              {@const canConnectToVote = !walletAddress &&
+                                         statusFlags.isActive &&
+                                         !statusFlags.votingEnded}
+
               {@const isProjectWinner = statusFlags.votingEnded &&
                 winner.hasWinner &&
                 winner.projectAddress?.toLowerCase() === project.address.toLowerCase()}
@@ -660,10 +664,12 @@
                 {votingRole}
                 hasVotedForProject={hasVotedForThisProject}
                 {canVote}
+                {canConnectToVote}
                 {isOwner}
                 {projectsLocked}
                 {pendingAction}
                 onVote={(_projectAddress, tokenId) => handleVoteClick(project, tokenId)}
+                {onConnect}
                 onRemove={(proj) => {
                   if (projectsLocked) {
                     setError('Projects are locked after activation. Removal is disabled.');

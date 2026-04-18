@@ -8,10 +8,12 @@
     votingRole: ParticipantRole | null;
     hasVotedForProject: boolean;
     canVote: boolean;
+    canConnectToVote?: boolean;
     isOwner: boolean;
     projectsLocked: boolean;
     pendingAction: string | null;
     onVote: (projectAddress: string, tokenId?: string) => void;
+    onConnect?: () => void;
     onRemove: (project: Project) => void;
     communityBadges?: Array<{ tokenId: string; hasVoted: boolean }>;
     iterationNumber?: number;
@@ -23,10 +25,12 @@
     votingRole,
     hasVotedForProject,
     canVote,
+    canConnectToVote = false,
     isOwner,
     projectsLocked,
     pendingAction,
     onVote,
+    onConnect,
     onRemove,
     communityBadges = [],
     iterationNumber,
@@ -56,6 +60,11 @@
   const appUrl = $derived(project.metadata?.app_url?.trim() || null);
 
   function handleVote() {
+    if (!canVote) {
+      onConnect?.();
+      return;
+    }
+
     console.log('[ProjectCard] Vote button clicked for:', {
       projectName: project.metadata?.name ?? `Project #${project.id}`,
       projectId: project.id,
@@ -146,7 +155,7 @@
         {/if}
       </div>
 
-      {#if appUrl || (votingRole !== null && !isOwner)}
+      {#if appUrl || ((votingRole !== null || canConnectToVote) && !isOwner)}
         <div class="ml-auto flex flex-wrap items-center gap-2">
           {#if appUrl}
             <a
@@ -160,13 +169,12 @@
             </a>
           {/if}
 
-          <!-- Vote button/status for voting entities only -->
-          {#if votingRole !== null && !isOwner}
+          {#if (votingRole !== null || canConnectToVote) && !isOwner}
             {#if hasVotedForProject}
               <span class="pob-pill border border-[rgba(247,147,26,0.45)] bg-[rgba(247,147,26,0.12)] text-[var(--pob-primary)]">
                 VOTED
               </span>
-            {:else if canVote}
+            {:else if canVote || canConnectToVote}
               <button
                 type="button"
                 onclick={handleVote}

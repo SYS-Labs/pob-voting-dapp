@@ -40,6 +40,7 @@
     executeVote: (role: ParticipantRole, projectAddress: string, tokenId?: string, refreshCallback?: () => Promise<void>) => void;
     refreshVotingData: () => Promise<void>;
     refreshBadges: () => Promise<void>;
+    onConnect?: () => void;
   }
 
   let {
@@ -64,6 +65,7 @@
     executeVote,
     refreshVotingData,
     refreshBadges,
+    onConnect,
   }: Props = $props();
 
   let sidebarVisible = $state(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true);
@@ -292,6 +294,15 @@
       return;
     }
     handleConfirmVote();
+  }
+
+  function handleCommunityVoteAction() {
+    if (!walletAddress) {
+      onConnect?.();
+      return;
+    }
+
+    handleVoteClick();
   }
 
   // Handle confirmed vote from modal
@@ -653,14 +664,14 @@
                   Vote for <span class="font-semibold text-white">{projectName}</span>.
                 {/if}
               </p>
-              {#if statusFlags.isActive && !statusFlags.votingEnded && walletAddress}
+              {#if statusFlags.isActive && !statusFlags.votingEnded && (walletAddress || onConnect)}
                 <button
                   type="button"
-                  onclick={handleVoteClick}
+                  onclick={handleCommunityVoteAction}
                   disabled={pendingAction !== null}
                   class="pob-button w-full justify-center"
                 >
-                  {hasVotedForThisProject ? 'Voted' : hasVotedAnywhere ? 'Change Vote' : 'Vote'}
+                  {walletAddress ? (hasVotedForThisProject ? 'Voted' : hasVotedAnywhere ? 'Change Vote' : 'Vote') : 'Vote'}
                 </button>
               {/if}
               {#if statusFlags.isActive}

@@ -752,6 +752,7 @@
             executeVote={handleExecuteVote}
             {refreshVotingData}
             {refreshBadges}
+            onConnect={openWalletSelector}
           />
         {:else if showIterationLoader}
           <section class="pob-pane">
