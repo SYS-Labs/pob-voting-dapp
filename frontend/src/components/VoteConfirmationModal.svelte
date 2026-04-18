@@ -44,15 +44,40 @@
 
   let donationAmount = $state('');
 
+  const normalizedDonationAmount = $derived.by(() => donationAmount.trim());
+  const positiveDonationAmount = $derived.by(() => {
+    if (normalizedDonationAmount === '') return '';
+    const amount = Number(normalizedDonationAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return '';
+    return normalizedDonationAmount;
+  });
+
   $effect(() => {
     if (!isOpen) {
       donationAmount = '';
     }
   });
 
+  function handleDonationInput(event: Event) {
+    const nextValue = (event.currentTarget as HTMLInputElement).value;
+    const trimmedValue = nextValue.trim();
+
+    if (trimmedValue === '' || trimmedValue === '-') {
+      donationAmount = '';
+      return;
+    }
+
+    if (trimmedValue.startsWith('-')) {
+      donationAmount = '0';
+      return;
+    }
+
+    donationAmount = nextValue;
+  }
+
   async function handleMint() {
     if (executeMint) {
-      await executeMint('community', refreshBadges, donationAmount);
+      await executeMint('community', refreshBadges, positiveDonationAmount);
     }
   }
 </script>
@@ -73,20 +98,23 @@
           As a community juror, you must mint a badge to participate in voting. You can mint for free or optionally donate any desired amount of {tokenSymbol}. Any donation is forwarded directly to the configured PoB donation address.
         </p>
 
-        <label class="pob-fieldset mb-4 block">
+        <label for="community-donation-amount" class="pob-fieldset mb-4 block">
           <span class="pob-label">Optional donation amount ({tokenSymbol})</span>
           <input
+            aria-describedby="community-donation-amount-help"
+            id="community-donation-amount"
             type="number"
             min="0"
             step="any"
             inputmode="decimal"
-            bind:value={donationAmount}
+            value={donationAmount}
+            oninput={handleDonationInput}
             class="pob-input mt-2 w-full"
             placeholder="0"
             disabled={isPending}
           />
-          <p class="mt-2 text-xs text-[var(--pob-text-muted)]">Leave this blank to mint for free.</p>
         </label>
+        <p id="community-donation-amount-help" class="mt-2 text-xs text-[var(--pob-text-muted)] mb-4">Leave this blank to mint for free.</p>
 
         <div class="pob-fieldset mb-4">
           <span class="pob-label">Project you want to vote for</span>
@@ -120,8 +148,8 @@
             >
               {#if pendingAction === 'Mint Community Badge'}
                 Minting...
-              {:else if donationAmount.trim() !== ''}
-                Mint Badge + Donate {donationAmount.trim()} {tokenSymbol}
+              {:else if positiveDonationAmount !== ''}
+                Mint Badge + Donate {positiveDonationAmount} {tokenSymbol}
               {:else}
                 Mint Badge for Free
               {/if}
