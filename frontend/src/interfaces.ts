@@ -2,6 +2,7 @@ export type IterationStatus = 'upcoming' | 'active' | 'ended';
 
 export type PageType =
   | 'iterations'
+  | 'join'
   | 'iteration'
   | 'project'
   | 'badges'

@@ -28,6 +28,7 @@
   import CertPage from '~/pages/CertPage.svelte';
   import ProfilePage from '~/pages/ProfilePage.svelte';
   import GetAddressPage from '~/pages/GetAddressPage.svelte';
+  import JoinPage from '~/pages/JoinPage.svelte';
   import FaqPage from '~/pages/FaqPage.svelte';
   import PrivacyPage from '~/pages/PrivacyPage.svelte';
   import TermsPage from '~/pages/TermsPage.svelte';
@@ -136,6 +137,7 @@
   });
 
   function getPageFromPath(pathname: string): PageType {
+    if (pathname === '/join') return 'join';
     if (pathname.match(/^\/iteration\/\d+\/project\//)) return 'project';
     if (pathname.startsWith('/iteration/')) return 'iteration';
     if (pathname === '/badges') return 'badges';
@@ -903,6 +905,10 @@
       <!-- Address generator page -->
       <Route path="/get-address">
         <GetAddressPage />
+      </Route>
+
+      <Route path="/join">
+        <JoinPage />
       </Route>
 
       <!-- FAQ page -->
