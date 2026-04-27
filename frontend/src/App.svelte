@@ -99,6 +99,7 @@
   import { createWriteDispatcher } from '~/utils/writeDispatch';
   import { SYS_COIN_ID, SYS_TESTNET_ID, HARDHAT_ID, NETWORKS } from '~/constants/networks';
   import { formatAddress } from '~/utils';
+  import { getPageFromPath } from '~/utils/pageRouting';
   import type { IterationStatus, PageType, Project } from '~/interfaces';
 
   // Router location - track path using browser location
@@ -135,21 +136,6 @@
       history.replaceState = originalReplaceState;
     };
   });
-
-  function getPageFromPath(pathname: string): PageType {
-    if (pathname === '/join') return 'join';
-    if (pathname.match(/^\/iteration\/\d+\/project\//)) return 'project';
-    if (pathname.startsWith('/iteration/')) return 'iteration';
-    if (pathname === '/badges') return 'badges';
-    if (pathname.match(/^\/certs\/request\/\d+$/)) return 'cert-request';
-    if (pathname.match(/^\/certs\/review\/\d+$/)) return 'cert-review';
-    if (pathname === '/certs') return 'certs';
-    if (pathname.match(/^\/cert\/\d+\/\d+$/)) return 'cert';
-    if (pathname.startsWith('/profile/')) return 'profile';
-    if (pathname.startsWith('/get-address')) return 'get-address';
-    if (pathname === '/faq') return 'faq';
-    return 'iterations';
-  }
 
   const currentPage = $derived(getPageFromPath(currentPath));
 

@@ -54,7 +54,6 @@
 
   const tabs = $derived([
     { id: 'iterations' as const, label: 'Home', show: true, path: '/' },
-    { id: 'join' as const, label: 'Join', show: true, path: '/join' },
     { id: 'iteration' as const, label: iterationLabel, show: showIterationTab, path: currentIteration ? `/iteration/${currentIteration}` : '/iteration/1' },
     { id: 'badges' as const, label: 'Badges', show: showBadgesTab, path: '/badges' },
     { id: 'certs' as const, label: 'Certs', show: showCertsTab, path: '/certs' },

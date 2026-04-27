@@ -12,7 +12,10 @@ export type PageType =
   | 'cert'
   | 'profile'
   | 'faq'
-  | 'get-address';
+  | 'get-address'
+  | 'privacy'
+  | 'terms'
+  | 'not-found';
 
 export interface PreviousRound {
   round: number;
