@@ -39,7 +39,7 @@
   }
 </script>
 
-<section class="pob-pane pob-surface--quiet">
+<section class="pob-pane pob-surface--quiet pob-surface--accented">
   <div class="pob-pane__heading">
     <h3 class="pob-pane__title">{title}</h3>
     <div class="flex items-center gap-3">

@@ -169,7 +169,7 @@
 
 <div class="pob-page join-page">
   <div class="join-page__shell">
-    <section class="pob-pane pob-surface--quiet join-page__panel">
+    <section class="pob-pane pob-surface--quiet pob-surface--accented join-page__panel">
       <div class="join-page__brand">
         <div class="join-page__badge">
           <img src="/syscoin.svg" alt="Syscoin" class="join-page__logo" />
@@ -230,19 +230,6 @@
     display: grid;
     gap: 1.5rem;
     padding: 2rem;
-    overflow: hidden;
-    background:
-      radial-gradient(circle at top right, rgba(247, 147, 26, 0.12), transparent 34%),
-      var(--pob-surface-quiet);
-  }
-
-  .join-page__panel::before {
-    content: '';
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: 100%;
-    height: 1px;
-    background: linear-gradient(90deg, rgba(247, 147, 26, 0.7), transparent 70%);
   }
 
   .join-page__brand {

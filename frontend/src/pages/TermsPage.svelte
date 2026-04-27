@@ -6,7 +6,7 @@
 </script>
 
 <div class="pob-stack legal-page" id="terms-page">
-  <section class="pob-pane pob-pane--subtle pob-surface--quiet">
+  <section class="pob-pane pob-pane--subtle pob-surface--quiet pob-surface--accented">
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Terms of Service</h2>
@@ -15,7 +15,7 @@
       </div>
 
       <div class="space-y-4 text-sm text-[var(--pob-text-muted)]">
-        <div class="pob-status-block pob-surface--quiet">
+        <div class="pob-status-block pob-surface--quiet pob-surface--accented">
           <p class="text-sm text-[var(--pob-text-muted)]">Website: <a class="underline" href={SITE_URL} target="_blank" rel="noreferrer">{SITE_URL}</a></p>
           <p class="text-sm text-[var(--pob-text-muted)]">
             Operator contact:
@@ -67,7 +67,7 @@
         </ul>
 
         <h3 class="text-lg font-semibold text-[var(--pob-text)]">4. Public Blockchain Notice</h3>
-        <div class="pob-status-block pob-surface--quiet">
+        <div class="pob-status-block pob-surface--quiet pob-surface--accented">
           <p class="text-sm text-[var(--pob-text-muted)]">
             If you sign and broadcast a transaction through the Site, the contents of that transaction may become public
             and permanent. By choosing to broadcast a transaction, you decide to publish the included data to a public

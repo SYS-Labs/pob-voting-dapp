@@ -283,7 +283,7 @@
 </script>
 
 <div class="pob-stack" id="iterations">
-  <section class="pob-pane pob-surface--quiet">
+  <section class="pob-pane pob-surface--quiet pob-surface--accented">
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Welcome to Proof-of-Builders! 👋</h2>

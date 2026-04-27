@@ -11,7 +11,7 @@
 </script>
 
 <div class="pob-stack" id="faq-page">
-  <section id="faq" class="pob-pane pob-surface--quiet">
+  <section id="faq" class="pob-pane pob-surface--quiet pob-surface--accented">
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Frequently Asked Questions</h2>
