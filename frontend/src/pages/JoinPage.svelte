@@ -173,7 +173,7 @@
       <div class="join-page__brand">
         <div class="join-page__badge">
           <img src="/syscoin.svg" alt="Syscoin" class="join-page__logo" />
-          <span class="pob-pane__meta">{copy.brand}</span>
+          <span class="pob-eyebrow pob-eyebrow--muted">{copy.brand}</span>
         </div>
         <span class="pob-pill pob-pill--upcoming">{copy.eyebrow}</span>
       </div>

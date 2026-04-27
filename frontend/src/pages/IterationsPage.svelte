@@ -287,7 +287,7 @@
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Welcome to Proof-of-Builders! 👋</h2>
-        <p class="text-sm text-[var(--pob-primary)] mt-1">
+        <p class="pob-eyebrow mt-1">
           Bitcoin security meets scalable Web3 infrastructure through Syscoin's zkSYS
         </p>
       </div>

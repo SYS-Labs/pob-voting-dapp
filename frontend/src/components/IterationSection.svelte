@@ -43,7 +43,7 @@
   <div class="pob-pane__heading">
     <h3 class="pob-pane__title">{title}</h3>
     <div class="flex items-center gap-3">
-      <span class="pob-pane__meta">
+      <span class="pob-eyebrow pob-eyebrow--muted">
         {iterations.length} iteration{iterations.length !== 1 ? 's' : ''}
       </span>
       {#if headerAction}

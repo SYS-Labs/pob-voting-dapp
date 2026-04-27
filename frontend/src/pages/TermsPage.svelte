@@ -10,8 +10,8 @@
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Terms of Service</h2>
-        <p class="mt-1 text-sm text-[var(--pob-text-muted)]">For the Official Web Deployment</p>
-        <p class="text-sm text-[var(--pob-text-muted)]">Last updated: {LAST_UPDATED}</p>
+        <p class="pob-eyebrow pob-eyebrow--muted mt-1">For the Official Web Deployment</p>
+        <p class="pob-eyebrow pob-eyebrow--muted">Last updated: {LAST_UPDATED}</p>
       </div>
 
       <div class="space-y-4 text-sm text-[var(--pob-text-muted)]">

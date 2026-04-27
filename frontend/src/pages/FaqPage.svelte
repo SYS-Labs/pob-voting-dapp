@@ -15,7 +15,7 @@
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Frequently Asked Questions</h2>
-        <p class="text-sm text-[var(--pob-primary)] mt-1">
+        <p class="pob-eyebrow mt-1">
           Everything you need to know about the Proof-of-Builders program
         </p>
       </div>

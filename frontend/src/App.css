@@ -418,6 +418,23 @@ h3 .pob-pill {
   color: var(--pob-text-muted);
 }
 
+.pob-eyebrow {
+  display: inline-block;
+  margin: 0;
+  color: var(--pob-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.pob-eyebrow--muted {
+  color: var(--pob-text-muted);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
 .pob-divider {
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
