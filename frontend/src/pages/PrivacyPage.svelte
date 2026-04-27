@@ -6,7 +6,7 @@
 </script>
 
 <div class="pob-stack legal-page" id="privacy-page">
-  <section class="pob-pane pob-pane--subtle">
+  <section class="pob-pane pob-pane--subtle pob-surface--quiet">
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Privacy Notice</h2>
@@ -15,7 +15,7 @@
       </div>
 
       <div class="space-y-4 text-sm text-[var(--pob-text-muted)]">
-        <div class="pob-status-block">
+        <div class="pob-status-block pob-surface--quiet">
           <p class="text-sm text-[var(--pob-text-muted)]">Website: <a class="underline" href={SITE_URL} target="_blank" rel="noreferrer">{SITE_URL}</a></p>
           <p class="text-sm text-[var(--pob-text-muted)]">
             Operator contact:
@@ -44,7 +44,7 @@
         <p>Those third parties operate under their own terms and privacy policies.</p>
 
         <h3 class="text-lg font-semibold text-[var(--pob-text)]">2. Important Blockchain Notice</h3>
-        <div class="pob-status-block">
+        <div class="pob-status-block pob-surface--quiet">
           <p class="text-sm text-[var(--pob-text-muted)]">
             The Site is a non-custodial interface that may enable you to prepare, sign, and broadcast transactions to
             public blockchain networks.

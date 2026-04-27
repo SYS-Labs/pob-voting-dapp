@@ -283,7 +283,7 @@
 </script>
 
 <div class="pob-stack" id="iterations">
-  <section class="pob-pane">
+  <section class="pob-pane pob-surface--quiet">
     <div class="space-y-4">
       <div>
         <h2 class="pob-pane__title text-3xl">Welcome to Proof-of-Builders! 👋</h2>
@@ -311,14 +311,14 @@
   </section>
 
   {#if isLoading}
-    <section class="pob-pane">
+    <section class="pob-pane pob-surface--quiet">
       <div class="flex flex-col items-center justify-center py-12 gap-4">
         <ProgressSpinner size={48} />
         <p class="text-sm text-[var(--pob-text-muted)]">Loading iterations...</p>
       </div>
     </section>
   {:else if error}
-    <section class="pob-pane">
+    <section class="pob-pane pob-surface--quiet">
       <div class="flex flex-col items-center justify-center py-12 gap-4">
         <p class="text-sm text-[var(--pob-warning-text)]">{error}</p>
         <button

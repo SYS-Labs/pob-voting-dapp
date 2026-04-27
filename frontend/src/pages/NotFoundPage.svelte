@@ -6,7 +6,7 @@
   }
 </script>
 
-<div class="pob-card mx-auto mt-12 max-w-2xl text-center">
+<div class="pob-card pob-surface--quiet mx-auto mt-12 max-w-2xl text-center">
   <div class="mb-8">
     <h1 class="mb-4 text-6xl font-bold text-pob-orange">404</h1>
     <h2 class="mb-3 text-2xl font-semibold">Page not found</h2>

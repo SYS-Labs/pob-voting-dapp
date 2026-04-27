@@ -169,7 +169,7 @@
 
 <div class="pob-page join-page">
   <div class="join-page__shell">
-    <section class="pob-pane join-page__panel">
+    <section class="pob-pane pob-surface--quiet join-page__panel">
       <div class="join-page__brand">
         <div class="join-page__badge">
           <img src="/syscoin.svg" alt="Syscoin" class="join-page__logo" />
@@ -192,17 +192,17 @@
               href={link.href}
               target="_blank"
               rel="noopener noreferrer"
-              class="join-page__link pob-button pob-button--outline"
+              class="join-page__link pob-button pob-link-card"
             >
-              <span class="join-page__kind">{link.kind}</span>
+              <span class="join-page__kind pob-chip pob-chip--compact">{link.kind}</span>
               <span class="join-page__text">
                 <span class="join-page__label">{link.label}</span>
                 <span class="join-page__meta">{link.description}</span>
               </span>
             </a>
           {:else}
-            <Link to={link.to} class="join-page__link pob-button pob-button--outline">
-              <span class="join-page__kind">{link.kind}</span>
+            <Link to={link.to} class="join-page__link pob-button pob-link-card">
+              <span class="join-page__kind pob-chip pob-chip--compact">{link.kind}</span>
               <span class="join-page__text">
                 <span class="join-page__label">{link.label}</span>
                 <span class="join-page__meta">{link.description}</span>
@@ -233,7 +233,7 @@
     overflow: hidden;
     background:
       radial-gradient(circle at top right, rgba(247, 147, 26, 0.12), transparent 34%),
-      rgba(12, 12, 14, 0.82);
+      var(--pob-surface-quiet);
   }
 
   .join-page__panel::before {
@@ -300,45 +300,9 @@
     gap: 0.75rem;
   }
 
-  .join-page__link {
-    width: 100%;
-    justify-content: space-between;
-    text-align: left;
-    padding: 0.9rem 1rem;
-    color: var(--pob-text);
-    text-transform: none;
-    letter-spacing: 0.01em;
-    gap: 1rem;
-    background: rgba(16, 17, 17, 0.78);
-    border-color: rgba(255, 255, 255, 0.07);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.2);
-    transition: transform 160ms ease, border-color 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
-  }
-
-  .join-page__link:hover,
-  .join-page__link:focus-visible {
-    transform: translateY(-1px);
-    opacity: 0.92;
-    border-color: rgba(247, 147, 26, 0.36);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.22),
-      0 14px 32px rgba(0, 0, 0, 0.18);
-  }
-
   .join-page__kind {
     flex: 0 0 auto;
     min-width: 5rem;
-    border-radius: 0.4rem;
-    padding: 0.28rem 0.5rem;
-    background: rgba(255, 255, 255, 0.055);
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--pob-primary);
     text-align: center;
   }
 
