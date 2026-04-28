@@ -29,6 +29,23 @@
   });
 </script>
 
-<div style="font-family: monospace; font-size: 14px; color: var(--pob-text-muted); padding: 0.75rem 0;">
-  {formatCountdown(endTime, nowMs)}
-</div>
+<section class="pob-pane pob-surface--quiet date-time-panel">
+  <p class="pob-eyebrow pob-eyebrow--muted">Voting countdown</p>
+  <p class="pob-mono date-time-panel__value">
+    {formatCountdown(endTime, nowMs)}
+  </p>
+</section>
+
+<style>
+  .date-time-panel {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .date-time-panel__value {
+    color: var(--pob-text-muted);
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin: 0;
+  }
+</style>

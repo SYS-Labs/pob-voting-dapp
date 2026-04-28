@@ -50,9 +50,16 @@
 </script>
 
 {#if showBadges || showVotingProgress}
-  <section class="pob-pane">
+  <section class="pob-pane pob-surface--quiet badge-panel">
+    <div class="pob-pane__heading">
+      <div>
+        <p class="pob-eyebrow pob-eyebrow--muted mb-1">Sidebar summary</p>
+        <h3 class="pob-pane__title">Badges & Progress</h3>
+      </div>
+    </div>
+
     <!-- Grid layout: badges on left, voting progress on right -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2.1rem;">
+    <div class="badge-panel__grid">
       <!-- Badge section - Left column -->
       <div class="space-y-4">
         {#if showBadges}
@@ -71,15 +78,49 @@
       <!-- Voting progress section - Right column -->
       <div class="space-y-3">
         {#if showVotingProgress}
-          <h4 class="text-sm font-semibold text-white" style="margin-top: 0;">Voting progress</h4>
-          {#each votingRows as row (row.label)}
-            <div class="flex items-center justify-between gap-4">
-              <span class="text-sm text-[var(--pob-text-muted)]">{row.label}</span>
-              <span class="pob-mono text-base font-semibold text-white">{row.value}</span>
-            </div>
-          {/each}
+          <p class="pob-eyebrow pob-eyebrow--muted" style="margin-top: 0;">Voting progress</p>
+          <div class="badge-panel__progress-list">
+            {#each votingRows as row (row.label)}
+              <div class="badge-panel__row">
+                <span class="text-sm text-[var(--pob-text-muted)]">{row.label}</span>
+                <span class="pob-mono text-base font-semibold text-white">{row.value}</span>
+              </div>
+            {/each}
+          </div>
         {/if}
       </div>
     </div>
   </section>
 {/if}
+
+<style>
+  .badge-panel__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2.1rem;
+  }
+
+  .badge-panel__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.7rem 0;
+  }
+
+  .badge-panel__row + .badge-panel__row {
+    border-top: 1px solid var(--pob-border-subtle);
+  }
+
+  .badge-panel__progress-list {
+    border-top: 1px solid var(--pob-border-subtle);
+    border-bottom: 1px solid var(--pob-border-subtle);
+  }
+
+  @media (max-width: 767px) {
+    .badge-panel__grid {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+  }
+</style>

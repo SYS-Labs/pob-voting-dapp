@@ -65,9 +65,12 @@
 </script>
 
 {#if showPanel}
-  <section class="pob-pane">
+  <section class="pob-pane pob-surface--quiet">
     <div class="pob-pane__heading">
-      <h3 class="pob-pane__title">Jury Panel</h3>
+      <div>
+        <p class="pob-eyebrow pob-eyebrow--muted mb-1">Voting role</p>
+        <h3 class="pob-pane__title">Jury Panel</h3>
+      </div>
       {#if headerRoleTag}
         <span class="pob-pill {headerRoleTag.color}">
           {headerRoleTag.label}
@@ -80,7 +83,7 @@
         <p class="text-sm text-[var(--pob-text-muted)]">
           As an SMT voter, you are part of the SMT entity. Cast your vote during the active voting period. The entity's decision is determined by majority consensus.
         </p>
-        <p class="text-sm text-[var(--pob-text-muted)]">
+        <p class="pob-status-block pob-surface--quiet text-sm text-[var(--pob-text-muted)]">
           {#if smtVote}
             Voted for
             <span class="italic">
@@ -96,7 +99,7 @@
         <p class="text-sm text-[var(--pob-text-muted)]">
           As a DAO HIC voter, you are part of the high-integrity council. Cast your vote during the active voting period. The council's decision is determined by majority consensus.
         </p>
-        <p class="text-sm text-[var(--pob-text-muted)]">
+        <p class="pob-status-block pob-surface--quiet text-sm text-[var(--pob-text-muted)]">
           {#if daoHicVote}
             Voted for
             <span class="italic">
@@ -121,7 +124,7 @@
             You can <span class="underline">change your vote at any time</span> during the voting period.
           </p>
         {:else if roles.community && communityBadges.some(b => b.hasVoted)}
-          <p class="text-sm text-[var(--pob-text-muted)]">
+          <p class="pob-status-block pob-surface--quiet text-sm text-[var(--pob-text-muted)]">
             Voted for
             <span class="font-semibold text-white italic">
               {getProjectLabel(communityBadges.find(b => b.hasVoted)?.vote ?? null) ?? 'Unknown project'}
