@@ -83,7 +83,7 @@
             {#each votingRows as row (row.label)}
               <div class="badge-panel__row">
                 <span class="text-sm text-[var(--pob-text-muted)]">{row.label}</span>
-                <span class="pob-mono text-base font-semibold text-white">{row.value}</span>
+                <span class="badge-panel__value pob-mono text-base font-semibold text-white">{row.value}</span>
               </div>
             {/each}
           </div>
@@ -106,6 +106,11 @@
     justify-content: space-between;
     gap: 1rem;
     padding: 0.7rem 0;
+  }
+
+  .badge-panel__value {
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
   .badge-panel__row + .badge-panel__row {
