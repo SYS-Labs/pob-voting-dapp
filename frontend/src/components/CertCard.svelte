@@ -51,7 +51,7 @@
   );
 </script>
 
-<div class="pob-fieldset space-y-3">
+<div class="pob-fieldset pob-surface--quiet space-y-3">
   <!-- Certificate Visual -->
   <div class="aspect-square w-full rounded-lg overflow-hidden border border-[var(--pob-primary)]/30">
     {#if svgContent}
@@ -70,10 +70,10 @@
 
   <!-- Cert Info -->
   <div class="flex items-center justify-between">
-    <span class="pob-pill pob-pill--active">
+    <span class="pob-chip pob-chip--compact">
       {certTypeLabel}
     </span>
-    <span class="text-sm text-[var(--pob-text-muted)]">
+    <span class="pob-eyebrow pob-eyebrow--muted">
       #{cert.tokenId}
     </span>
   </div>
@@ -97,10 +97,10 @@
   <!-- Team Members -->
   {#if teamMemberNames.length > 0}
     <div class="pt-2 border-t border-[var(--pob-border)]">
-      <p class="text-xs text-[var(--pob-text-muted)] mb-1">Team</p>
+      <p class="pob-eyebrow pob-eyebrow--muted mb-1">Team</p>
       <div class="flex flex-wrap gap-1">
         {#each teamMemberNames as name (name)}
-          <span class="text-xs text-[var(--pob-text-muted)] bg-white/5 rounded px-1.5 py-0.5">
+          <span class="pob-chip pob-chip--compact">
             {name}
           </span>
         {/each}

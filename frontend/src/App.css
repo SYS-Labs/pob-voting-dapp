@@ -135,7 +135,9 @@ body {
 }
 
 .pob-pane.pob-surface--quiet:hover,
-.pob-card.pob-surface--quiet:hover {
+.pob-card.pob-surface--quiet:hover,
+.pob-fieldset.pob-surface--quiet:hover {
+  background: var(--pob-surface-quiet);
   border-color: var(--pob-border-subtle);
   box-shadow: var(--pob-shadow-inset-subtle);
 }

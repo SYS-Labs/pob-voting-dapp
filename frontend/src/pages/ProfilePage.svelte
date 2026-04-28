@@ -38,9 +38,10 @@
 
 <div class="pob-stack" id="profile-page">
   <!-- Profile Header -->
-  <section class="pob-pane pob-pane--subtle">
+  <section class="pob-pane pob-surface--quiet pob-surface--accented">
     <div class="flex items-center justify-between">
       <div>
+        <p class="pob-eyebrow pob-eyebrow--muted mb-1">Builder profile</p>
         <h1 class="pob-pane__title text-lg">Profile</h1>
         <p class="pob-mono text-sm text-[var(--pob-text-muted)] mt-1" title={address}>
           {truncatedAddress}
@@ -55,17 +56,17 @@
   </section>
 
   <!-- Stats Row -->
-  <section class="pob-pane pob-pane--subtle">
+  <section class="pob-pane pob-surface--quiet">
     <div class="grid grid-cols-2 gap-3">
-      <div class="pob-fieldset text-center">
+      <div class="pob-fieldset pob-surface--quiet text-center">
         <p class="text-2xl font-semibold">{badgeCount}</p>
-        <p class="text-xs text-[var(--pob-text-muted)]">
+        <p class="pob-eyebrow pob-eyebrow--muted">
           {badgeCount === 1 ? 'Badge' : 'Badges'}
         </p>
       </div>
-      <div class="pob-fieldset text-center">
+      <div class="pob-fieldset pob-surface--quiet text-center">
         <p class="text-2xl font-semibold">{certCount}</p>
-        <p class="text-xs text-[var(--pob-text-muted)]">
+        <p class="pob-eyebrow pob-eyebrow--muted">
           {certCount === 1 ? 'Certificate' : 'Certificates'}
         </p>
       </div>
@@ -73,7 +74,7 @@
   </section>
 
   {#if showLoader}
-    <section class="pob-pane pob-pane--subtle">
+    <section class="pob-pane pob-surface--quiet">
       <div class="flex flex-col items-center justify-center py-12">
         <ProgressSpinner size={48} className="mb-4" />
         <p class="text-sm text-[var(--pob-text-muted)]">
@@ -83,9 +84,12 @@
     </section>
   {:else}
     <!-- Certificates Section -->
-    <section class="pob-pane pob-pane--subtle">
+    <section class="pob-pane pob-surface--quiet">
       <div class="pob-pane__heading">
-        <h2 class="pob-pane__title">Certificates</h2>
+        <div>
+          <h2 class="pob-pane__title">Certificates</h2>
+          <p class="pob-eyebrow pob-eyebrow--muted mt-1">{certCount} collected</p>
+        </div>
       </div>
       {#if certCount > 0}
         <div class="pob-pane__grid md:grid-cols-2 xl:grid-cols-3">
@@ -94,7 +98,7 @@
           {/each}
         </div>
       {:else}
-        <div class="text-center py-8">
+        <div class="pob-status-block pob-surface--quiet text-center py-8">
           <p class="text-sm text-[var(--pob-text-muted)]">
             No certificates yet.
           </p>
@@ -103,9 +107,12 @@
     </section>
 
     <!-- Badges Section -->
-    <section class="pob-pane pob-pane--subtle">
+    <section class="pob-pane pob-surface--quiet">
       <div class="pob-pane__heading">
-        <h2 class="pob-pane__title">Badges</h2>
+        <div>
+          <h2 class="pob-pane__title">Badges</h2>
+          <p class="pob-eyebrow pob-eyebrow--muted mt-1">{badgeCount} collected</p>
+        </div>
       </div>
       {#if badgeCount > 0}
         <div class="pob-pane__grid md:grid-cols-2 xl:grid-cols-3">
@@ -114,7 +121,7 @@
           {/each}
         </div>
       {:else}
-        <div class="text-center py-8">
+        <div class="pob-status-block pob-surface--quiet text-center py-8">
           <p class="text-sm text-[var(--pob-text-muted)]">
             No badges yet.
           </p>

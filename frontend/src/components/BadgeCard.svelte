@@ -9,8 +9,8 @@
   let { badge }: Props = $props();
 </script>
 
-<div class="badge-card pob-fieldset space-y-3">
-  <span class="badge-card__stamp">
+<div class="badge-card pob-fieldset pob-surface--quiet space-y-3">
+  <span class="badge-card__stamp pob-chip pob-chip--compact">
     {ROLE_LABELS[badge.role]}
   </span>
 
@@ -33,7 +33,7 @@
 
   <!-- Badge Info -->
   <div class="flex items-center justify-end">
-    <span class="text-sm text-[var(--pob-text-muted)]">
+    <span class="pob-eyebrow pob-eyebrow--muted">
       #{badge.tokenId}
     </span>
   </div>

@@ -222,7 +222,7 @@
 
 {#if loading}
   <div class="pob-stack">
-    <section class="pob-pane pob-pane--subtle">
+    <section class="pob-pane pob-surface--quiet">
       <div class="flex flex-col items-center justify-center py-12">
         <ProgressSpinner size={48} className="mb-4" />
         <p class="text-sm text-[var(--pob-text-muted)]">Loading certificate...</p>
@@ -238,7 +238,7 @@
       ← Back
     </a>
 
-    <section class="pob-pane pob-pane--subtle">
+    <section class="pob-pane pob-surface--quiet pob-surface--accented">
       <!-- Heading row -->
       <div class="pob-pane__heading">
         <h2 class="pob-pane__title">Certificate #{tokenId}</h2>
@@ -249,12 +249,13 @@
 
       {#if cert}
         <!-- Sub-row: iteration and cert type -->
-        <p class="pob-pane__meta mb-3">
+        <p class="pob-eyebrow pob-eyebrow--muted mb-3">
           Iteration {cert.iteration} · {cert.certType}
         </p>
 
         <!-- Account row -->
-        <div class="mb-4">
+        <div class="pob-status-block pob-surface--quiet mb-4">
+          <p class="pob-eyebrow pob-eyebrow--muted mb-2">Account</p>
           {#if explorerLink}
             <a
               href={explorerLink}
@@ -273,17 +274,17 @@
         {#if access === 'involved' && certStage > 0 && certStage < 4}
           {#if certStage === 1}
             <!-- Cancelled -->
-            <div class="pob-status-block mt-4">
+            <div class="pob-status-block pob-surface--quiet mt-4">
               <p class="text-sm text-[var(--pob-text-muted)]">Certificate cancelled.</p>
             </div>
           {:else if certStage === 2}
             <!-- Requested -->
-            <div class="pob-status-block mt-4">
+            <div class="pob-status-block pob-surface--quiet mt-4">
               <p class="text-sm text-[var(--pob-text-muted)]">Awaiting owner review.</p>
             </div>
           {:else if certStage === 3}
             <!-- Pending -->
-            <div class="pob-status-block mt-4">
+            <div class="pob-status-block pob-surface--quiet mt-4">
               <p class="text-sm text-[var(--pob-text-muted)]">
                 {formatCountdown(cert.requestTime)}
               </p>
@@ -295,12 +296,15 @@
       <!-- Team members section -->
       {#if teamMembers.length > 0}
         <div class="mt-6">
-          <h3 class="pob-pane__title mb-3">Team Members</h3>
+          <div class="mb-3">
+            <h3 class="pob-pane__title">Team Members</h3>
+            <p class="pob-eyebrow pob-eyebrow--muted mt-1">{teamMembers.length} listed</p>
+          </div>
 
           {#if approvedMembers.length > 0}
             <ul class="space-y-2">
               {#each approvedMembers as member (member.memberAddress)}
-                <li class="pob-fieldset flex items-center justify-between">
+                <li class="pob-fieldset pob-surface--quiet flex items-center justify-between">
                   <div>
                     {#if member.fullName}
                       <span class="text-sm text-[var(--pob-text)]">{member.fullName}</span>
@@ -323,7 +327,7 @@
           {#if access === 'involved' && certStage < 4 && nonApprovedMembers.length > 0}
             <ul class="space-y-2 mt-2">
               {#each nonApprovedMembers as member (member.memberAddress)}
-                <li class="pob-fieldset flex items-center justify-between">
+                <li class="pob-fieldset pob-surface--quiet flex items-center justify-between">
                   <div>
                     {#if member.fullName}
                       <span class="text-sm text-[var(--pob-text-muted)]">{member.fullName}</span>

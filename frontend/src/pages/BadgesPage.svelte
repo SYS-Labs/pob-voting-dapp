@@ -15,7 +15,16 @@
 </script>
 
 <div class="pob-stack" id="badges-page">
-  <section class="pob-pane pob-pane--subtle">
+  <section class="pob-pane pob-surface--quiet pob-surface--accented">
+    <div class="pob-pane__heading">
+      <div>
+        <h1 class="pob-pane__title">Badges</h1>
+        <p class="pob-eyebrow pob-eyebrow--muted mt-1">
+          {walletAddress ? `${badges.length} collected` : 'Wallet required'}
+        </p>
+      </div>
+    </div>
+
     {#if walletAddress}
       {#if showLoader}
         <div class="flex flex-col items-center justify-center py-12">
