@@ -435,8 +435,14 @@ h3 .pob-pill {
 }
 
 .projects-list__item--winner {
-  border: 2px solid var(--pob-primary);
-  background: rgba(247, 147, 26, 0.05);
+  border-color: rgba(247, 147, 26, 0.46);
+}
+
+.project-card__heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .pob-mono {

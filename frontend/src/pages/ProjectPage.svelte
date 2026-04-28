@@ -381,11 +381,13 @@
 
 {#if loading}
   <div class="pob-stack">
-    <p class="text-sm text-[var(--pob-text-muted)]">Loading project...</p>
+    <section class="pob-pane pob-surface--quiet">
+      <p class="text-sm text-[var(--pob-text-muted)]">Loading project...</p>
+    </section>
   </div>
 {:else if !project}
   <div class="pob-stack">
-    <section class="pob-pane">
+    <section class="pob-pane pob-surface--quiet">
       <p class="text-sm text-[var(--pob-text-muted)]">Project not found.</p>
       <Link
         to={`/iteration/${currentIteration?.iteration ?? 1}`}
@@ -409,12 +411,13 @@
     </Link>
 
     <!-- Project card without vote button -->
-    <section class="pob-pane">
+    <section class="pob-pane pob-surface--quiet pob-surface--accented">
       <div class="space-y-4">
         <div class="pob-pane__heading project-page__heading">
           <div>
+            <p class="pob-eyebrow pob-eyebrow--muted mb-1">Project detail</p>
             <h1 class="project-page__title">{projectName}</h1>
-            <p class="pob-mono text-xs text-[var(--pob-text-muted)]">
+            <p class="pob-mono text-xs text-[var(--pob-text-muted)]" title={project.address}>
               {formatAddress(project.address)}
             </p>
             {#if isHistoricalProjectView && projectRound}
@@ -445,9 +448,12 @@
         </div>
 
         <!-- Full description -->
-        <div class="project-page__description">
-          <MarkdownRenderer content={resolvedMetadata?.description} />
-        </div>
+        {#if resolvedMetadata?.description}
+          <div class="project-page__description pob-status-block pob-surface--quiet">
+            <p class="pob-eyebrow pob-eyebrow--muted mb-2">Overview</p>
+            <MarkdownRenderer content={resolvedMetadata.description} />
+          </div>
+        {/if}
 
         <!-- Video embed -->
         {#if embedUrl}
@@ -699,9 +705,14 @@
       {/if}
 
       {#if isHistoricalProjectView}
-        <section class="pob-pane">
+        <section class="pob-pane pob-surface--quiet">
           <div class="pob-pane__heading">
-            <h3 class="pob-pane__title">Historical Round</h3>
+            <div>
+              <h3 class="pob-pane__title">Historical Round</h3>
+              {#if projectRound}
+                <p class="pob-eyebrow pob-eyebrow--muted mt-1">Round #{projectRound}</p>
+              {/if}
+            </div>
           </div>
           <p class="text-sm text-[var(--pob-text-muted)]">
             This project belongs to Round #{projectRound}. Historical project pages are read-only.
@@ -711,9 +722,12 @@
 
       <!-- Owner message -->
       {#if isOwner}
-        <section class="pob-pane">
+        <section class="pob-pane pob-surface--quiet">
           <div class="pob-pane__heading">
-            <h3 class="pob-pane__title">Owner View</h3>
+            <div>
+              <h3 class="pob-pane__title">Owner View</h3>
+              <p class="pob-eyebrow pob-eyebrow--muted mt-1">Read-only voting state</p>
+            </div>
           </div>
           <p class="text-sm text-[var(--pob-text-muted)]">
             As the contract owner, you cannot vote on projects.
@@ -723,9 +737,12 @@
 
       <!-- Project participant message -->
       {#if roles.project && !isOwner}
-        <section class="pob-pane">
+        <section class="pob-pane pob-surface--quiet">
           <div class="pob-pane__heading">
-            <h3 class="pob-pane__title">Participant View</h3>
+            <div>
+              <h3 class="pob-pane__title">Participant View</h3>
+              <p class="pob-eyebrow pob-eyebrow--muted mt-1">Project role</p>
+            </div>
           </div>
           <p class="text-sm text-[var(--pob-text-muted)]">
             As a project participant, you cannot vote on projects.

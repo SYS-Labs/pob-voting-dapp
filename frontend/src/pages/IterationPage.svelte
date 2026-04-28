@@ -605,9 +605,14 @@
     {/if}
 
     {#if currentIteration}
-      <section class="pob-pane pob-pane--subtle">
+      <section class="pob-pane pob-surface--quiet">
         <div class="pob-pane__heading">
-          <h3 class="pob-pane__title">Projects</h3>
+          <div>
+            <h3 class="pob-pane__title">Projects</h3>
+            <p class="pob-eyebrow pob-eyebrow--muted mt-1">
+              {displayProjects.length} registered
+            </p>
+          </div>
           {#if statusFlags.votingEnded && allProjectsForFinalized && allProjectsForFinalized.length > projects.length}
             <span class="text-xs text-[var(--pob-text-muted)]">
               (all rounds)
@@ -684,7 +689,7 @@
             {/each}
           </div>
         {:else}
-          <p class="text-sm text-[var(--pob-text-muted)]">
+          <p class="pob-status-block pob-surface--quiet text-sm text-[var(--pob-text-muted)]">
             {loading ? 'Loading projects…' : 'No registered projects yet.'}
           </p>
         {/if}

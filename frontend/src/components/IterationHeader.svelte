@@ -140,7 +140,7 @@
   <section class="pob-pane">
     <div class="pob-pane__heading">
       <div>
-        <p class="pob-pane__meta">Current iteration</p>
+        <p class="pob-eyebrow pob-eyebrow--muted">Current iteration</p>
         <h2 class="pob-pane__title text-3xl">{metadata?.name || iteration.name}</h2>
         <p class="mt-1 text-sm text-[var(--pob-text-muted)]">
           Iteration #{iteration.iteration}{iteration.round ? ` - Round #${iteration.round}` : ''}
@@ -191,7 +191,8 @@
 
     <!-- Iteration description -->
     {#if metadata?.description}
-      <div class="pob-fieldset" style="margin-top: 1rem;">
+      <div class="pob-fieldset pob-surface--quiet" style="margin-top: 1rem;">
+        <p class="pob-eyebrow pob-eyebrow--muted mb-2">Overview</p>
         <MarkdownRenderer content={metadata.description} />
       </div>
     {/if}

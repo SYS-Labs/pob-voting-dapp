@@ -84,22 +84,29 @@
   }
 </script>
 
-<div class="pob-fieldset projects-list__item space-y-3" class:projects-list__item--winner={isWinner}>
+<div
+  class="pob-fieldset pob-surface--quiet projects-list__item space-y-3"
+  class:projects-list__item--winner={isWinner}
+  class:pob-surface--accented={isWinner}
+>
   <div class="space-y-2">
-    {#if projectPageUrl}
-      <Link to={projectPageUrl} class="project-card__title-link">
+    <div class="project-card__heading-row">
+      {#if projectPageUrl}
+        <Link to={projectPageUrl} class="project-card__title-link">
+          <p class="text-lg font-semibold text-white project-card__title">
+            {projectName}
+          </p>
+        </Link>
+      {:else}
         <p class="text-lg font-semibold text-white project-card__title">
-          {#if isWinner}<span class="project-card__winner-icon">🏆 </span>{/if}
           {projectName}
         </p>
-      </Link>
-    {:else}
-      <p class="text-lg font-semibold text-white">
-        {#if isWinner}<span class="project-card__winner-icon">🏆 </span>{/if}
-        {projectName}
-      </p>
-    {/if}
-    <p class="pob-mono text-xs text-[var(--pob-text-muted)]">
+      {/if}
+      {#if isWinner}
+        <span class="pob-chip pob-chip--compact">Winner</span>
+      {/if}
+    </div>
+    <p class="pob-eyebrow pob-eyebrow--muted">
       {formatAddress(project.address)}
     </p>
     <!-- Truncated description with link to full page -->

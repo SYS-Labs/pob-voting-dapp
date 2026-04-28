@@ -79,7 +79,7 @@
 {#if !walletAddress}
   <div class="pob-page">
     <div class="pob-container">
-      <div class="pob-pane">
+      <div class="pob-pane pob-surface--quiet">
         <p class="text-sm text-[var(--pob-text-muted)]">
           Please connect your wallet to manage iteration metadata.
         </p>
@@ -99,11 +99,12 @@
         </Link>
       </div>
 
-      <div class="pob-pane">
+      <div class="pob-pane pob-surface--quiet pob-surface--accented">
         <div class="pob-pane__heading">
           <div>
+            <p class="pob-eyebrow pob-eyebrow--muted mb-1">Iteration details</p>
             <h2 class="pob-pane__title">{iterationName}</h2>
-            <p class="mt-1 text-sm text-[var(--pob-text-muted)]">
+            <p class="pob-eyebrow pob-eyebrow--muted mt-1">
               Iteration #{currentIteration?.iteration}{currentIteration?.round ? ` - Round #${currentIteration.round}` : ''}
             </p>
           </div>
@@ -119,7 +120,8 @@
         </div>
 
         {#if iterationDescription}
-          <div style="margin-top: 1rem;">
+          <div class="pob-status-block pob-surface--quiet" style="margin-top: 1rem;">
+            <p class="pob-eyebrow pob-eyebrow--muted mb-2">Overview</p>
             <MarkdownRenderer content={iterationDescription} />
           </div>
         {/if}
@@ -177,7 +179,7 @@
         {/if}
 
         {#if !canEdit.allowed && canEdit.reason}
-          <p class="text-xs text-[var(--pob-text-muted)] italic" style="margin-top: 0.75rem;">
+          <p class="pob-status-block pob-surface--quiet text-xs text-[var(--pob-text-muted)] italic" style="margin-top: 0.75rem;">
             {canEdit.reason}
           </p>
         {/if}
