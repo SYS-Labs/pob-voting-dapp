@@ -131,10 +131,18 @@
   {/if}
 {/snippet}
 
-<div
-  style="margin-top: 1rem; padding: 1rem; border: 2px solid var(--pob-primary); border-radius: 0.5rem; background-color: rgba(247, 147, 26, 0.05);"
->
-  <h4 class="text-sm font-semibold text-white mb-2">Final Results</h4>
+<div class="final-results-panel pob-status-block pob-surface--quiet pob-surface--accented">
+  <div class="final-results-panel__heading">
+    <div>
+      <p class="pob-eyebrow pob-eyebrow--muted">Final results</p>
+      <h4 class="text-sm font-semibold text-white">
+        {votingMode === 0 ? 'Consensus' : 'Weighted'} outcome
+      </h4>
+    </div>
+    <span class="pob-chip pob-chip--compact">
+      {winner.hasWinner ? 'Winner' : 'No winner'}
+    </span>
+  </div>
 
   {#if winner.hasWinner && winner.projectAddress}
     <div class="space-y-3">
@@ -183,7 +191,7 @@
       <!-- Runners-up -->
       {#if projects.length > 1}
         <div class="space-y-2 border-t border-[var(--pob-border)]" style="padding-top: 1rem;">
-          <p class="text-sm font-semibold text-white" style="margin-bottom: 0.25rem;">Runners-up:</p>
+          <p class="pob-eyebrow pob-eyebrow--muted" style="margin-bottom: 0.25rem;">Runners-up</p>
           <div class="space-y-2">
             {#if votingMode === 0}
               <!-- Consensus mode - show other projects by entity count -->
@@ -235,7 +243,7 @@
           : 'No clear winner (tie or insufficient votes).'}
       </p>
       <div class="text-xs text-[var(--pob-text-muted)] space-y-1">
-        <p class="font-semibold text-white">Participation:</p>
+        <p class="pob-eyebrow pob-eyebrow--muted">Participation</p>
         {#if isOwner}
           <!-- Owner: Show which entity voted for which project -->
           <!-- Community -->

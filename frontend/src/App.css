@@ -1181,6 +1181,18 @@ h3 .pob-pill {
   transition: width 0.3s ease;
 }
 
+.final-results-panel {
+  margin-top: 1rem;
+}
+
+.final-results-panel__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
 /* Final Results Panel links */
 .final-results-link {
   color: inherit;

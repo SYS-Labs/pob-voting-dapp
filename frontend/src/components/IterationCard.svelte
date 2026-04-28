@@ -69,15 +69,16 @@
 
 {#if disableLink}
   <div
-    class="pob-pane pob-pane--subtle flex flex-col justify-between transition"
+    class="pob-pane pob-surface--quiet flex flex-col justify-between transition"
+    class:pob-surface--accented={isActive}
     class:shadow-[0_0_22px_rgba(247,147,26,0.35)]={isActive}
-    style="border-color: {isActive ? 'var(--pob-primary)' : 'rgba(247, 147, 26, 0.4)'};"
+    style="border-color: {isActive ? 'var(--pob-primary)' : 'var(--pob-border-subtle)'};"
   >
     <div class="space-y-3">
       <div class="pob-pane__heading">
         <h2 class="pob-pane__title text-lg">{metadata?.name || iteration.name}</h2>
       </div>
-      <p class="text-xs uppercase tracking-[0.18em] text-[var(--pob-text-muted)]">
+      <p class="pob-eyebrow pob-eyebrow--muted">
         Iteration #{iteration.iteration}{iteration.round ? ` - Round #${iteration.round}` : ''}
       </p>
       {#if !iteration.round}
@@ -106,15 +107,15 @@
 {:else}
   <Link
     to="/iteration/{iteration.iteration}"
-    class="pob-pane pob-pane--subtle flex flex-col justify-between transition block no-underline {isActive ? 'shadow-[0_0_22px_rgba(247,147,26,0.35)]' : ''}"
-    style="border-color: {isActive ? 'var(--pob-primary)' : 'rgba(247, 147, 26, 0.4)'};"
+    class="pob-pane pob-surface--quiet flex flex-col justify-between transition block no-underline {isActive ? 'pob-surface--accented shadow-[0_0_22px_rgba(247,147,26,0.35)]' : ''}"
+    style="border-color: {isActive ? 'var(--pob-primary)' : 'var(--pob-border-subtle)'};"
     onclick={handleSelect}
   >
     <div class="space-y-3">
       <div class="pob-pane__heading">
         <h2 class="pob-pane__title text-lg">{metadata?.name || iteration.name}</h2>
       </div>
-      <p class="text-xs uppercase tracking-[0.18em] text-[var(--pob-text-muted)]">
+      <p class="pob-eyebrow pob-eyebrow--muted">
         Iteration #{iteration.iteration}{iteration.round ? ` - Round #${iteration.round}` : ''}
       </p>
       {#if !iteration.round}

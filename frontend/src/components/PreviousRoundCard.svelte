@@ -131,7 +131,8 @@
 </script>
 
 <section
-  class="pob-pane {!isExpanded ? 'cursor-pointer' : ''}"
+  class="pob-pane pob-surface--quiet {!isExpanded ? 'cursor-pointer' : ''}"
+  class:pob-surface--accented={isExpanded}
   onclick={handleCardClick}
   role="button"
   tabindex="0"
@@ -140,6 +141,7 @@
 >
   <div class="pob-pane__heading {!isExpanded ? 'mb-0' : ''}">
     <div>
+      <p class="pob-eyebrow pob-eyebrow--muted mb-1">Historical round</p>
       <h3 class="pob-pane__title inline">
         Round #{round.round}
         {#if isExpanded && $roundData}
@@ -153,7 +155,7 @@
         {/if}
       </h3>
       {#if !isExpanded}
-        <span class="text-xs text-[var(--pob-primary)]" style="margin-left: 0.5rem;">(click for details)</span>
+        <span class="pob-chip pob-chip--compact" style="margin-left: 0.5rem;">Details</span>
       {/if}
     </div>
     <div class="flex items-center gap-2">
@@ -170,16 +172,16 @@
           {pendingAction?.includes(`Round ${round.round}`) ? 'Minting…' : 'Mint badge'}
         </button>
       {/if}
-      <span class="pob-pill pob-pill--ended">Ended</span>
+      <span class="pob-chip pob-chip--compact">Ended</span>
     </div>
   </div>
 
   {#if isExpanded}
     <div class="mt-4 space-y-4">
       {#if $loading}
-        <p class="text-sm text-[var(--pob-text-muted)]">Loading round data...</p>
+        <p class="pob-status-block pob-surface--quiet text-sm text-[var(--pob-text-muted)]">Loading round data...</p>
       {:else if $roundData}
-        <dl class="pob-pane__grid text-sm text-[var(--pob-text-muted)] sm:grid-cols-2">
+        <dl class="pob-status-block pob-surface--quiet pob-pane__grid text-sm text-[var(--pob-text-muted)] sm:grid-cols-2">
           <div>
             <dt class="pob-label">Start Time</dt>
             <dd>{formatDate($roundData.startTime || undefined)}</dd>
@@ -211,7 +213,7 @@
           {iterationNumber}
         />
       {:else}
-        <p class="text-sm text-[var(--pob-text-muted)]">No data available</p>
+        <p class="pob-status-block pob-surface--quiet text-sm text-[var(--pob-text-muted)]">No data available</p>
       {/if}
     </div>
   {/if}
