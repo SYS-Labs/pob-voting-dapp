@@ -19,9 +19,13 @@
     <button
       type="button"
       onclick={goHome}
-      class="pob-button"
+      class="pob-button pob-link-card pob-link-card--stack-mobile"
     >
-      Back to home
+      <span class="pob-link-card__chip pob-chip pob-chip--compact">Home</span>
+      <span class="pob-link-card__text">
+        <span class="pob-link-card__label">Back to home</span>
+        <span class="pob-link-card__meta">Return to the Proof-of-Builders overview</span>
+      </span>
     </button>
   </div>
 </div>

@@ -314,6 +314,42 @@ h3 .pob-pill {
   box-shadow: var(--pob-shadow-inset-hover);
 }
 
+.pob-link-card__chip {
+  flex: 0 0 auto;
+  min-width: 5rem;
+  text-align: center;
+}
+
+.pob-link-card__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.pob-link-card__label {
+  color: var(--pob-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.pob-link-card__meta {
+  color: var(--pob-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .pob-link-card--stack-mobile {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pob-link-card__chip {
+    min-width: 0;
+  }
+}
+
 .pob-button--danger {
   background: #ff4d4f;
   color: #fff;

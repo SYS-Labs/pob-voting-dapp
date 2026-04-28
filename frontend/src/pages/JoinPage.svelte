@@ -194,18 +194,18 @@
               rel="noopener noreferrer"
               class="join-page__link pob-button pob-link-card"
             >
-              <span class="join-page__kind pob-chip pob-chip--compact">{link.kind}</span>
-              <span class="join-page__text">
-                <span class="join-page__label">{link.label}</span>
-                <span class="join-page__meta">{link.description}</span>
+              <span class="pob-link-card__chip pob-chip pob-chip--compact">{link.kind}</span>
+              <span class="pob-link-card__text">
+                <span class="pob-link-card__label">{link.label}</span>
+                <span class="pob-link-card__meta">{link.description}</span>
               </span>
             </a>
           {:else}
             <Link to={link.to} class="join-page__link pob-button pob-link-card">
-              <span class="join-page__kind pob-chip pob-chip--compact">{link.kind}</span>
-              <span class="join-page__text">
-                <span class="join-page__label">{link.label}</span>
-                <span class="join-page__meta">{link.description}</span>
+              <span class="pob-link-card__chip pob-chip pob-chip--compact">{link.kind}</span>
+              <span class="pob-link-card__text">
+                <span class="pob-link-card__label">{link.label}</span>
+                <span class="pob-link-card__meta">{link.description}</span>
               </span>
             </Link>
           {/if}
@@ -287,31 +287,6 @@
     gap: 0.75rem;
   }
 
-  .join-page__kind {
-    flex: 0 0 auto;
-    min-width: 5rem;
-    text-align: center;
-  }
-
-  .join-page__text {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: grid;
-    gap: 0.2rem;
-  }
-
-  .join-page__label {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--pob-text);
-  }
-
-  .join-page__meta {
-    font-size: 0.9rem;
-    line-height: 1.5;
-    color: var(--pob-text-muted);
-  }
-
   @media (max-width: 768px) {
     .join-page__panel {
       padding: 1.4rem;
@@ -322,8 +297,5 @@
       flex-direction: column;
     }
 
-    .join-page__kind {
-      min-width: 0;
-    }
   }
 </style>

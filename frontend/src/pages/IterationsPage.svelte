@@ -303,8 +303,12 @@
           with a special focus on Latin America. We're here to help you learn Web3, collaborate with others, and build cool stuff on
           Syscoin. It's a bridge between learning, getting community feedback, and growing the ecosystem together.
         </p>
-        <Link to="/faq" class="pob-button pob-button--compact mt-4 inline-block">
-          Read the FAQ
+        <Link to="/faq" class="pob-button pob-link-card pob-link-card--stack-mobile mt-4">
+          <span class="pob-link-card__chip pob-chip pob-chip--compact">FAQ</span>
+          <span class="pob-link-card__text">
+            <span class="pob-link-card__label">Read the FAQ</span>
+            <span class="pob-link-card__meta">Program phases, voting, and builder support</span>
+          </span>
         </Link>
       </div>
     </div>
