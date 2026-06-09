@@ -20,6 +20,13 @@
     isWinner?: boolean;
   }
 
+  interface ProjectLink {
+    label: string;
+    href: string;
+    title: string;
+    className?: string;
+  }
+
   let {
     project,
     votingRole,
@@ -58,6 +65,26 @@
   const truncatedDescription = $derived(truncateText(project.metadata?.description, 50));
   const projectPageUrl = $derived(iterationNumber ? `/iteration/${iterationNumber}/project/${project.address}` : null);
   const appUrl = $derived(project.metadata?.app_url?.trim() || null);
+  const repositoryUrl = $derived(project.metadata?.repository?.trim() || null);
+  const projectSocialLinks = $derived.by((): ProjectLink[] => {
+    const socials = project.metadata?.socials;
+    const links: ProjectLink[] = [];
+
+    if (socials?.x?.trim()) {
+      links.push({ label: 'X', href: socials.x.trim(), title: `${projectName} on X`, className: 'pob-socials__link--x' });
+    }
+    if (socials?.instagram?.trim()) {
+      links.push({ label: 'Instagram', href: socials.instagram.trim(), title: `${projectName} on Instagram` });
+    }
+    if (socials?.tiktok?.trim()) {
+      links.push({ label: 'TikTok', href: socials.tiktok.trim(), title: `${projectName} on TikTok` });
+    }
+    if (socials?.linkedin?.trim()) {
+      links.push({ label: 'LinkedIn', href: socials.linkedin.trim(), title: `${projectName} on LinkedIn` });
+    }
+
+    return links;
+  });
 
   function handleVote() {
     if (!canVote) {
@@ -109,6 +136,21 @@
     <p class="pob-eyebrow pob-eyebrow--muted">
       {formatAddress(project.address)}
     </p>
+    {#if projectSocialLinks.length > 0}
+      <div class="pob-socials project-card__socials" aria-label={`Project links for ${projectName}`}>
+        {#each projectSocialLinks as link (link.label)}
+          <a
+            href={link.href}
+            target="_blank"
+            rel="noopener"
+            class="pob-socials__link {link.className ?? ''}"
+            title={link.title}
+          >
+            {link.label}
+          </a>
+        {/each}
+      </div>
+    {/if}
     <!-- Truncated description with link to full page -->
     {#if truncatedDescription}
       <p class="text-sm text-[var(--pob-text-muted)]">
@@ -148,6 +190,16 @@
             class="pob-button pob-button--compact"
           >
             Read full proposal
+          </a>
+        {/if}
+        {#if repositoryUrl}
+          <a
+            href={repositoryUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="pob-button pob-button--outline pob-button--compact"
+          >
+            Repository
           </a>
         {/if}
         {#if isOwner && !projectsLocked}

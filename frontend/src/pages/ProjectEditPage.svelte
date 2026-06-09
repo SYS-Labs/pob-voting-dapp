@@ -33,6 +33,7 @@
   let formData = $state<ProjectMetadataForm>({
     name: '',
     app_url: '',
+    repository: '',
     yt_vid: '',
     proposal: '',
     socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
@@ -110,6 +111,7 @@
       formData = {
         name: metadata.name || '',
         app_url: metadata.app_url || '',
+        repository: metadata.repository || '',
         yt_vid: metadata.yt_vid || '',
         proposal: metadata.proposal || '',
         socials: {
@@ -124,6 +126,7 @@
       formData = {
         name: source.name || '',
         app_url: source.app_url || '',
+        repository: source.repository || '',
         yt_vid: source.yt_vid || '',
         proposal: source.proposal || '',
         socials: {
@@ -138,6 +141,7 @@
       formData = {
         name: `Project #${project.id}`,
         app_url: '',
+        repository: '',
         yt_vid: '',
         proposal: '',
         socials: { x: '', instagram: '', tiktok: '', linkedin: '' },
@@ -184,6 +188,7 @@
     if (!formData.name.trim()) return false;
     if (formData.name.length > 200) return false;
     if (formData.app_url && !isValidUrl(formData.app_url)) return false;
+    if (formData.repository && !isValidUrl(formData.repository)) return false;
     if (formData.yt_vid && !isValidYouTubeUrl(formData.yt_vid)) return false;
     if (formData.proposal && !isValidUrl(formData.proposal)) return false;
     if (formData.socials.x && !isValidUrl(formData.socials.x)) return false;
@@ -307,6 +312,20 @@
           <!-- Proposal Section -->
           <div class="pob-form__section">
             <h3 class="pob-form__section-title">Proposal</h3>
+
+            <div class="pob-form__field">
+              <label for="project-repository" class="pob-form__label">Repository URL</label>
+              <input
+                id="project-repository"
+                type="text"
+                bind:value={formData.repository}
+                class="pob-input"
+                placeholder="https://github.com/org/repo"
+              />
+              {#if formData.repository && !isValidUrl(formData.repository)}
+                <p class="pob-form__error">Invalid URL format</p>
+              {/if}
+            </div>
 
             <div class="pob-form__field">
               <label for="project-youtube" class="pob-form__label">YouTube Video URL</label>

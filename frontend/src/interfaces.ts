@@ -65,6 +65,7 @@ export interface ProjectMetadata {
   account: string;
   name?: string;
   app_url?: string;
+  repository?: string;
   description?: string;
   yt_vid?: string;
   proposal?: string;

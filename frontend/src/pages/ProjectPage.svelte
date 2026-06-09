@@ -18,6 +18,13 @@
     historical: boolean;
   }
 
+  interface ProjectLink {
+    label: string;
+    href: string;
+    title: string;
+    className?: string;
+  }
+
   interface Props {
     projectAddress: string;
     currentIteration: Iteration | null;
@@ -377,6 +384,32 @@
   const resolvedMetadata = $derived(metadataState.metadata ?? project?.metadata ?? null);
   const projectName = $derived(resolvedMetadata?.name ?? `Project #${project?.id ?? 0}`);
   const embedUrl = $derived(getYouTubeEmbedUrl(resolvedMetadata?.yt_vid ?? null));
+  const projectLinks = $derived.by((): ProjectLink[] => {
+    const metadata = resolvedMetadata;
+    const socials = metadata?.socials;
+    const links: ProjectLink[] = [];
+
+    if (metadata?.app_url?.trim()) {
+      links.push({ label: 'Visit App', href: metadata.app_url.trim(), title: `${projectName} website`, className: 'pob-socials__link--app' });
+    }
+    if (metadata?.repository?.trim()) {
+      links.push({ label: 'Repository', href: metadata.repository.trim(), title: `${projectName} repository` });
+    }
+    if (socials?.x?.trim()) {
+      links.push({ label: 'X', href: socials.x.trim(), title: `${projectName} on X`, className: 'pob-socials__link--x' });
+    }
+    if (socials?.instagram?.trim()) {
+      links.push({ label: 'Instagram', href: socials.instagram.trim(), title: `${projectName} on Instagram` });
+    }
+    if (socials?.tiktok?.trim()) {
+      links.push({ label: 'TikTok', href: socials.tiktok.trim(), title: `${projectName} on TikTok` });
+    }
+    if (socials?.linkedin?.trim()) {
+      links.push({ label: 'LinkedIn', href: socials.linkedin.trim(), title: `${projectName} on LinkedIn` });
+    }
+
+    return links;
+  });
 </script>
 
 {#if loading}
@@ -425,16 +458,20 @@
                 Historical project from Round #{projectRound}. Voting and metadata edits are read-only here.
               </p>
             {/if}
-            {#if resolvedMetadata?.app_url}
-              <a
-                href={resolvedMetadata.app_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="pob-socials__link pob-socials__link--app"
-                title="Project website"
-              >
-                Visit App
-              </a>
+            {#if projectLinks.length > 0}
+              <div class="pob-socials project-page__quick-links" aria-label={`Project links for ${projectName}`}>
+                {#each projectLinks as link (link.label)}
+                  <a
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener"
+                    class="pob-socials__link {link.className ?? ''}"
+                    title={link.title}
+                  >
+                    {link.label}
+                  </a>
+                {/each}
+              </div>
             {/if}
           </div>
           {#if canEditMetadata}
@@ -481,58 +518,9 @@
           </div>
         {/if}
 
-        <!-- Social links + on-chain metadata links -->
-        <div class="pob-socials" style="margin-top: 1.5rem;">
-          <!-- Social links on the left -->
-          {#if resolvedMetadata?.socials?.x}
-            <a
-              href={resolvedMetadata.socials.x}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="pob-socials__link pob-socials__link--x"
-              title="X (Twitter)"
-            >
-              X
-            </a>
-          {/if}
-          {#if resolvedMetadata?.socials?.instagram}
-            <a
-              href={resolvedMetadata.socials.instagram}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="pob-socials__link"
-              title="Instagram"
-            >
-              Instagram
-            </a>
-          {/if}
-          {#if resolvedMetadata?.socials?.tiktok}
-            <a
-              href={resolvedMetadata.socials.tiktok}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="pob-socials__link"
-              title="TikTok"
-            >
-              TikTok
-            </a>
-          {/if}
-          {#if resolvedMetadata?.socials?.linkedin}
-            <a
-              href={resolvedMetadata.socials.linkedin}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="pob-socials__link"
-              title="LinkedIn"
-            >
-              LinkedIn
-            </a>
-          {/if}
-
-          <!-- Spacer to push on-chain links to the right -->
-          <span style="flex: 1;"></span>
-
-          <!-- On-chain metadata links on the right -->
+        <!-- On-chain metadata links -->
+        {#if currentCID || (currentTxHash && iterationChainId)}
+          <div class="pob-socials project-page__metadata-links" style="margin-top: 1.5rem;">
           {#if currentCID}
             <a
               href={getMetadataCidUrl(currentCID)}
@@ -541,7 +529,7 @@
               class="pob-socials__link"
               title={`IPFS CID: ${currentCID}`}
             >
-              📦 IPFS
+              IPFS
             </a>
           {/if}
           {#if currentTxHash && iterationChainId}
@@ -552,10 +540,11 @@
               class="pob-socials__link"
               title={`Transaction: ${currentTxHash}`}
             >
-              ⛓️ TX
+              TX
             </a>
           {/if}
-        </div>
+          </div>
+        {/if}
 
         <!-- Metadata Status Section - visible to owner/project wallet only -->
         {#if canSeeMetadataStatus && pendingCID}
