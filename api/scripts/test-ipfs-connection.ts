@@ -121,6 +121,8 @@ async function testIPFSConnection() {
 
     console.log('Configuration used:');
     console.log(`  IPFS_API_URL: ${process.env.IPFS_API_URL || 'http://localhost:5001'}`);
+    console.log(`  IPFS_API_USER: ${process.env.IPFS_API_USER || 'ipfsapi'}`);
+    console.log(`  IPFS_API_PASS: ${process.env.IPFS_API_PASS ? '[set]' : '[not set]'}`);
     if (process.env.IPFS_FALLBACK_API_URL) {
       console.log(`  IPFS_FALLBACK_API_URL: ${process.env.IPFS_FALLBACK_API_URL}`);
     }
@@ -134,6 +136,7 @@ async function testIPFSConnection() {
 
     console.log(`\n${YELLOW}Troubleshooting:${RESET}`);
     console.log('  • Check IPFS_API_URL in .env file');
+    console.log('  • If the IPFS API requires Basic Auth, set IPFS_API_USER and IPFS_API_PASS');
     console.log('  • Current setting: ' + (process.env.IPFS_API_URL || 'http://localhost:5001'));
 
     if (error.code === 'ECONNREFUSED' || error.cause?.code === 'ECONNREFUSED') {

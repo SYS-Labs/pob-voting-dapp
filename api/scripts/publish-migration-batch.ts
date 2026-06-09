@@ -74,12 +74,29 @@ function readJson<T>(filePath: string): T {
   return JSON.parse(readFileSync(filePath, 'utf8')) as T;
 }
 
-function buildClient(apiUrl: string) {
+function normalizeIpfsApiUrl(apiUrl: string): string {
   const parsed = new URL(apiUrl);
+  if (!parsed.pathname || parsed.pathname === '/') {
+    parsed.pathname = '/api/v0';
+  }
+  return parsed.toString();
+}
+
+function buildIpfsAuthHeaders(): Record<string, string> | undefined {
+  const password = process.env.IPFS_API_PASS?.trim();
+  if (!password) return undefined;
+
+  const username = process.env.IPFS_API_USER?.trim() || 'ipfsapi';
+  return {
+    Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
+  };
+}
+
+function buildClient(apiUrl: string) {
+  const headers = buildIpfsAuthHeaders();
   return create({
-    host: parsed.hostname,
-    port: parseInt(parsed.port || (parsed.protocol === 'https:' ? '443' : '80'), 10),
-    protocol: parsed.protocol.replace(':', '') as 'http' | 'https',
+    url: normalizeIpfsApiUrl(apiUrl),
+    ...(headers ? { headers } : {}),
   });
 }
 

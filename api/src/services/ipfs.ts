@@ -19,6 +19,24 @@ function canonicalJSON(obj: any): string {
   return '{' + pairs.join(',') + '}';
 }
 
+function normalizeApiUrl(url: string): string {
+  const parsed = new URL(url);
+  if (!parsed.pathname || parsed.pathname === '/') {
+    parsed.pathname = '/api/v0';
+  }
+  return parsed.toString();
+}
+
+function buildAuthHeaders(username?: string, password?: string): Record<string, string> | undefined {
+  const pass = password?.trim();
+  if (!pass) return undefined;
+
+  const user = username?.trim() || 'ipfsapi';
+  return {
+    Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`,
+  };
+}
+
 export class IPFSService {
   private client: IPFSHTTPClient;
   private fallbackClient: IPFSHTTPClient | null;
@@ -26,22 +44,25 @@ export class IPFSService {
   constructor() {
     // Parse primary IPFS API URL
     const apiUrl = process.env.IPFS_API_URL || 'http://localhost:5001';
-    this.client = this.createClient(apiUrl);
+    this.client = this.createClient(apiUrl, process.env.IPFS_API_USER, process.env.IPFS_API_PASS);
 
     // Parse fallback IPFS API URL (optional)
     const fallbackApiUrl = process.env.IPFS_FALLBACK_API_URL;
-    this.fallbackClient = fallbackApiUrl ? this.createClient(fallbackApiUrl) : null;
+    this.fallbackClient = fallbackApiUrl ? this.createClient(
+      fallbackApiUrl,
+      process.env.IPFS_FALLBACK_API_USER || process.env.IPFS_API_USER,
+      process.env.IPFS_FALLBACK_API_PASS || process.env.IPFS_API_PASS,
+    ) : null;
   }
 
   /**
    * Create IPFS client from URL
    */
-  private createClient(url: string): IPFSHTTPClient {
-    const parsed = new URL(url);
+  private createClient(url: string, username?: string, password?: string): IPFSHTTPClient {
+    const headers = buildAuthHeaders(username, password);
     return create({
-      host: parsed.hostname,
-      port: parseInt(parsed.port || (parsed.protocol === 'https:' ? '443' : '80')),
-      protocol: parsed.protocol.replace(':', '') as 'http' | 'https'
+      url: normalizeApiUrl(url),
+      ...(headers ? { headers } : {}),
     });
   }
 
