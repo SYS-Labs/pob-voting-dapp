@@ -27,19 +27,34 @@ export function createMetadataDatabase(db: Database.Database) {
   ensureMetadataHistorySchema(db);
 
   function ensureMetadataHistorySchema(db: Database.Database): void {
-    const tableInfo = db.prepare(`PRAGMA table_info(pob_metadata_history)`).all() as Array<{ name: string }>;
-    const hasLogIndex = tableInfo.some((column) => column.name === 'log_index');
-    if (hasLogIndex) return;
+    // Fresh databases get the canonical table from schema.sql (run by initDatabase
+    // before this), already including log_index and COLLATE NOCASE on the address
+    // columns. This only rebuilds older tables that predate either of those.
+    const createSql = (db.prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'pob_metadata_history'`
+    ).get() as { sql: string } | undefined)?.sql;
+
+    if (!createSql) return;
+
+    const hasLogIndex = /\blog_index\b/i.test(createSql);
+    const hasNoCaseAddresses =
+      /contract_address\s+text\s+collate\s+nocase/i.test(createSql) &&
+      /project_address\s+text\s+collate\s+nocase/i.test(createSql);
+
+    if (hasLogIndex && hasNoCaseAddresses) return;
+
+    // Preserve log_index values when the column already exists; otherwise default to 0.
+    const logIndexExpr = hasLogIndex ? 'log_index' : '0';
 
     db.exec(`
       BEGIN;
 
-      CREATE TABLE pob_metadata_history_v2 (
+      CREATE TABLE pob_metadata_history_migrated (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chain_id INTEGER NOT NULL,
-        contract_address TEXT,
+        contract_address TEXT COLLATE NOCASE,
         iteration_number INTEGER,
-        project_address TEXT,
+        project_address TEXT COLLATE NOCASE,
         cid TEXT NOT NULL,
         tx_hash TEXT NOT NULL,
         log_index INTEGER NOT NULL DEFAULT 0,
@@ -51,17 +66,17 @@ export function createMetadataDatabase(db: Database.Database) {
         UNIQUE(tx_hash, log_index)
       );
 
-      INSERT OR IGNORE INTO pob_metadata_history_v2 (
+      INSERT OR IGNORE INTO pob_metadata_history_migrated (
         id, chain_id, contract_address, iteration_number, project_address, cid,
         tx_hash, log_index, tx_sent_height, confirmations, confirmed, created_at, updated_at
       )
       SELECT
         id, chain_id, contract_address, iteration_number, project_address, cid,
-        tx_hash, 0, tx_sent_height, confirmations, confirmed, created_at, updated_at
+        tx_hash, ${logIndexExpr}, tx_sent_height, confirmations, confirmed, created_at, updated_at
       FROM pob_metadata_history;
 
       DROP TABLE pob_metadata_history;
-      ALTER TABLE pob_metadata_history_v2 RENAME TO pob_metadata_history;
+      ALTER TABLE pob_metadata_history_migrated RENAME TO pob_metadata_history;
 
       CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_confirmed ON pob_metadata_history(confirmed);
       CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_project ON pob_metadata_history(chain_id, project_address, confirmed, created_at);
@@ -300,7 +315,6 @@ export function createMetadataDatabase(db: Database.Database) {
     chainId: number,
     projectAddress: string
   ): MetadataUpdate | null {
-    const normalizedProject = projectAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT * FROM pob_metadata_history
       WHERE chain_id = ?
@@ -310,7 +324,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    return (stmt.get(chainId, normalizedProject) as MetadataUpdate | undefined) || null;
+    return (stmt.get(chainId, projectAddress) as MetadataUpdate | undefined) || null;
   }
 
   /**
@@ -322,8 +336,6 @@ export function createMetadataDatabase(db: Database.Database) {
     projectAddress: string,
     cid: string
   ): MetadataUpdate | null {
-    const normalizedContract = contractAddress.toLowerCase();
-    const normalizedProject = projectAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT * FROM pob_metadata_history
       WHERE chain_id = ?
@@ -334,7 +346,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const row = stmt.get(chainId, normalizedContract, normalizedProject, cid) as MetadataUpdate | undefined;
+    const row = stmt.get(chainId, contractAddress, projectAddress, cid) as MetadataUpdate | undefined;
     if (row) return row;
 
     // Fallback: check for records without contract_address (legacy)
@@ -348,7 +360,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    return (fallback.get(chainId, normalizedProject, cid) as MetadataUpdate | undefined) || null;
+    return (fallback.get(chainId, projectAddress, cid) as MetadataUpdate | undefined) || null;
   }
 
   /**
@@ -359,8 +371,6 @@ export function createMetadataDatabase(db: Database.Database) {
     contractAddress: string,
     projectAddress: string
   ): string | null {
-    const normalizedContract = contractAddress.toLowerCase();
-    const normalizedProject = projectAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT cid FROM pob_metadata_history
       WHERE chain_id = ?
@@ -371,7 +381,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const row = stmt.get(chainId, normalizedContract, normalizedProject) as { cid: string } | undefined;
+    const row = stmt.get(chainId, contractAddress, projectAddress) as { cid: string } | undefined;
     if (row) return row.cid;
 
     // Fallback: check for records without contract_address (legacy)
@@ -385,7 +395,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const fallbackRow = fallback.get(chainId, normalizedProject) as { cid: string } | undefined;
+    const fallbackRow = fallback.get(chainId, projectAddress) as { cid: string } | undefined;
     return fallbackRow?.cid || null;
   }
 
@@ -397,7 +407,6 @@ export function createMetadataDatabase(db: Database.Database) {
     contractAddress: string,
     cid: string
   ): MetadataUpdate | null {
-    const normalizedContract = contractAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT * FROM pob_metadata_history
       WHERE chain_id = ?
@@ -408,7 +417,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const row = stmt.get(chainId, normalizedContract, cid) as MetadataUpdate | undefined;
+    const row = stmt.get(chainId, contractAddress, cid) as MetadataUpdate | undefined;
     if (row) return row;
 
     // Fallback: check for records without contract_address (legacy)
@@ -432,7 +441,6 @@ export function createMetadataDatabase(db: Database.Database) {
     chainId: number,
     contractAddress: string
   ): string | null {
-    const normalizedContract = contractAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT cid FROM pob_metadata_history
       WHERE chain_id = ?
@@ -443,7 +451,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const row = stmt.get(chainId, normalizedContract) as { cid: string } | undefined;
+    const row = stmt.get(chainId, contractAddress) as { cid: string } | undefined;
     if (row) return row.cid;
 
     // Fallback: check for records without contract_address (legacy)

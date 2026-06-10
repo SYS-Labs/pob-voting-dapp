@@ -146,9 +146,11 @@ CREATE INDEX IF NOT EXISTS idx_deployments_address ON deployments(contract_addre
 CREATE TABLE IF NOT EXISTS pob_metadata_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   chain_id INTEGER NOT NULL,
-  contract_address TEXT,
+  -- Addresses are stored as-written; COLLATE NOCASE makes equality lookups
+  -- case-insensitive so checksummed and lowercase hex match without per-query handling.
+  contract_address TEXT COLLATE NOCASE,
   iteration_number INTEGER,
-  project_address TEXT,
+  project_address TEXT COLLATE NOCASE,
   cid TEXT NOT NULL,
   tx_hash TEXT NOT NULL,
   log_index INTEGER NOT NULL DEFAULT 0,
