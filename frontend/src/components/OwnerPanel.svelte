@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Iteration } from '~/interfaces';
+  import type { PendingVoterRemoval } from '~/stores/modals';
   import { formatAddress } from '~/utils';
   import Modal from './Modal.svelte';
   import { createWriteDispatcher, resolveWriteVersion } from '~/utils/writeDispatch';
@@ -37,7 +38,7 @@
     refreshProjects: () => Promise<void>;
     refreshOwnerData: () => Promise<void>;
     refreshBadges: () => Promise<void>;
-    setPendingRemovalVoter: (voter: string | null) => void;
+    setPendingRemovalVoter: (voter: PendingVoterRemoval | null) => void;
     setError: (error: string) => void;
     registryInitComplete: boolean | null;
     refreshRegistryInitStatus: () => void;
@@ -549,7 +550,7 @@
                     </div>
                     <button
                       type="button"
-                      onclick={() => setPendingRemovalVoter(voter)}
+                      onclick={() => setPendingRemovalVoter({ address: voter, entity: 'smt' })}
                       disabled={pendingAction !== null}
                       class="pob-button pob-button--outline pob-button--small"
                     >
@@ -632,7 +633,7 @@
                     </div>
                     <button
                       type="button"
-                      onclick={() => setPendingRemovalVoter(voter)}
+                      onclick={() => setPendingRemovalVoter({ address: voter, entity: 'daohic' })}
                       disabled={pendingAction !== null}
                       class="pob-button pob-button--outline pob-button--small"
                     >

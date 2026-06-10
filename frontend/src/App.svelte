@@ -403,10 +403,12 @@
   // Confirm removal handlers
   async function handleConfirmRemoveVoter() {
     if (!pendingRemovalVoter || !signer || !selectedIteration) return;
+    const { address, entity } = pendingRemovalVoter;
+    const isSmt = entity === 'smt';
     const writer = createWriteDispatcher(selectedIteration, signer);
     await runTransaction(
-      'Remove DAO HIC Voter',
-      () => writer.removeDaoHicVoter(pendingRemovalVoter),
+      isSmt ? 'Remove SMT Voter' : 'Remove DAO HIC Voter',
+      () => (isSmt ? writer.removeSmtVoter(address) : writer.removeDaoHicVoter(address)),
       () => refreshOwnerData()
     );
     setPendingRemovalVoter(null);
@@ -582,11 +584,11 @@
       isOpen={pendingRemovalVoter !== null}
       onClose={() => setPendingRemovalVoter(null)}
       onConfirm={handleConfirmRemoveVoter}
-      targetAddress={pendingRemovalVoter ?? ''}
+      targetAddress={pendingRemovalVoter?.address ?? ''}
       isPending={pendingAction !== null}
-      title="Remove DAO HIC Voter?"
+      title={pendingRemovalVoter?.entity === 'smt' ? 'Remove SMT Voter?' : 'Remove DAO HIC Voter?'}
       description="This will revoke voting access for the following address:"
-      entityLabel="DAO HIC voter"
+      entityLabel={pendingRemovalVoter?.entity === 'smt' ? 'SMT voter' : 'DAO HIC voter'}
       confirmLabel="Yes, remove"
     />
 

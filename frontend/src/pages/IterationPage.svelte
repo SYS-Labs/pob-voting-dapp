@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Contract } from 'ethers';
   import type { Iteration, ParticipantRole, Project, Badge } from '~/interfaces';
+  import type { PendingVoterRemoval } from '~/stores/modals';
   import IterationHeader from '~/components/IterationHeader.svelte';
   import PreviousRoundCard from '~/components/PreviousRoundCard.svelte';
   import ProjectCard from '~/components/ProjectCard.svelte';
@@ -103,7 +104,7 @@
     refreshOwnerData: () => Promise<void>;
     refreshBadges: () => Promise<void>;
     setPendingRemovalProject: (project: Project | null) => void;
-    setPendingRemovalVoter: (voter: string | null) => void;
+    setPendingRemovalVoter: (voter: PendingVoterRemoval | null) => void;
     setError: (error: string) => void;
     setVotingMode: (mode: number) => Promise<void>;
     onOpenDisconnect: () => void;

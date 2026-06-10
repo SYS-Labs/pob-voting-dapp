@@ -5,10 +5,18 @@ import type { Project } from '~/interfaces';
 // Types
 // ============================================================================
 
+/** Entity-0 voter (SMT) vs entity-1 voter (DAO HIC) — selects the on-chain remove method. */
+export type VoterEntity = 'smt' | 'daohic';
+
+export interface PendingVoterRemoval {
+  address: string;
+  entity: VoterEntity;
+}
+
 interface ModalsState {
   switchNetworkModalOpen: boolean;
   disconnectModalOpen: boolean;
-  pendingRemovalVoter: string | null;
+  pendingRemovalVoter: PendingVoterRemoval | null;
   pendingRemovalProject: Project | null;
   errorModalOpen: boolean;
   errorMessage: string | null;
@@ -57,8 +65,8 @@ export function closeDisconnectModal(): void {
   modalsStore.update(s => ({ ...s, disconnectModalOpen: false }));
 }
 
-export function setPendingRemovalVoter(address: string | null): void {
-  modalsStore.update(s => ({ ...s, pendingRemovalVoter: address }));
+export function setPendingRemovalVoter(voter: PendingVoterRemoval | null): void {
+  modalsStore.update(s => ({ ...s, pendingRemovalVoter: voter }));
 }
 
 export function setPendingRemovalProject(project: Project | null): void {
