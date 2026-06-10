@@ -300,6 +300,7 @@ export function createMetadataDatabase(db: Database.Database) {
     chainId: number,
     projectAddress: string
   ): MetadataUpdate | null {
+    const normalizedProject = projectAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT * FROM pob_metadata_history
       WHERE chain_id = ?
@@ -309,7 +310,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    return (stmt.get(chainId, projectAddress) as MetadataUpdate | undefined) || null;
+    return (stmt.get(chainId, normalizedProject) as MetadataUpdate | undefined) || null;
   }
 
   /**
@@ -321,6 +322,8 @@ export function createMetadataDatabase(db: Database.Database) {
     projectAddress: string,
     cid: string
   ): MetadataUpdate | null {
+    const normalizedContract = contractAddress.toLowerCase();
+    const normalizedProject = projectAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT * FROM pob_metadata_history
       WHERE chain_id = ?
@@ -331,7 +334,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const row = stmt.get(chainId, contractAddress, projectAddress, cid) as MetadataUpdate | undefined;
+    const row = stmt.get(chainId, normalizedContract, normalizedProject, cid) as MetadataUpdate | undefined;
     if (row) return row;
 
     // Fallback: check for records without contract_address (legacy)
@@ -345,7 +348,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    return (fallback.get(chainId, projectAddress, cid) as MetadataUpdate | undefined) || null;
+    return (fallback.get(chainId, normalizedProject, cid) as MetadataUpdate | undefined) || null;
   }
 
   /**
@@ -356,6 +359,8 @@ export function createMetadataDatabase(db: Database.Database) {
     contractAddress: string,
     projectAddress: string
   ): string | null {
+    const normalizedContract = contractAddress.toLowerCase();
+    const normalizedProject = projectAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT cid FROM pob_metadata_history
       WHERE chain_id = ?
@@ -366,7 +371,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const row = stmt.get(chainId, contractAddress, projectAddress) as { cid: string } | undefined;
+    const row = stmt.get(chainId, normalizedContract, normalizedProject) as { cid: string } | undefined;
     if (row) return row.cid;
 
     // Fallback: check for records without contract_address (legacy)
@@ -380,7 +385,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const fallbackRow = fallback.get(chainId, projectAddress) as { cid: string } | undefined;
+    const fallbackRow = fallback.get(chainId, normalizedProject) as { cid: string } | undefined;
     return fallbackRow?.cid || null;
   }
 
@@ -392,6 +397,7 @@ export function createMetadataDatabase(db: Database.Database) {
     contractAddress: string,
     cid: string
   ): MetadataUpdate | null {
+    const normalizedContract = contractAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT * FROM pob_metadata_history
       WHERE chain_id = ?
@@ -402,7 +408,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const row = stmt.get(chainId, contractAddress, cid) as MetadataUpdate | undefined;
+    const row = stmt.get(chainId, normalizedContract, cid) as MetadataUpdate | undefined;
     if (row) return row;
 
     // Fallback: check for records without contract_address (legacy)
@@ -426,6 +432,7 @@ export function createMetadataDatabase(db: Database.Database) {
     chainId: number,
     contractAddress: string
   ): string | null {
+    const normalizedContract = contractAddress.toLowerCase();
     const stmt = db.prepare(`
       SELECT cid FROM pob_metadata_history
       WHERE chain_id = ?
@@ -436,7 +443,7 @@ export function createMetadataDatabase(db: Database.Database) {
       LIMIT 1
     `);
 
-    const row = stmt.get(chainId, contractAddress) as { cid: string } | undefined;
+    const row = stmt.get(chainId, normalizedContract) as { cid: string } | undefined;
     if (row) return row.cid;
 
     // Fallback: check for records without contract_address (legacy)
