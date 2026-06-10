@@ -66,7 +66,7 @@ const MEMBER_STATUS_MAP: Record<number, TeamMemberStatus> = {
 };
 
 // Poll interval: 5 seconds (configurable via env)
-const POLL_INTERVAL = parseInt(process.env.CERT_POLL_INTERVAL || '5000', 10);
+const CERT_POLL_INTERVAL_MS = parseInt(process.env.CERT_POLL_INTERVAL || '5000', 10);
 
 // Optional: Force single chain mode
 const SINGLE_CHAIN_ID = process.env.CHAIN_ID
@@ -642,7 +642,7 @@ class CertIndexer {
     }
 
     logger.info('Starting cert indexer', {
-      pollInterval: POLL_INTERVAL,
+      certPollInterval: CERT_POLL_INTERVAL_MS,
       chains: Array.from(this.providers.keys()),
       singleChainMode: SINGLE_CHAIN_ID !== null ? SINGLE_CHAIN_ID : false,
     });
@@ -658,7 +658,7 @@ class CertIndexer {
       this.poll().catch((error) => {
         logger.error('Cert indexer poll failed', { error });
       });
-    }, POLL_INTERVAL);
+    }, CERT_POLL_INTERVAL_MS);
 
     logger.info('Cert indexer started');
   }

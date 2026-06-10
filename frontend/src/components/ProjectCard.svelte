@@ -65,7 +65,6 @@
   const truncatedDescription = $derived(truncateText(project.metadata?.description, 50));
   const projectPageUrl = $derived(iterationNumber ? `/iteration/${iterationNumber}/project/${project.address}` : null);
   const appUrl = $derived(project.metadata?.app_url?.trim() || null);
-  const repositoryUrl = $derived(project.metadata?.repository?.trim() || null);
   const projectSocialLinks = $derived.by((): ProjectLink[] => {
     const socials = project.metadata?.socials;
     const links: ProjectLink[] = [];
@@ -190,16 +189,6 @@
             class="pob-button pob-button--compact"
           >
             Read full proposal
-          </a>
-        {/if}
-        {#if repositoryUrl}
-          <a
-            href={repositoryUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="pob-button pob-button--outline pob-button--compact"
-          >
-            Repository
           </a>
         {/if}
         {#if isOwner && !projectsLocked}

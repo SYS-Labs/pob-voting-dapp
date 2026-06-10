@@ -582,6 +582,7 @@
       {votingMode}
       {projects}
       {projectScores}
+      {onConnect}
     />
 
     {#if currentIteration?.prev_rounds && currentIteration.prev_rounds.length > 0}
@@ -605,7 +606,7 @@
     {/if}
 
     {#if currentIteration}
-      <section class="pob-pane pob-surface--quiet">
+      <section class="pob-pane pob-surface--quiet" id="iteration-projects">
         <div class="pob-pane__heading">
           <div>
             <h3 class="pob-pane__title">Projects</h3>

@@ -25,6 +25,18 @@
     className?: string;
   }
 
+  function getProjectInitials(name: string): string {
+    const words = name
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length === 0) return 'PB';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  }
+
   interface Props {
     projectAddress: string;
     currentIteration: Iteration | null;
@@ -384,17 +396,33 @@
   const resolvedMetadata = $derived(metadataState.metadata ?? project?.metadata ?? null);
   const projectName = $derived(resolvedMetadata?.name ?? `Project #${project?.id ?? 0}`);
   const embedUrl = $derived(getYouTubeEmbedUrl(resolvedMetadata?.yt_vid ?? null));
-  const projectLinks = $derived.by((): ProjectLink[] => {
+  const projectInitials = $derived(getProjectInitials(projectName));
+  const appUrl = $derived(resolvedMetadata?.app_url?.trim() || null);
+  const proposalUrl = $derived(resolvedMetadata?.proposal?.trim() || null);
+  const repositoryUrl = $derived(resolvedMetadata?.repository?.trim() || null);
+  const roundSummary = $derived.by(() => {
+    const items: string[] = [];
+    if (currentIteration?.iteration) items.push(`Iteration #${currentIteration.iteration}`);
+    if (projectRound) items.push(`Round #${projectRound}`);
+    return items.join(' · ') || 'Project detail';
+  });
+  const projectStatusLabel = $derived.by(() => {
+    if (isHistoricalProjectView) return 'Historical';
+    if (statusFlags.isActive && !statusFlags.votingEnded) return 'Voting active';
+    if (statusFlags.votingEnded) return 'Voting ended';
+    return 'Upcoming';
+  });
+  const projectStatusPillClass = $derived.by(() => {
+    if (isHistoricalProjectView) return 'pob-pill pob-pill--ended';
+    if (statusFlags.isActive && !statusFlags.votingEnded) return 'pob-pill pob-pill--active';
+    if (statusFlags.votingEnded) return 'pob-pill pob-pill--ended';
+    return 'pob-pill pob-pill--upcoming';
+  });
+  const socialLinks = $derived.by((): ProjectLink[] => {
     const metadata = resolvedMetadata;
     const socials = metadata?.socials;
     const links: ProjectLink[] = [];
 
-    if (metadata?.app_url?.trim()) {
-      links.push({ label: 'Visit App', href: metadata.app_url.trim(), title: `${projectName} website`, className: 'pob-socials__link--app' });
-    }
-    if (metadata?.repository?.trim()) {
-      links.push({ label: 'Repository', href: metadata.repository.trim(), title: `${projectName} repository` });
-    }
     if (socials?.x?.trim()) {
       links.push({ label: 'X', href: socials.x.trim(), title: `${projectName} on X`, className: 'pob-socials__link--x' });
     }
@@ -433,131 +461,193 @@
   </div>
 {:else}
   <!-- Main content -->
-  <div class="pob-stack lg:pr-4" style={!sidebarVisible ? 'grid-column: 1 / -1;' : ''}>
-    <!-- Back link -->
-      <Link
-        to={`/iteration/${currentIteration?.iteration ?? 1}`}
-        class="text-sm text-[var(--pob-text-muted)] hover:text-[var(--pob-primary)]"
-      style="display: inline-flex; align-items: center; gap: 0.5rem;"
+  <div class="pob-stack project-page__main lg:pr-4" style={!sidebarVisible ? 'grid-column: 1 / -1;' : ''}>
+    <Link
+      to={`/iteration/${currentIteration?.iteration ?? 1}`}
+      class="project-page__back-link"
     >
       ← Back to Projects
     </Link>
 
-    <!-- Project card without vote button -->
-    <section class="pob-pane pob-surface--quiet pob-surface--accented">
-      <div class="space-y-4">
-        <div class="pob-pane__heading project-page__heading">
-          <div>
-            <p class="pob-eyebrow pob-eyebrow--muted mb-1">Project detail</p>
-            <h1 class="project-page__title">{projectName}</h1>
-            <p class="pob-mono text-xs text-[var(--pob-text-muted)]" title={project.address}>
-              {formatAddress(project.address)}
-            </p>
-            {#if isHistoricalProjectView && projectRound}
-              <p class="mt-2 text-xs text-[var(--pob-text-muted)]">
-                Historical project from Round #{projectRound}. Voting and metadata edits are read-only here.
-              </p>
-            {/if}
-            {#if projectLinks.length > 0}
-              <div class="pob-socials project-page__quick-links" aria-label={`Project links for ${projectName}`}>
-                {#each projectLinks as link (link.label)}
-                  <a
-                    href={link.href}
-                    target="_blank"
-                    rel="noopener"
-                    class="pob-socials__link {link.className ?? ''}"
-                    title={link.title}
-                  >
-                    {link.label}
-                  </a>
-                {/each}
-              </div>
-            {/if}
-          </div>
-          {#if canEditMetadata}
-            <Link
-              to={`/iteration/${currentIteration?.iteration}/project/${project.address}/edit`}
-              class="pob-button pob-button--outline pob-button--compact project-page__edit"
-            >
-              Edit
-            </Link>
-          {/if}
+    <section class="pob-pane pob-surface--quiet pob-surface--accented project-page__hero" aria-labelledby="project-page-title">
+      <div class="project-page__hero-copy">
+        <div class="project-page__pills" aria-label="Project round status">
+          <span class="pob-pill pob-pill--upcoming">{roundSummary}</span>
+          <span class={projectStatusPillClass}>{projectStatusLabel}</span>
         </div>
 
-        <!-- Full description -->
-        {#if resolvedMetadata?.description}
-          <div class="project-page__description pob-status-block pob-surface--quiet">
-            <p class="pob-eyebrow pob-eyebrow--muted mb-2">Overview</p>
-            <MarkdownRenderer content={resolvedMetadata.description} />
+        <p class="pob-eyebrow">Builder dossier</p>
+        <h1 id="project-page-title" class="project-page__title">{projectName}</h1>
+        <p class="project-page__wallet pob-mono" title={project.address}>{formatAddress(project.address)}</p>
+
+        {#if isHistoricalProjectView && projectRound}
+          <p class="project-page__notice">
+            Historical project from Round #{projectRound}. Voting and metadata edits are read-only here.
+          </p>
+        {/if}
+
+        {#if appUrl || proposalUrl || repositoryUrl || canEditMetadata}
+          <div class="project-page__actions" aria-label={`Primary actions for ${projectName}`}>
+            {#if appUrl}
+              <a href={appUrl} target="_blank" rel="noopener noreferrer" class="pob-button">
+                Visit App
+              </a>
+            {/if}
+            {#if proposalUrl}
+              <a href={proposalUrl} target="_blank" rel="noopener noreferrer" class="pob-button pob-button--outline">
+                Read Proposal
+              </a>
+            {/if}
+            {#if repositoryUrl}
+              <a href={repositoryUrl} target="_blank" rel="noopener noreferrer" class="pob-button pob-button--outline">
+                Repository
+              </a>
+            {/if}
+            {#if canEditMetadata}
+              <Link
+                to={`/iteration/${currentIteration?.iteration}/project/${project.address}/edit`}
+                class="pob-button pob-button--outline project-page__edit"
+              >
+                Edit Metadata
+              </Link>
+            {/if}
           </div>
         {/if}
 
-        <!-- Video embed -->
-        {#if embedUrl}
-          <div class="pob-video" style="margin-top: 1.5rem; margin-bottom: 1rem;">
-            <iframe
-              src={embedUrl}
-              title={`Project video for ${projectName}`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowfullscreen
-            ></iframe>
+        {#if socialLinks.length > 0}
+          <div class="pob-socials project-page__quick-links" aria-label={`Social links for ${projectName}`}>
+            {#each socialLinks as link (link.label)}
+              <a
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="pob-socials__link {link.className ?? ''}"
+                title={link.title}
+              >
+                {link.label}
+              </a>
+            {/each}
           </div>
         {/if}
+      </div>
 
-        <!-- Proposal link -->
-        {#if resolvedMetadata?.proposal}
-          <div style="margin-top: 1rem;">
-            <a
-              href={resolvedMetadata.proposal}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="pob-button pob-button--outline pob-button--compact"
-            >
-              Read full proposal
-            </a>
+      <aside class="project-page__identity" aria-label="Project identity">
+        <div class="project-page__identity-orb" aria-hidden="true">
+          <span>{projectInitials}</span>
+        </div>
+        <div class="project-page__identity-list">
+          <div>
+            <span>Project wallet</span>
+            <strong class="pob-mono" title={project.address}>{formatAddress(project.address)}</strong>
           </div>
-        {/if}
+          {#if currentIteration?.iteration}
+            <div>
+              <span>Iteration</span>
+              <strong>#{currentIteration.iteration}</strong>
+            </div>
+          {/if}
+          {#if projectRound}
+            <div>
+              <span>Round</span>
+              <strong>#{projectRound}</strong>
+            </div>
+          {/if}
+        </div>
+      </aside>
+    </section>
 
-        <!-- On-chain metadata links -->
-        {#if currentCID || (currentTxHash && iterationChainId)}
-          <div class="pob-socials project-page__metadata-links" style="margin-top: 1.5rem;">
+    {#if embedUrl}
+      <section class="project-page__section project-page__demo" aria-labelledby="project-demo-title">
+        <div class="project-page__section-heading">
+          <p class="pob-eyebrow pob-eyebrow--muted">Demo</p>
+          <h2 id="project-demo-title" class="pob-pane__title">Project video</h2>
+        </div>
+        <div class="pob-video project-page__video">
+          <iframe
+            src={embedUrl}
+            title={`Project video for ${projectName}`}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </section>
+    {/if}
+
+    <section class="pob-pane pob-surface--quiet project-page__section project-page__overview" aria-labelledby="project-overview-title">
+      <div class="project-page__section-heading">
+        <p class="pob-eyebrow pob-eyebrow--muted">Overview</p>
+        <h2 id="project-overview-title" class="pob-pane__title">Builder story</h2>
+      </div>
+      {#if resolvedMetadata?.description}
+        <div class="project-page__description">
+          <MarkdownRenderer content={resolvedMetadata.description} />
+        </div>
+      {:else}
+        <p class="project-page__empty">No project description is available yet.</p>
+      {/if}
+    </section>
+
+    <section class="pob-pane pob-surface--quiet project-page__record" aria-labelledby="project-record-title">
+      <div class="project-page__section-heading">
+        <p class="pob-eyebrow pob-eyebrow--muted">On-chain record</p>
+        <h2 id="project-record-title" class="pob-pane__title">Verifiable project data</h2>
+      </div>
+      <div class="project-page__record-grid">
+        <div class="project-page__record-item">
+          <span>Project wallet</span>
+          <strong class="pob-mono" title={project.address}>{formatAddress(project.address)}</strong>
+        </div>
+        <div class="project-page__record-item">
+          <span>Round context</span>
+          <strong>{roundSummary}</strong>
+        </div>
+        <div class="project-page__record-item">
+          <span>Chain ID</span>
+          <strong>{iterationChainId ?? chainId ?? 'Unknown'}</strong>
+        </div>
+        <div class="project-page__record-item">
+          <span>Metadata CID</span>
           {#if currentCID}
             <a
               href={getMetadataCidUrl(currentCID)}
               target="_blank"
               rel="noopener noreferrer"
-              class="pob-socials__link"
+              class="project-page__record-link"
               title={`IPFS CID: ${currentCID}`}
             >
-              IPFS
+              View IPFS
             </a>
+          {:else}
+            <strong class="project-page__record-muted">Unavailable</strong>
           {/if}
+        </div>
+        <div class="project-page__record-item">
+          <span>Registry tx</span>
           {#if currentTxHash && iterationChainId}
             <a
               href={getExplorerTxLink(iterationChainId, currentTxHash)}
               target="_blank"
               rel="noopener noreferrer"
-              class="pob-socials__link"
+              class="project-page__record-link"
               title={`Transaction: ${currentTxHash}`}
             >
-              TX
+              View TX
             </a>
+          {:else}
+            <strong class="project-page__record-muted">Unavailable</strong>
           {/if}
-          </div>
-        {/if}
-
-        <!-- Metadata Status Section - visible to owner/project wallet only -->
-        {#if canSeeMetadataStatus && pendingCID}
-          {#if !currentCID}<div class="pob-pane__divider"></div>{/if}
-          <div class="flex items-center gap-2 justify-end" style={currentCID ? 'margin-top: 0.75rem;' : ''}>
-            <p class="pob-pane__meta">Updating...</p>
-            <span class="pob-pill flex items-center gap-1">
-              <ProgressSpinner size={16} progress={Math.min((pendingConfirmations / 5) * 100, 100)} />
-              {pendingConfirmations}/5
-            </span>
-          </div>
-        {/if}
+        </div>
       </div>
+
+      {#if canSeeMetadataStatus && pendingCID}
+        <div class="project-page__pending-status">
+          <p class="pob-pane__meta">Updating metadata...</p>
+          <span class="pob-pill flex items-center gap-1">
+            <ProgressSpinner size={16} progress={Math.min((pendingConfirmations / 5) * 100, 100)} />
+            {pendingConfirmations}/5
+          </span>
+        </div>
+      {/if}
     </section>
   </div>
 

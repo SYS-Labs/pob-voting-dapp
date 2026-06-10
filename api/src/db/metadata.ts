@@ -8,6 +8,7 @@ export interface MetadataUpdate {
   project_address: string | null;
   cid: string;
   tx_hash: string;
+  log_index: number;
   tx_sent_height: number | null;
   confirmations: number;
   confirmed: boolean;
@@ -23,6 +24,54 @@ export interface IPFSCacheItem {
 }
 
 export function createMetadataDatabase(db: Database.Database) {
+  ensureMetadataHistorySchema(db);
+
+  function ensureMetadataHistorySchema(db: Database.Database): void {
+    const tableInfo = db.prepare(`PRAGMA table_info(pob_metadata_history)`).all() as Array<{ name: string }>;
+    const hasLogIndex = tableInfo.some((column) => column.name === 'log_index');
+    if (hasLogIndex) return;
+
+    db.exec(`
+      BEGIN;
+
+      CREATE TABLE pob_metadata_history_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chain_id INTEGER NOT NULL,
+        contract_address TEXT,
+        iteration_number INTEGER,
+        project_address TEXT,
+        cid TEXT NOT NULL,
+        tx_hash TEXT NOT NULL,
+        log_index INTEGER NOT NULL DEFAULT 0,
+        tx_sent_height INTEGER,
+        confirmations INTEGER DEFAULT 0,
+        confirmed BOOLEAN DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(tx_hash, log_index)
+      );
+
+      INSERT OR IGNORE INTO pob_metadata_history_v2 (
+        id, chain_id, contract_address, iteration_number, project_address, cid,
+        tx_hash, log_index, tx_sent_height, confirmations, confirmed, created_at, updated_at
+      )
+      SELECT
+        id, chain_id, contract_address, iteration_number, project_address, cid,
+        tx_hash, 0, tx_sent_height, confirmations, confirmed, created_at, updated_at
+      FROM pob_metadata_history;
+
+      DROP TABLE pob_metadata_history;
+      ALTER TABLE pob_metadata_history_v2 RENAME TO pob_metadata_history;
+
+      CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_confirmed ON pob_metadata_history(confirmed);
+      CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_project ON pob_metadata_history(chain_id, project_address, confirmed, created_at);
+      CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_iteration ON pob_metadata_history(chain_id, contract_address, confirmed, created_at);
+      CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_cid ON pob_metadata_history(cid);
+
+      COMMIT;
+    `);
+  }
+
   /**
    * Record a new metadata update transaction
    */
@@ -65,12 +114,128 @@ export function createMetadataDatabase(db: Database.Database) {
       project_address: params.projectAddress,
       cid: params.cid,
       tx_hash: params.txHash,
+      log_index: 0,
       tx_sent_height: params.txSentHeight,
       confirmations: 0,
       confirmed: false,
       created_at: now,
       updated_at: now
     };
+  }
+
+  /**
+   * Insert or refresh a confirmed metadata update discovered from chain logs.
+   * External scripts do not pass through the API queue, so this backfills tx hashes
+   * without creating duplicate rows on repeated indexing polls.
+   */
+  function upsertConfirmedUpdate(params: {
+    chainId: number;
+    contractAddress: string | null;
+    iterationNumber: number | null;
+    projectAddress: string | null;
+    cid: string;
+    txHash: string;
+    blockNumber: number | null;
+    logIndex: number;
+    confirmations: number;
+  }): MetadataUpdate {
+    const now = Date.now();
+
+    if (params.logIndex !== 0) {
+      const legacyRow = db.prepare(`
+        SELECT id FROM pob_metadata_history
+        WHERE tx_hash = ?
+          AND log_index = 0
+          AND cid = ?
+          AND COALESCE(contract_address, '') = COALESCE(?, '')
+          AND COALESCE(project_address, '') = COALESCE(?, '')
+        LIMIT 1
+      `).get(
+        params.txHash,
+        params.cid,
+        params.contractAddress,
+        params.projectAddress
+      ) as { id: number } | undefined;
+
+      const exactRow = db.prepare(`
+        SELECT id FROM pob_metadata_history
+        WHERE tx_hash = ? AND log_index = ?
+        LIMIT 1
+      `).get(params.txHash, params.logIndex) as { id: number } | undefined;
+
+      if (legacyRow && !exactRow) {
+        db.prepare(`
+          UPDATE pob_metadata_history
+          SET chain_id = ?,
+              contract_address = ?,
+              iteration_number = ?,
+              project_address = ?,
+              cid = ?,
+              log_index = ?,
+              tx_sent_height = COALESCE(?, tx_sent_height),
+              confirmations = MAX(confirmations, ?),
+              confirmed = 1,
+              updated_at = ?
+          WHERE id = ?
+        `).run(
+          params.chainId,
+          params.contractAddress,
+          params.iterationNumber,
+          params.projectAddress,
+          params.cid,
+          params.logIndex,
+          params.blockNumber,
+          params.confirmations,
+          now,
+          legacyRow.id
+        );
+
+        const adopted = db.prepare('SELECT * FROM pob_metadata_history WHERE id = ?')
+          .get(legacyRow.id) as MetadataUpdate | undefined;
+        if (adopted) return adopted;
+      }
+    }
+
+    const stmt = db.prepare(`
+      INSERT INTO pob_metadata_history (
+        chain_id, contract_address, iteration_number, project_address, cid,
+        tx_hash, log_index, tx_sent_height, confirmations, confirmed, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+      ON CONFLICT(tx_hash, log_index) DO UPDATE SET
+        chain_id = excluded.chain_id,
+        contract_address = excluded.contract_address,
+        iteration_number = excluded.iteration_number,
+        project_address = excluded.project_address,
+        cid = excluded.cid,
+        tx_sent_height = COALESCE(excluded.tx_sent_height, pob_metadata_history.tx_sent_height),
+        confirmations = MAX(pob_metadata_history.confirmations, excluded.confirmations),
+        confirmed = 1,
+        updated_at = excluded.updated_at
+    `);
+
+    stmt.run(
+      params.chainId,
+      params.contractAddress,
+      params.iterationNumber,
+      params.projectAddress,
+      params.cid,
+      params.txHash,
+      params.logIndex,
+      params.blockNumber,
+      params.confirmations,
+      now,
+      now
+    );
+
+    const row = db.prepare('SELECT * FROM pob_metadata_history WHERE tx_hash = ? AND log_index = ?')
+      .get(params.txHash, params.logIndex) as MetadataUpdate | undefined;
+
+    if (!row) {
+      throw new Error(`Failed to upsert metadata update ${params.txHash}`);
+    }
+
+    return row;
   }
 
   /**
@@ -162,7 +327,7 @@ export function createMetadataDatabase(db: Database.Database) {
         AND contract_address = ?
         AND project_address = ?
         AND cid = ?
-      ORDER BY created_at DESC
+      ORDER BY COALESCE(tx_sent_height, 0) DESC, log_index DESC, created_at DESC
       LIMIT 1
     `);
 
@@ -176,7 +341,7 @@ export function createMetadataDatabase(db: Database.Database) {
         AND contract_address IS NULL
         AND project_address = ?
         AND cid = ?
-      ORDER BY created_at DESC
+      ORDER BY COALESCE(tx_sent_height, 0) DESC, log_index DESC, created_at DESC
       LIMIT 1
     `);
 
@@ -197,7 +362,7 @@ export function createMetadataDatabase(db: Database.Database) {
         AND contract_address = ?
         AND project_address = ?
         AND confirmed = 1
-      ORDER BY created_at DESC
+      ORDER BY COALESCE(tx_sent_height, 0) DESC, log_index DESC, created_at DESC
       LIMIT 1
     `);
 
@@ -211,7 +376,7 @@ export function createMetadataDatabase(db: Database.Database) {
         AND contract_address IS NULL
         AND project_address = ?
         AND confirmed = 1
-      ORDER BY created_at DESC
+      ORDER BY COALESCE(tx_sent_height, 0) DESC, log_index DESC, created_at DESC
       LIMIT 1
     `);
 
@@ -233,7 +398,7 @@ export function createMetadataDatabase(db: Database.Database) {
         AND contract_address = ?
         AND project_address IS NULL
         AND cid = ?
-      ORDER BY created_at DESC
+      ORDER BY COALESCE(tx_sent_height, 0) DESC, log_index DESC, created_at DESC
       LIMIT 1
     `);
 
@@ -247,7 +412,7 @@ export function createMetadataDatabase(db: Database.Database) {
         AND contract_address IS NULL
         AND project_address IS NULL
         AND cid = ?
-      ORDER BY created_at DESC
+      ORDER BY COALESCE(tx_sent_height, 0) DESC, log_index DESC, created_at DESC
       LIMIT 1
     `);
 
@@ -267,7 +432,7 @@ export function createMetadataDatabase(db: Database.Database) {
         AND contract_address = ?
         AND project_address IS NULL
         AND confirmed = 1
-      ORDER BY created_at DESC
+      ORDER BY COALESCE(tx_sent_height, 0) DESC, log_index DESC, created_at DESC
       LIMIT 1
     `);
 
@@ -281,7 +446,7 @@ export function createMetadataDatabase(db: Database.Database) {
         AND contract_address IS NULL
         AND project_address IS NULL
         AND confirmed = 1
-      ORDER BY created_at DESC
+      ORDER BY COALESCE(tx_sent_height, 0) DESC, log_index DESC, created_at DESC
       LIMIT 1
     `);
 
@@ -348,6 +513,7 @@ export function createMetadataDatabase(db: Database.Database) {
 
   return {
     createUpdate,
+    upsertConfirmedUpdate,
     getPendingUpdates,
     updateConfirmations,
     markConfirmed,

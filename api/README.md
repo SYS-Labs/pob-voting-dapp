@@ -32,7 +32,10 @@ nano .env
 
 **Optional variables** (have defaults):
 - `DB_PATH=./data/index.db`
-- `POLL_INTERVAL=300000` (5 minutes)
+- `FORUM_POLL_INTERVAL=300000` (5 minutes, legacy forum/X indexer only)
+- `ITERATION_POLL_INTERVAL=37000` for iteration indexing cadence
+- `ITERATION_RPC_BACKOFF_INITIAL_MS=60000` and `ITERATION_RPC_BACKOFF_MAX_MS=600000` for iteration RPC 429 backoff
+- `ITERATION_RPC_RETRY_MAX_ATTEMPTS=12` and `ITERATION_RPC_RETRY_SLOT_INTERVAL_MS=250` for ethers HTTP 429 retry behavior
 - `WORKER_INTERVAL=60000` (1 minute)
 - `API_PORT=4000`
 
@@ -151,8 +154,13 @@ SQLite database with 8 tables:
 - Check file permissions on `./data/index.db`
 
 **X API rate limits:**
-- Increase `POLL_INTERVAL` (default: 5 minutes)
+- Increase `FORUM_POLL_INTERVAL` (legacy forum/X indexer only)
 - Check X API usage dashboard
+
+**Iteration RPC rate limits:**
+- Increase `ITERATION_POLL_INTERVAL` if the RPC is still returning `429 Too Many Requests`
+- Increase `ITERATION_RPC_BACKOFF_INITIAL_MS` to wait longer after a 429 before retrying that chain
+- `ITERATION_RPC_RETRY_MAX_ATTEMPTS` controls ethers HTTP retries, but raising it alone will not fix sustained RPC throttling
 
 **AI costs:**
 - Reduce `BATCH_SIZE` (default: 10)

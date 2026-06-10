@@ -150,12 +150,14 @@ CREATE TABLE IF NOT EXISTS pob_metadata_history (
   iteration_number INTEGER,
   project_address TEXT,
   cid TEXT NOT NULL,
-  tx_hash TEXT NOT NULL UNIQUE,
+  tx_hash TEXT NOT NULL,
+  log_index INTEGER NOT NULL DEFAULT 0,
   tx_sent_height INTEGER,
   confirmations INTEGER DEFAULT 0,
   confirmed BOOLEAN DEFAULT 0,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  UNIQUE(tx_hash, log_index)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pob_metadata_history_confirmed ON pob_metadata_history(confirmed);

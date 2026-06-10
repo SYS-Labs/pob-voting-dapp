@@ -37,6 +37,14 @@
     votingMode?: number;
     projects?: { id: number; address: string; metadata?: any }[];
     projectScores?: { addresses: string[]; scores: string[]; totalPossible: string } | null;
+    onConnect?: () => void;
+  }
+
+  interface ActionGuide {
+    title: string;
+    body: string;
+    action: 'connect' | 'projects' | 'manage' | 'mint' | 'results' | null;
+    cta?: string;
   }
 
   let {
@@ -60,6 +68,7 @@
     votingMode = 0,
     projects = [],
     projectScores = null,
+    onConnect,
   }: Props = $props();
 
   let metadata = $state<IterationMetadata | null>(null);
@@ -121,8 +130,138 @@
 
   // Show the action row?
   let showActionRow = $derived(
-    iteration && (iteration.link || metadata?.link || isOwner || (walletAddress && executeMint))
+    iteration && (iteration.link || metadata?.link || isOwner)
   );
+
+  let isActiveRound = $derived(statusBadge.label === 'Active' && !votingEnded);
+  let isUpcomingRound = $derived(statusBadge.label === 'Upcoming');
+  let hasCommunityBadge = $derived(badges?.some(badge => badge.role === 'community') ?? false);
+  let hasAnyBadge = $derived(Boolean((badges?.length ?? 0) > 0 || hasMintedBadge));
+  let userRoleLabel = $derived.by(() => {
+    if (isOwner) return 'Owner';
+    if (roles?.smt) return 'SMT juror';
+    if (roles?.dao_hic) return 'DAO HIC juror';
+    if (roles?.project) return 'Project';
+    if (walletAddress) return 'Community voter';
+    return 'Visitor';
+  });
+
+  let actionGuide = $derived.by((): ActionGuide => {
+    if (!walletAddress) {
+      return {
+        title: 'Connect to see your next action',
+        body: 'Wallet state determines whether you can mint, vote, claim, manage a round, or review recognition.',
+        action: 'connect',
+        cta: 'Connect wallet',
+      };
+    }
+
+    if (isOwner) {
+      return {
+        title: 'Owner workspace',
+        body: 'Manage metadata, voters, projects, lifecycle controls, and historical round setup from the admin panels.',
+        action: 'manage',
+        cta: 'Manage iteration',
+      };
+    }
+
+    if (mintButtonType) {
+      return {
+        title: `Mint your ${userRoleLabel} badge`,
+        body: 'This role badge preserves your participation after the round state allows minting.',
+        action: 'mint',
+        cta: 'Mint badge',
+      };
+    }
+
+    if (isUpcomingRound) {
+      return {
+        title: 'Round is waiting to start',
+        body: 'Activation opens the community minting and voting window. You can review projects and round details now.',
+        action: 'projects',
+        cta: 'Review projects',
+      };
+    }
+
+    if (isActiveRound) {
+      if (roles?.project) {
+        return {
+          title: 'Project account detected',
+          body: 'Project wallets cannot vote in their own round. Track voting progress and final recognition from here.',
+          action: 'projects',
+          cta: 'View projects',
+        };
+      }
+
+      if (roles?.smt || roles?.dao_hic) {
+        return {
+          title: 'Cast or update your jury vote',
+          body: 'Open a project card to submit your vote while the round is active.',
+          action: 'projects',
+          cta: 'Choose a project',
+        };
+      }
+
+      if (hasCommunityBadge) {
+        return {
+          title: 'Use your community badge to vote',
+          body: 'Your badge is ready. Pick a project and submit or update your community vote before voting ends.',
+          action: 'projects',
+          cta: 'Choose a project',
+        };
+      }
+
+      return {
+        title: 'Mint a community badge, then vote',
+        body: 'Community voters start from the project cards. The vote flow handles badge minting when needed.',
+        action: 'projects',
+        cta: 'Start with projects',
+      };
+    }
+
+    if (votingEnded) {
+      return {
+        title: winner?.hasWinner ? 'Round results are final' : 'Round ended without a winner',
+        body: winner?.hasWinner
+          ? 'Review the final result and keep your badge or certificate history connected to your profile.'
+          : 'The round remains readable for audit and history even without a winning project.',
+        action: 'results',
+        cta: 'View results',
+      };
+    }
+
+    return {
+      title: 'Review the round state',
+      body: 'Projects, contracts, badges, and timing are available from this workspace.',
+      action: 'projects',
+      cta: 'View projects',
+    };
+  });
+
+  let journeySteps = $derived.by(() => [
+    {
+      label: 'Mint badge',
+      state: hasAnyBadge || votingEnded ? 'complete' : isActiveRound ? 'active' : 'idle',
+    },
+    {
+      label: 'Vote',
+      state: votingEnded ? 'complete' : isActiveRound ? 'active' : 'idle',
+    },
+    {
+      label: 'Results',
+      state: votingEnded ? 'active' : 'idle',
+    },
+    {
+      label: 'Recognition',
+      state: votingEnded && hasAnyBadge ? 'active' : 'idle',
+    },
+  ]);
+
+  function getJourneyStepClass(state: string) {
+    if (state === 'complete') return 'pob-journey__step pob-journey__step--complete';
+    if (state === 'active') return 'pob-journey__step pob-journey__step--active';
+    return 'pob-journey__step';
+  }
 
   function handleMint() {
     if (!executeMint || !mintButtonType) return;
@@ -197,6 +336,50 @@
       </div>
     {/if}
 
+    <div class="pob-action-guide" aria-label="Next action guidance">
+      <div class="pob-action-guide__copy">
+        <p class="pob-eyebrow pob-eyebrow--muted">Next action</p>
+        <h3>{actionGuide.title}</h3>
+        <p>{actionGuide.body}</p>
+      </div>
+
+      {#if actionGuide.action === 'connect' && onConnect}
+        <button type="button" class="pob-button pob-button--compact" onclick={onConnect}>
+          {actionGuide.cta}
+        </button>
+      {:else if actionGuide.action === 'projects'}
+        <a href="#iteration-projects" class="pob-button pob-button--compact">
+          {actionGuide.cta}
+        </a>
+      {:else if actionGuide.action === 'manage'}
+        <Link to="/iteration/{iteration.iteration}/details" class="pob-button pob-button--compact">
+          {actionGuide.cta}
+        </Link>
+      {:else if actionGuide.action === 'mint' && mintButtonType}
+        <button
+          type="button"
+          onclick={handleMint}
+          class="pob-button pob-button--compact"
+          disabled={pendingAction !== null}
+        >
+          {pendingAction ? 'Minting...' : actionGuide.cta}
+        </button>
+      {:else if actionGuide.action === 'results'}
+        <a href="#final-results" class="pob-button pob-button--compact pob-button--outline">
+          {actionGuide.cta}
+        </a>
+      {/if}
+    </div>
+
+    <ol class="pob-journey" aria-label="Round lifecycle">
+      {#each journeySteps as step (step.label)}
+        <li class={getJourneyStepClass(step.state)}>
+          <span></span>
+          <p>{step.label}</p>
+        </li>
+      {/each}
+    </ol>
+
     <!-- Program brief (left) and Mint button (right) on same line -->
     {#if showActionRow}
       <div class="flex items-center justify-between gap-2">
@@ -222,50 +405,54 @@
           {/if}
         </div>
 
-        {#if mintButtonType === 'smt'}
-          <button
-            type="button"
-            onclick={handleMint}
-            class="pob-button pob-button--compact"
-            disabled={pendingAction !== null}
-          >
-            {pendingAction === 'Mint SMT Badge' ? 'Minting...' : 'Mint SMT badge'}
-          </button>
-        {:else if mintButtonType === 'dao_hic'}
-          <button
-            type="button"
-            onclick={handleMint}
-            class="pob-button pob-button--compact"
-            disabled={pendingAction !== null}
-          >
-            {pendingAction === 'Mint DAO HIC Badge' ? 'Minting...' : 'Mint DAO HIC badge'}
-          </button>
-        {:else if mintButtonType === 'project'}
-          <button
-            type="button"
-            onclick={handleMint}
-            class="pob-button pob-button--compact"
-            disabled={pendingAction !== null}
-          >
-            {pendingAction === 'Mint Project Badge' ? 'Minting...' : 'Mint Project badge'}
-          </button>
+        {#if actionGuide.action !== 'mint'}
+          {#if mintButtonType === 'smt'}
+            <button
+              type="button"
+              onclick={handleMint}
+              class="pob-button pob-button--compact"
+              disabled={pendingAction !== null}
+            >
+              {pendingAction === 'Mint SMT Badge' ? 'Minting...' : 'Mint SMT badge'}
+            </button>
+          {:else if mintButtonType === 'dao_hic'}
+            <button
+              type="button"
+              onclick={handleMint}
+              class="pob-button pob-button--compact"
+              disabled={pendingAction !== null}
+            >
+              {pendingAction === 'Mint DAO HIC Badge' ? 'Minting...' : 'Mint DAO HIC badge'}
+            </button>
+          {:else if mintButtonType === 'project'}
+            <button
+              type="button"
+              onclick={handleMint}
+              class="pob-button pob-button--compact"
+              disabled={pendingAction !== null}
+            >
+              {pendingAction === 'Mint Project Badge' ? 'Minting...' : 'Mint Project badge'}
+            </button>
+          {/if}
         {/if}
       </div>
     {/if}
 
     <!-- Winner Section - Only show when voting has ended -->
     {#if votingEnded && winner && entityVotes}
-      <FinalResultsPanel
-        {winner}
-        {entityVotes}
-        {daoHicIndividualVotes}
-        {votingMode}
-        {projects}
-        {projectScores}
-        {getProjectLabel}
-        {isOwner}
-        iterationNumber={iteration?.iteration}
-      />
+      <div id="final-results">
+        <FinalResultsPanel
+          {winner}
+          {entityVotes}
+          {daoHicIndividualVotes}
+          {votingMode}
+          {projects}
+          {projectScores}
+          {getProjectLabel}
+          {isOwner}
+          iterationNumber={iteration?.iteration}
+        />
+      </div>
     {/if}
   </section>
 {/if}

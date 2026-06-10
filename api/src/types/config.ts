@@ -7,7 +7,7 @@ export interface IndexerConfig {
   xPassword: string;
   xEmail: string;
   // mainPostIds removed - now managed via database/admin API
-  pollInterval: number;
+  forumPollInterval: number;
   maxReplyDepth: number;
   trustedUsers: string[];
   cookiesPath?: string;

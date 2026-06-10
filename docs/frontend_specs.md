@@ -47,26 +47,11 @@ Different roles have different minting timing:
 
 ## 3) Inputs & Config
 
-* **JSON manifest**: `/public/iterations.json`
-  Array of iteration configurations:
+* **Round source**: `PoBRegistry` (or an API backed by `PoBRegistry`)
+  Runtime iteration/round discovery should come from the registry rather than a checked-in `/public/iterations.json` manifest.
 
-  ```json
-  [
-    {
-      "iteration": 1,
-      "name": "PoB Iteration #1",
-      "jurySC": "0xJurySC_01_Address",
-      "pob": "0xPoB_01_Address",
-      "deployBlockHint": 123456,
-      "startTime": 1234567890,
-      "endTime": 1234654290,
-      "link": "https://..."
-    }
-  ]
-  ```
-
-  * **Required fields**: `iteration`, `name`, `jurySC`, `pob`.
-  * **Optional**: `deployBlockHint`, `startTime`, `endTime`, `link`.
+  * **Required inputs**: chain ID, registry address, iteration/round identifiers.
+  * **Optional inputs**: metadata hydrated via API or registry-linked CIDs.
 
 ---
 
@@ -289,7 +274,7 @@ function claim(uint256 tokenId) external  // Community only, after voting ends
 
 ### 6.1 Initial Load
 
-1. Load `iterations.json` manifest
+1. Load iteration/round data from `PoBRegistry` (or an API backed by it)
 2. Connect wallet (Syscoin NEVM)
 3. Select iteration (or auto-select if only one)
 4. Query JurySC_01 for:

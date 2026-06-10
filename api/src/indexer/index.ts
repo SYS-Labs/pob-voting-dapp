@@ -137,7 +137,7 @@ class XIndexer {
     }
 
     logger.info('Starting X indexer', {
-      pollInterval: config.indexer.pollInterval,
+      forumPollInterval: config.indexer.forumPollInterval,
       maxDepth: config.indexer.maxReplyDepth,
       trustedUsers: config.indexer.trustedUsers
     });
@@ -157,7 +157,7 @@ class XIndexer {
       this.poll().catch(error => {
         logger.error('Poll failed', error);
       });
-    }, config.indexer.pollInterval);
+    }, config.indexer.forumPollInterval);
 
     logger.info('X indexer started successfully');
   }

@@ -102,8 +102,20 @@
   import { getPageFromPath } from '~/utils/pageRouting';
   import type { IterationStatus, PageType, Project } from '~/interfaces';
 
+  type ThemeName = 'dark' | 'light';
+
+  const THEME_STORAGE_KEY = 'pob-theme';
+
+  function getInitialTheme(): ThemeName {
+    if (typeof window === 'undefined') return 'dark';
+
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : 'dark';
+  }
+
   // Router location - track path using browser location
   let currentPath = $state(typeof window !== 'undefined' ? window.location.pathname : '/');
+  let theme = $state<ThemeName>(getInitialTheme());
 
   // Listen for navigation changes
   onMount(() => {
@@ -138,6 +150,18 @@
   });
 
   const currentPage = $derived(getPageFromPath(currentPath));
+
+  $effect(() => {
+    if (typeof document === 'undefined') return;
+
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  });
+
+  function toggleTheme() {
+    theme = theme === 'dark' ? 'light' : 'dark';
+  }
 
   // Wallet state
   const provider = $derived($walletStore.provider);
@@ -488,7 +512,9 @@
 </script>
 
 <Router>
-  <div class="pob-layout relative text-white">
+  <div class="pob-layout relative">
+
+    <a href="#pob-main" class="pob-skip-link">Skip to content</a>
 
     <!-- Background gradients -->
     <div class="pointer-events-none absolute inset-0 overflow-hidden">
@@ -603,10 +629,12 @@
       currentIteration={headerIterationNumber}
       walletIcon={connectedWalletInfo?.icon ?? null}
       walletName={connectedWalletInfo?.name ?? null}
+      {theme}
+      onToggleTheme={toggleTheme}
     />
 
     <!-- Main content with Routes -->
-    <main class="pob-main relative z-10 {(currentPage === 'iteration' || currentPage === 'project') && showIterationPage ? 'pob-main--desktop' : ''}">
+    <main id="pob-main" class="pob-main relative z-10 {(currentPage === 'iteration' || currentPage === 'project') && showIterationPage ? 'pob-main--desktop' : ''}">
       <!-- Home page - Iterations list -->
       <Route path="/">
         <IterationsPage

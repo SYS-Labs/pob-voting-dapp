@@ -95,6 +95,82 @@
 
   const canSubmit = $derived(Boolean(walletAddress && signer && chainId && registryAddress && isRegistryOwner));
 
+  const orderedIterations = $derived([...filteredIterations].sort((a, b) => {
+    if (b.iteration !== a.iteration) return b.iteration - a.iteration;
+    return (b.round ?? 0) - (a.round ?? 0);
+  }));
+
+  const howItWorks = [
+    {
+      title: 'Builders submit work',
+      description: 'Projects enter an iteration with public metadata and verifiable contract state.',
+    },
+    {
+      title: 'Jurors and community vote',
+      description: 'SMT, DAO HIC, and community badge holders help decide which work stands out.',
+    },
+    {
+      title: 'Results settle on-chain',
+      description: 'Voting mode, entity votes, winners, and final state remain readable after the round ends.',
+    },
+    {
+      title: 'Recognition becomes history',
+      description: 'Badges and certificates preserve participation, winning, and contributor records.',
+    },
+  ];
+
+  const aboutPeople = [
+    {
+      role: 'Initiative',
+      name: 'Patrick / 1DigitalCrypto',
+      description: 'PoB began from the Ledger Architects initiative to turn builder participation into transparent Syscoin-native recognition.',
+      href: 'https://x.com/1DigitalC',
+    },
+    {
+      role: 'LATAM leadership',
+      name: 'Fernando Paredes / DevElCuy',
+      description: 'Fernando leads execution in Latin America, mentoring builders and coordinating cohorts, events, and institutional relationships.',
+      href: 'https://x.com/DevElCuy',
+    },
+    {
+      role: 'Community',
+      name: 'Percy Meneses',
+      description: 'Percy supports community management and helps as a speaker so participants stay informed, welcomed, and ready to build.',
+      href: 'https://x.com/willdev08',
+    },
+  ];
+
+  function getIterationStatus(iteration: Iteration): IterationStatus {
+    return iterationStatuses[iteration.iteration] ?? iteration.status ?? 'upcoming';
+  }
+
+  function getStatusBadgeClass(status: IterationStatus) {
+    if (status === 'active') return 'pob-pill pob-pill--active';
+    if (status === 'ended') return 'pob-pill pob-pill--ended';
+    return 'pob-pill pob-pill--upcoming';
+  }
+
+  function getStatusLabel(status: IterationStatus) {
+    if (status === 'active') return 'Active now';
+    if (status === 'ended') return 'Completed';
+    return 'Upcoming';
+  }
+
+  const activeIterations = $derived(orderedIterations.filter((iteration) => getIterationStatus(iteration) === 'active'));
+  const completedIterations = $derived(orderedIterations.filter((iteration) => getIterationStatus(iteration) === 'ended'));
+  const registeredRounds = $derived(orderedIterations.filter((iteration) => iteration.round && iteration.jurySC && iteration.pob));
+  const primaryIteration = $derived(activeIterations[0] ?? registeredRounds[0] ?? orderedIterations[0] ?? null);
+  const primaryIterationStatus = $derived(primaryIteration ? getIterationStatus(primaryIteration) : null);
+  const uniqueNetworkCount = $derived(new Set(filteredIterations.map((iteration) => iteration.chainId)).size);
+  const profilePath = $derived(walletAddress ? `/profile/${walletAddress}` : null);
+
+  const metrics = $derived([
+    { label: 'Registered iterations', value: String(filteredIterations.length) },
+    { label: 'Active rounds', value: String(activeIterations.length) },
+    { label: 'Completed rounds', value: String(completedIterations.length) },
+    { label: 'Networks', value: String(uniqueNetworkCount) },
+  ]);
+
   function openRegisterModal() {
     registerError = null;
     registerForm = {
@@ -282,35 +358,165 @@
   }
 </script>
 
-<div class="pob-stack" id="iterations">
-  <section class="pob-pane pob-surface--quiet pob-surface--accented">
-    <div class="space-y-4">
-      <div>
-        <h2 class="pob-pane__title text-3xl">Welcome to Proof-of-Builders! 👋</h2>
-        <p class="pob-eyebrow mt-1">
-          Bitcoin security meets scalable Web3 infrastructure through Syscoin's zkSYS
-        </p>
+<div class="pob-stack pob-home" id="iterations">
+  <section class="pob-pane pob-surface--quiet pob-surface--accented pob-home-hero" aria-labelledby="pob-home-title">
+    <div class="pob-home-hero__copy">
+      <p class="pob-eyebrow">Proof-of-Builders</p>
+      <h2 id="pob-home-title" class="pob-home-hero__title">
+        Where builders earn recognition and the community helps decide what matters.
+      </h2>
+      <p class="pob-home-hero__lede">
+        PoB brings project work, juror voting, community badges, and certificates into one verifiable Syscoin participation record.
+      </p>
+
+      <div class="pob-home-hero__actions">
+        {#if primaryIteration}
+          <Link
+            to="/iteration/{primaryIteration.iteration}"
+            class="pob-button"
+            onclick={() => onSelectIteration(primaryIteration.iteration)}
+          >
+            {primaryIterationStatus === 'active' ? 'Vote in current round' : 'Explore iterations'}
+          </Link>
+        {:else}
+          <a href="#iterations-list" class="pob-button">Explore iterations</a>
+        {/if}
+        <Link to="/faq" class="pob-button pob-button--outline">Learn how PoB works</Link>
       </div>
-      <div class="space-y-3 text-sm text-[var(--pob-text-muted)]">
-        <p>
-          <strong class="text-white">What's this about?</strong> This is an ongoing program where you can build real projects
-          on Syscoin (UTXO, NEVM, and zkSYS) and get recognized for it. Your participation, votes, and results are recorded on-chain,
-          making the evaluation process transparent and verifiable. Think of it as building your portfolio while contributing
-          to the ecosystem.
+    </div>
+
+    <aside class="pob-home-spotlight" aria-label="Current round spotlight">
+      <p class="pob-eyebrow pob-eyebrow--muted">What is happening now</p>
+      {#if primaryIteration && primaryIterationStatus}
+        <div class="pob-home-spotlight__main">
+          <h3>{primaryIteration.name}</h3>
+          <span class={getStatusBadgeClass(primaryIterationStatus)}>{getStatusLabel(primaryIterationStatus)}</span>
+        </div>
+        <p class="pob-home-spotlight__meta">
+          Iteration #{primaryIteration.iteration}{primaryIteration.round ? ` - Round #${primaryIteration.round}` : ''}
         </p>
-        <p>
-          <strong class="text-white">Why it exists:</strong> Part of Ledger Architects' zkSYS Global Developer Onboarding Campaign,
-          with a special focus on Latin America. We're here to help you learn Web3, collaborate with others, and build cool stuff on
-          Syscoin. It's a bridge between learning, getting community feedback, and growing the ecosystem together.
-        </p>
-        <Link to="/faq" class="pob-button pob-link-card pob-link-card--stack-mobile mt-4">
-          <span class="pob-link-card__chip pob-chip pob-chip--compact">FAQ</span>
+        <Link
+          to="/iteration/{primaryIteration.iteration}"
+          class="pob-link-card pob-link-card--stack-mobile pob-home-spotlight__link"
+          onclick={() => onSelectIteration(primaryIteration.iteration)}
+        >
+          <span class="pob-link-card__chip pob-chip pob-chip--compact">Round</span>
           <span class="pob-link-card__text">
-            <span class="pob-link-card__label">Read the FAQ</span>
-            <span class="pob-link-card__meta">Program phases, voting, and builder support</span>
+            <span class="pob-link-card__label">Open round workspace</span>
+            <span class="pob-link-card__meta">Projects, voting state, badges, and final results</span>
           </span>
         </Link>
+      {:else}
+        <p class="pob-home-spotlight__meta">
+          No iterations are registered yet. The registry owner can add the first iteration below.
+        </p>
+      {/if}
+    </aside>
+  </section>
+
+  <section class="pob-home-metrics" aria-label="Proof-of-Builders metrics">
+    {#each metrics as metric (metric.label)}
+      <div class="pob-home-metric pob-surface--quiet">
+        <span>{metric.value}</span>
+        <p>{metric.label}</p>
       </div>
+    {/each}
+  </section>
+
+  <section class="pob-pane pob-surface--quiet pob-home-section" aria-labelledby="pob-how-title">
+    <div class="pob-pane__heading">
+      <div>
+        <p class="pob-eyebrow pob-eyebrow--muted">The loop</p>
+        <h3 id="pob-how-title" class="pob-pane__title">How PoB Works</h3>
+      </div>
+    </div>
+
+    <div class="pob-home-steps">
+      {#each howItWorks as step, index (step.title)}
+        <article class="pob-home-step">
+          <span class="pob-home-step__number">0{index + 1}</span>
+          <h4>{step.title}</h4>
+          <p>{step.description}</p>
+        </article>
+      {/each}
+    </div>
+  </section>
+
+  <section id="about" class="pob-pane pob-surface--quiet pob-home-section pob-home-about" aria-labelledby="pob-about-title">
+    <div class="pob-home-about__intro">
+      <p class="pob-eyebrow pob-eyebrow--muted">About PoB</p>
+      <h3 id="pob-about-title" class="pob-pane__title">A builder-recognition initiative with LATAM execution</h3>
+      <p>
+        Proof-of-Builders comes from a Ledger Architects initiative by Patrick, known as 1DigitalCrypto, and has grown into a Syscoin program for builders, jurors, community voting, badges, and certificates.
+      </p>
+      <p>
+        The LATAM program is led and executed by Fernando Paredes, DevElCuy, with mentoring and event coordination across universities, online sessions, and builder cohorts. Percy Meneses supports community management and helps as a speaker.
+      </p>
+      <a
+        href="https://syscoin.org/news/eco-update-260505"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="pob-button pob-button--outline pob-button--compact pob-home-about__source"
+      >
+        Read Syscoin ecosystem update
+      </a>
+    </div>
+
+    <div class="pob-home-about__people">
+      {#each aboutPeople as person (person.name)}
+        <article class="pob-home-about-card">
+          <p class="pob-eyebrow pob-eyebrow--muted">{person.role}</p>
+          <h4>{person.name}</h4>
+          <p>{person.description}</p>
+          {#if person.href}
+            <a href={person.href} target="_blank" rel="noopener noreferrer" class="pob-socials__link">
+              Follow
+            </a>
+          {/if}
+        </article>
+      {/each}
+    </div>
+  </section>
+
+  <section class="pob-pane pob-surface--quiet pob-home-section" aria-labelledby="pob-recognition-title">
+    <div class="pob-pane__heading">
+      <div>
+        <p class="pob-eyebrow pob-eyebrow--muted">Recognition</p>
+        <h3 id="pob-recognition-title" class="pob-pane__title">Your participation record</h3>
+      </div>
+    </div>
+
+    <div class="pob-home-recognition">
+      <Link to="/badges" class="pob-link-card pob-link-card--stack-mobile">
+        <span class="pob-link-card__chip pob-chip pob-chip--compact">Badges</span>
+        <span class="pob-link-card__text">
+          <span class="pob-link-card__label">Participation proofs</span>
+          <span class="pob-link-card__meta">View PoB badges earned through rounds and roles</span>
+        </span>
+      </Link>
+
+      <Link to="/certs" class="pob-link-card pob-link-card--stack-mobile">
+        <span class="pob-link-card__chip pob-chip pob-chip--compact">Certs</span>
+        <span class="pob-link-card__text">
+          <span class="pob-link-card__label">Recognition history</span>
+          <span class="pob-link-card__meta">Request, review, or view participation certificates</span>
+        </span>
+      </Link>
+
+      {#if profilePath}
+        <Link to={profilePath} class="pob-link-card pob-link-card--stack-mobile">
+          <span class="pob-link-card__chip pob-chip pob-chip--compact">Profile</span>
+          <span class="pob-link-card__text">
+            <span class="pob-link-card__label">Public contributor profile</span>
+            <span class="pob-link-card__meta">See badges and certs connected to your wallet</span>
+          </span>
+        </Link>
+      {:else}
+        <div class="pob-home-recognition__note pob-surface--quiet">
+          <p class="pob-eyebrow pob-eyebrow--muted">Profile</p>
+          <p>Connect a wallet to open your public contribution profile.</p>
+        </div>
+      {/if}
     </div>
   </section>
 
@@ -335,31 +541,33 @@
       </div>
     </section>
   {:else}
-    <IterationSection
-      title="Program Iterations"
-      iterations={filteredIterations}
-      {selectedIteration}
-      {iterationStatuses}
-      {onSelectIteration}
-      onAddRound={walletAddress && isRegistryOwner ? openRoundModal : undefined}
-      emptyMessage={walletAddress && isRegistryOwner
-        ? 'No iterations registered yet. Use the "Add iteration" button above to get started.'
-        : undefined}
-    >
-      {#snippet headerAction()}
-        {#if walletAddress && isRegistryOwner}
-          <button
-            type="button"
-            onclick={openRegisterModal}
-            class="pob-button pob-button--outline pob-button--compact"
-            disabled={!canSubmit}
-            style="opacity: {!canSubmit ? 0.6 : 1}; cursor: {!canSubmit ? 'not-allowed' : 'pointer'};"
-          >
-            Add iteration
-          </button>
-        {/if}
-      {/snippet}
-    </IterationSection>
+    <div id="iterations-list">
+      <IterationSection
+        title="Iterations and Rounds"
+        iterations={filteredIterations}
+        {selectedIteration}
+        {iterationStatuses}
+        {onSelectIteration}
+        onAddRound={walletAddress && isRegistryOwner ? openRoundModal : undefined}
+        emptyMessage={walletAddress && isRegistryOwner
+          ? 'No iterations registered yet. Use the "Add iteration" button above to get started.'
+          : undefined}
+      >
+        {#snippet headerAction()}
+          {#if walletAddress && isRegistryOwner}
+            <button
+              type="button"
+              onclick={openRegisterModal}
+              class="pob-button pob-button--outline pob-button--compact"
+              disabled={!canSubmit}
+              style="opacity: {!canSubmit ? 0.6 : 1}; cursor: {!canSubmit ? 'not-allowed' : 'pointer'};"
+            >
+              Add iteration
+            </button>
+          {/if}
+        {/snippet}
+      </IterationSection>
+    </div>
   {/if}
 
   <Modal isOpen={registerModalOpen} onClose={() => registerModalOpen = false} maxWidth="md">
@@ -555,3 +763,212 @@
     {/snippet}
   </Modal>
 </div>
+
+<style>
+  .pob-home-hero {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: 1fr;
+    overflow: hidden;
+  }
+
+  .pob-home-hero__copy {
+    display: grid;
+    gap: 1rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .pob-home-hero__title {
+    max-width: 13ch;
+    margin: 0;
+    color: var(--pob-text);
+    font-size: clamp(2.4rem, 9vw, 5rem);
+    font-weight: 900;
+    letter-spacing: -0.07em;
+    line-height: 0.92;
+  }
+
+  .pob-home-hero__lede {
+    max-width: 42rem;
+    margin: 0;
+    color: var(--pob-text-muted);
+    font-size: clamp(1rem, 2vw, 1.18rem);
+    line-height: 1.65;
+  }
+
+  .pob-home-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.35rem;
+  }
+
+  .pob-home-spotlight {
+    display: grid;
+    gap: 1rem;
+    align-content: start;
+    border: 1px solid var(--pob-border-accent-soft);
+    border-radius: var(--pob-radius-mobile);
+    background: var(--pob-surface-quiet);
+    box-shadow: var(--pob-shadow-inset-subtle);
+    padding: 1.25rem;
+  }
+
+  .pob-home-spotlight__main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .pob-home-spotlight__main h3 {
+    margin: 0;
+    color: var(--pob-text);
+    font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .pob-home-spotlight__meta {
+    margin: 0;
+    color: var(--pob-text-muted);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+
+  .pob-home-spotlight__link {
+    margin-top: 0.25rem;
+  }
+
+  .pob-home-metrics {
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pob-home-metric {
+    border: 1px solid var(--pob-border-subtle);
+    border-radius: var(--pob-radius-mobile);
+    padding: 1rem;
+    box-shadow: var(--pob-shadow-inset-subtle);
+  }
+
+  .pob-home-metric span {
+    display: block;
+    color: var(--pob-text);
+    font-size: clamp(1.8rem, 6vw, 2.8rem);
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .pob-home-metric p {
+    margin: 0.4rem 0 0;
+    color: var(--pob-text-muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .pob-home-steps,
+  .pob-home-recognition,
+  .pob-home-about__people {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+  }
+
+  .pob-home-step,
+  .pob-home-about-card,
+  .pob-home-recognition__note {
+    border: 1px solid var(--pob-border-subtle);
+    border-radius: var(--pob-radius-mobile);
+    background: var(--pob-surface-quiet);
+    box-shadow: var(--pob-shadow-inset-subtle);
+    padding: 1rem;
+  }
+
+  .pob-home-about {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  .pob-home-about__intro {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .pob-home-about__intro > p:not(.pob-eyebrow) {
+    max-width: 68rem;
+    margin: 0;
+    color: var(--pob-text-muted);
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  .pob-home-about__source {
+    justify-self: start;
+    margin-top: 0.25rem;
+  }
+
+  .pob-home-step__number {
+    color: var(--pob-primary);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+  }
+
+  .pob-home-step h4,
+  .pob-home-about-card h4 {
+    margin: 0.5rem 0 0.35rem;
+    color: var(--pob-text);
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
+  .pob-home-step p,
+  .pob-home-about-card p:not(.pob-eyebrow),
+  .pob-home-recognition__note p:last-child {
+    margin: 0;
+    color: var(--pob-text-muted);
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+
+  .pob-home-about-card .pob-socials__link {
+    margin-top: 0.9rem;
+  }
+
+  @media (min-width: 768px) {
+    .pob-home-hero {
+      grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
+      align-items: end;
+    }
+
+    .pob-home-metrics {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .pob-home-steps,
+    .pob-home-about__people,
+    .pob-home-recognition {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .pob-home-steps {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .pob-home-recognition {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .pob-home-about__people {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+</style>
