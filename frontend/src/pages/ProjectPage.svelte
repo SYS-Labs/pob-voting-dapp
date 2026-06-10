@@ -573,19 +573,17 @@
       </section>
     {/if}
 
-    <section class="pob-pane pob-surface--quiet project-page__section project-page__overview" aria-labelledby="project-overview-title">
-      <div class="project-page__section-heading">
-        <p class="pob-eyebrow pob-eyebrow--muted">Overview</p>
-        <h2 id="project-overview-title" class="pob-pane__title">Builder story</h2>
-      </div>
-      {#if resolvedMetadata?.description}
+    {#if resolvedMetadata?.description}
+      <section class="pob-pane pob-surface--quiet project-page__section project-page__overview" aria-labelledby="project-overview-title">
+        <div class="project-page__section-heading">
+          <p class="pob-eyebrow pob-eyebrow--muted">Overview</p>
+          <h2 id="project-overview-title" class="pob-pane__title">Builder story</h2>
+        </div>
         <div class="project-page__description">
           <MarkdownRenderer content={resolvedMetadata.description} />
         </div>
-      {:else}
-        <p class="project-page__empty">No project description is available yet.</p>
-      {/if}
-    </section>
+      </section>
+    {/if}
 
     <section class="pob-pane pob-surface--quiet project-page__record" aria-labelledby="project-record-title">
       <div class="project-page__section-heading">
