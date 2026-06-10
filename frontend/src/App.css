@@ -2006,6 +2006,7 @@ h3 .pob-pill {
 .pob-socials__link {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
   padding: 0.55rem 1.15rem;
   font-size: 0.78rem;
   font-weight: 600;
@@ -2029,6 +2030,12 @@ h3 .pob-pill {
   color: var(--pob-text);
   background: rgba(247, 147, 26, 0.08);
   border-color: rgba(247, 147, 26, 0.25);
+}
+
+/* Handle keeps its original casing; the X logo carries the brand */
+.pob-socials__handle {
+  text-transform: none;
+  letter-spacing: 0.01em;
 }
 
 .pob-socials__link--x:hover {

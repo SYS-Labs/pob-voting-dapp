@@ -5,7 +5,8 @@
   import MarkdownRenderer from '~/components/MarkdownRenderer.svelte';
   import VoteConfirmationModal from '~/components/VoteConfirmationModal.svelte';
   import ProgressSpinner from '~/components/ProgressSpinner.svelte';
-  import { formatAddress, getYouTubeEmbedUrl, getExplorerTxLink, getMetadataCidUrl } from '~/utils';
+  import { formatAddress, getYouTubeEmbedUrl, getExplorerTxLink, getMetadataCidUrl, parseXHandle } from '~/utils';
+  import XIcon from '~/components/XIcon.svelte';
   import { NETWORKS } from '~/constants/networks';
   import { ROLE_LABELS, ROLE_COLORS } from '~/constants/roles';
   import { createRegistryStatusStore } from '~/stores/registryStatus';
@@ -23,6 +24,8 @@
     href: string;
     title: string;
     className?: string;
+    isX?: boolean;
+    handle?: string | null;
   }
 
   function getProjectInitials(name: string): string {
@@ -424,7 +427,8 @@
     const links: ProjectLink[] = [];
 
     if (socials?.x?.trim()) {
-      links.push({ label: 'X', href: socials.x.trim(), title: `${projectName} on X`, className: 'pob-socials__link--x' });
+      const href = socials.x.trim();
+      links.push({ label: 'X', href, title: `${projectName} on X`, className: 'pob-socials__link--x', isX: true, handle: parseXHandle(href) });
     }
     if (socials?.instagram?.trim()) {
       links.push({ label: 'Instagram', href: socials.instagram.trim(), title: `${projectName} on Instagram` });
@@ -523,8 +527,14 @@
                 rel="noopener noreferrer"
                 class="pob-socials__link {link.className ?? ''}"
                 title={link.title}
+                aria-label={link.title}
               >
-                {link.label}
+                {#if link.isX}
+                  <XIcon />
+                  {#if link.handle}<span class="pob-socials__handle">{link.handle}</span>{/if}
+                {:else}
+                  {link.label}
+                {/if}
               </a>
             {/each}
           </div>

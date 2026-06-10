@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Link } from 'svelte-routing';
   import type { ParticipantRole, Project } from '~/interfaces';
-  import { formatAddress, getYouTubeEmbedUrl } from '~/utils';
+  import { formatAddress, getYouTubeEmbedUrl, parseXHandle } from '~/utils';
+  import XIcon from '~/components/XIcon.svelte';
 
   interface Props {
     project: Project;
@@ -25,6 +26,8 @@
     href: string;
     title: string;
     className?: string;
+    isX?: boolean;
+    handle?: string | null;
   }
 
   let {
@@ -70,7 +73,8 @@
     const links: ProjectLink[] = [];
 
     if (socials?.x?.trim()) {
-      links.push({ label: 'X', href: socials.x.trim(), title: `${projectName} on X`, className: 'pob-socials__link--x' });
+      const href = socials.x.trim();
+      links.push({ label: 'X', href, title: `${projectName} on X`, className: 'pob-socials__link--x', isX: true, handle: parseXHandle(href) });
     }
     if (socials?.instagram?.trim()) {
       links.push({ label: 'Instagram', href: socials.instagram.trim(), title: `${projectName} on Instagram` });
@@ -144,8 +148,14 @@
             rel="noopener"
             class="pob-socials__link {link.className ?? ''}"
             title={link.title}
+            aria-label={link.title}
           >
-            {link.label}
+            {#if link.isX}
+              <XIcon />
+              {#if link.handle}<span class="pob-socials__handle">{link.handle}</span>{/if}
+            {:else}
+              {link.label}
+            {/if}
           </a>
         {/each}
       </div>

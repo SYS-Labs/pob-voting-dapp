@@ -131,6 +131,33 @@ export function getExplorerAddressLink(chainId: number, address: string): string
   return `${explorerUrl}/address/${address}`;
 }
 
+// Path prefixes on x.com / twitter.com that are not user handles
+const X_RESERVED_PATHS = new Set([
+  'i', 'intent', 'home', 'hashtag', 'search', 'explore',
+  'notifications', 'messages', 'settings', 'compose', 'share', 'login',
+]);
+
+/**
+ * Extract the @handle from an X (Twitter) profile or status URL.
+ * Returns e.g. "@contiumx", or null when the URL has no resolvable handle
+ * (e.g. https://x.com/i/status/123) so callers can fall back to logo-only.
+ */
+export function parseXHandle(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const { hostname, pathname } = new URL(url.trim());
+    if (!/(^|\.)(x\.com|twitter\.com)$/i.test(hostname)) return null;
+    const first = pathname.split('/').filter(Boolean)[0];
+    if (!first) return null;
+    const handle = first.replace(/^@+/, '');
+    if (X_RESERVED_PATHS.has(handle.toLowerCase())) return null;
+    if (!/^[A-Za-z0-9_]{1,15}$/.test(handle)) return null;
+    return `@${handle}`;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Validate YouTube URL
  */
